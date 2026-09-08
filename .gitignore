@@ -11,3 +11,4 @@ yarn-error.log*
 .vite/
 build/
 coverage/
+claude.md
