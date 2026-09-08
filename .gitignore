@@ -12,3 +12,4 @@ yarn-error.log*
 build/
 coverage/
 claude.md
+TESTING-SHEET.md

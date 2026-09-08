@@ -10,6 +10,35 @@
 
 ---
 
+## Run it in 60 seconds
+
+No API keys and no config. The full stack — MongoDB, the Express API and the
+React client behind nginx — comes up with two commands:
+
+```bash
+git clone https://github.com/krishnendu-9/bugsense.git
+cd bugsense
+docker compose up --build
+
+# in a second terminal, load 3 demo users and 4 sample bugs
+docker compose exec server npm run seed
+```
+
+Then open **http://localhost:5173** and sign in with:
+
+| Role | Email | Password |
+|---|---|---|
+| Admin | `admin@bugsense.dev` | `password123` |
+| Developer | `dev@bugsense.dev` | `password123` |
+| Reporter | `reporter@bugsense.dev` | `password123` |
+
+Every AI feature — root-cause analysis, patch generation, incident post-mortems —
+falls back to deterministic heuristics when `ANTHROPIC_API_KEY` is unset, so the
+whole application is fully explorable with zero configuration. Add a key to see
+Claude drive it instead.
+
+---
+
 ## Why I Built This
 
 Bug reports are the worst part of software development — not because bugs exist, but because reports are incomplete. Developers waste hours asking "what browser?", "what error?", "can you reproduce it?". BugSense eliminates that friction: it auto-captures browser context, guides reporters through structured reproduction steps, and uses Claude AI to instantly diagnose error logs and suggest fixes.
@@ -69,6 +98,67 @@ Bug reports are the worst part of software development — not because bugs exis
 | Linting | ESLint 9 (flat config, both packages) |
 | Containers | Docker + Docker Compose + nginx |
 | CI | GitHub Actions (lint, build, image builds) |
+
+---
+
+## Architecture
+
+Two ways in: a human filing a structured report, or an SDK in someone else's app
+reporting a crash automatically. Both converge on the same fingerprint-and-dedup
+pipeline, and every write fans back out over WebSockets.
+
+```mermaid
+flowchart TB
+    subgraph clients["Clients"]
+        UI["React SPA<br/>report · triage · Kanban"]
+        SDK["bugsense.js<br/>embedded in a 3rd-party site"]
+    end
+
+    subgraph api["Express API"]
+        AUTH["JWT auth<br/>reporter · developer · admin"]
+        BUGS["Bug routes<br/>CRUD · search · filters"]
+        TEL["Telemetry ingest<br/>public · rate limited"]
+        FP{{"Fingerprint<br/>SHA-256 of normalised<br/>stack trace + project"}}
+        INC["increment occurrences<br/>reopen if resolved<br/>= regression"]
+        AI["AI service<br/>Claude, heuristic fallback"]
+    end
+
+    subgraph out["Side effects"]
+        WS(["Socket.io broadcast"])
+        AUDIT[("Audit log")]
+        HOOK["Discord / Slack"]
+        GH["GitHub Issues"]
+    end
+
+    DB[("MongoDB")]
+
+    UI -->|"Bearer token"| AUTH
+    AUTH --> BUGS
+    SDK -->|"crash + breadcrumbs"| TEL
+
+    BUGS --> FP
+    TEL --> FP
+
+    FP -->|"new fingerprint"| DB
+    FP -->|"seen before"| INC
+    INC --> DB
+
+    DB --> WS
+    DB --> AUDIT
+    FP --> HOOK
+    BUGS --> AI
+    AI --> DB
+    BUGS --> GH
+
+    WS -.->|"live updates"| UI
+```
+
+**The part worth reading the code for** is the fingerprint step. Incoming stack
+traces are normalised — UUIDs, memory addresses, timestamps and line numbers
+stripped — then hashed with the project name. Identical crashes collapse into one
+incident with an occurrence counter instead of a thousand duplicate rows, and a
+crash that reappears after being marked resolved is automatically flagged as a
+regression. See [`fingerprint.util.js`](server/utils/fingerprint.util.js).
 
 ---
 
@@ -320,29 +410,25 @@ ingestion endpoint. Try it live at `/sdk-demo`.
 
 ---
 
+<!-- SCREENSHOTS — uncomment this block once the six PNGs exist in docs/screenshots/
+
 ## Screenshots
 
-> _Screenshots will be added after first deployment._
+| Dashboard | Kanban Board |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Kanban board](docs/screenshots/kanban.png) |
 
-| Dashboard | Bug List | Bug Detail |
-|-----------|----------|------------|
-| _coming soon_ | _coming soon_ | _coming soon_ |
+| Bug Detail | AI Diagnostics |
+|---|---|
+| ![Bug detail](docs/screenshots/bug-detail.png) | ![AI analyzer](docs/screenshots/ai-analyzer.png) |
 
-| Report Bug | AI Analyzer | Annotation Canvas |
-|------------|-------------|-------------------|
-| _coming soon_ | _coming soon_ | _coming soon_ |
-
----
-
-## Live Demo
-
-> _Live demo link will be added after deployment to Railway/Render._
-
-**Demo credentials:**
-- Admin: `admin@bugsense.dev` / `password123`
-- Developer: `dev@bugsense.dev` / `password123`
+| SDK Sandbox | Audit Trail |
+|---|---|
+| ![SDK sandbox](docs/screenshots/sdk-sandbox.png) | ![Audit trail](docs/screenshots/audit-trail.png) |
 
 ---
+
+-->
 
 ## Environment Variables Reference
 
