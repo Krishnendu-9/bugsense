@@ -1,0 +1,7 @@
+node_modules
+uploads/*.png
+uploads/*.jpg
+uploads/*.jpeg
+uploads/*.webp
+.env
+npm-debug.log
