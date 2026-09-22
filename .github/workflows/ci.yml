@@ -35,6 +35,11 @@ jobs:
         working-directory: server
         run: npm run lint
 
+      # API + unit tests against an in-memory MongoDB (mongodb-memory-server).
+      - name: Test
+        working-directory: server
+        run: npm test
+
   client:
     name: Client (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest

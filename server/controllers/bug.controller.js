@@ -1,18 +1,38 @@
+import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import Bug from '../models/Bug.model.js';
 import Comment from '../models/Comment.model.js';
-import { getIO } from '../config/socket.js';
+import User from '../models/User.model.js';
 import { generateFingerprint } from '../utils/fingerprint.util.js';
+import { sanitizeRichText } from '../utils/sanitize.js';
+import { canModifyBug, isStaff } from '../utils/permissions.js';
+import { removeUpload } from '../utils/uploads.js';
 import { dispatchWebhookAlert } from '../services/webhook.service.js';
 import { logActivity } from '../services/audit.service.js';
+import {
+  BUG_POPULATE,
+  emitBugCreated,
+  emitBugDeleted,
+  emitBugUpdated,
+} from '../services/bugEvents.service.js';
+
+const STATUSES = ['open', 'in-progress', 'resolved', 'closed'];
+const PRIORITIES = ['low', 'medium', 'high', 'critical'];
+const MAX_PAGE_SIZE = 100;
+
+// Heavy per-bug fields the list views never render. Leaving them out keeps
+// list responses small as incidents accumulate telemetry.
+const LIST_EXCLUDED_FIELDS = '-breadcrumbs -gitPatch -statusHistory -aiInsights -errorLog -browserInfo';
 
 // Escapes user input before it is used inside a RegExp filter.
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// Fields a client may change through PUT /api/bugs/:id. Everything else
-// (reporter, fingerprint, occurrences, source, githubIssue, firstSeenAt,
-// statusHistory) is managed server-side only.
-const UPDATABLE_BUG_FIELDS = [
+const badRequest = (res, message) => res.status(400).json({ message });
+
+// Fields a client may set through POST/PUT. Everything else (reporter,
+// fingerprint, occurrences, source, screenshots, githubIssue, statusHistory) is
+// managed server-side only.
+const WRITABLE_BUG_FIELDS = [
   'title',
   'description',
   'steps',
@@ -24,242 +44,256 @@ const UPDATABLE_BUG_FIELDS = [
   'assignedTo',
   'errorLog',
   'browserInfo',
-  'screenshot',
-  'annotatedScreenshot',
 ];
 
-export const getBugs = async (req, res) => {
+const pickWritableFields = (body) => {
+  const payload = {};
+  for (const field of WRITABLE_BUG_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(body, field)) continue;
+    payload[field] = body[field];
+  }
+  if ('description' in payload) payload.description = sanitizeRichText(payload.description);
+  // An unassigned <select> submits '', which Mongoose cannot cast to ObjectId.
+  if ('assignedTo' in payload && !payload.assignedTo) payload.assignedTo = null;
+  return payload;
+};
+
+// Only developers and admins can be assignees.
+const assertAssignable = async (assignedTo) => {
+  if (!assignedTo) return true;
+  if (!mongoose.isValidObjectId(assignedTo)) return false;
+  return Boolean(await User.exists({ _id: assignedTo, role: { $in: ['developer', 'admin'] } }));
+};
+
+export const getBugs = async (req, res, next) => {
   try {
-    const { status, priority, assignedTo, reporter, project, search, page = 1, limit = 20 } = req.query;
+    const { status, priority, assignedTo, reporter, project, search } = req.query;
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+
+    // Every filter value is checked to be a plain string of the expected shape,
+    // so query-string objects like ?status[$ne]=x can never reach MongoDB.
     const filter = {};
-    if (status) filter.status = status;
-    if (priority) filter.priority = priority;
-    if (assignedTo) filter.assignedTo = assignedTo;
-    if (reporter) filter.reporter = reporter;
-    if (project) filter.project = project;
-    if (search?.trim()) {
-      const term = new RegExp(escapeRegex(search.trim()), 'i');
-      filter.$or = [{ title: term }, { description: term }, { errorLog: term }, { tags: term }];
+    if (status) {
+      if (!STATUSES.includes(status)) return badRequest(res, 'Invalid status filter');
+      filter.status = status;
+    }
+    if (priority) {
+      if (!PRIORITIES.includes(priority)) return badRequest(res, 'Invalid priority filter');
+      filter.priority = priority;
+    }
+    for (const [key, value] of [['assignedTo', assignedTo], ['reporter', reporter]]) {
+      if (!value) continue;
+      if (typeof value !== 'string' || !mongoose.isValidObjectId(value)) return badRequest(res, `Invalid ${key} filter`);
+      filter[key] = value;
+    }
+    if (project) {
+      if (typeof project !== 'string') return badRequest(res, 'Invalid project filter');
+      filter.project = project;
+    }
+    if (search) {
+      if (typeof search !== 'string') return badRequest(res, 'Invalid search filter');
+      if (search.trim()) {
+        const term = new RegExp(escapeRegex(search.trim().slice(0, 200)), 'i');
+        filter.$or = [{ title: term }, { description: term }, { errorLog: term }, { tags: term }];
+      }
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
     const [bugs, total] = await Promise.all([
       Bug.find(filter)
+        .select(LIST_EXCLUDED_FIELDS)
         .populate('reporter', 'name email avatar')
         .populate('assignedTo', 'name email avatar')
         .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit)),
+        .skip((page - 1) * limit)
+        .limit(limit),
       Bug.countDocuments(filter),
     ]);
 
-    return res.json({ bugs, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+    return res.json({ bugs, total, page, pages: Math.max(1, Math.ceil(total / limit)), limit });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const createBug = async (req, res) => {
+export const createBug = async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ message: errors.array()[0].msg });
   }
 
   try {
-    const fingerprint = generateFingerprint(req.body.errorLog, req.body.title, req.body.project);
+    const payload = pickWritableFields(req.body);
 
-    // Only fold a report into an existing incident when it carries a real stack
-    // trace, or when it came from the SDK/API. Two people filing unrelated bugs
-    // that happen to share a title must stay separate reports.
-    const canDeduplicate =
-      Boolean(fingerprint) &&
-      (Boolean(req.body.errorLog?.trim()) || (req.body.source && req.body.source !== 'manual'));
-
-    if (canDeduplicate) {
-      const existingBug = await Bug.findOne({ fingerprint });
-      if (existingBug) {
-        existingBug.occurrences = (existingBug.occurrences || 1) + 1;
-        existingBug.lastSeenAt = new Date();
-
-        let eventType = 'updated';
-        // Auto-detect regression
-        if (existingBug.status === 'resolved' || existingBug.status === 'closed') {
-          existingBug.status = 'in-progress';
-          existingBug.statusHistory.push({
-            status: 'in-progress',
-            changedBy: req.user?._id || null,
-            changedAt: new Date(),
-            note: 'Regression auto-detected: error re-occurred in production.',
-          });
-          eventType = 'regression';
-        }
-
-        if (req.body.breadcrumbs?.length) {
-          existingBug.breadcrumbs = req.body.breadcrumbs;
-        }
-
-        await existingBug.save();
-        await existingBug.populate('reporter', 'name email avatar');
-        await existingBug.populate('assignedTo', 'name email avatar');
-
-        getIO().emit('bug:updated', existingBug);
-        getIO().to(`bug:${existingBug._id}`).emit('bug:detail:updated', existingBug);
-        dispatchWebhookAlert(existingBug, eventType);
-
-        return res.status(200).json(existingBug);
-      }
+    // Reporters file bugs; triage (status, assignment) belongs to the team.
+    if (!isStaff(req.user)) {
+      delete payload.status;
+      delete payload.assignedTo;
+    }
+    if (!(await assertAssignable(payload.assignedTo))) {
+      return badRequest(res, 'Bugs can only be assigned to developers or admins');
     }
 
-    const payload = {};
-    for (const field of UPDATABLE_BUG_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(req.body, field)) continue;
-      const value = req.body[field];
-      payload[field] = field === 'assignedTo' && !value ? null : value;
-    }
-    if (Array.isArray(req.body.breadcrumbs)) payload.breadcrumbs = req.body.breadcrumbs;
+    const fingerprint = generateFingerprint(payload.errorLog, payload.title, payload.project);
 
+    // Manual reports are never folded into an existing incident: that would
+    // silently discard the reporter's description and steps. A matching
+    // fingerprint is surfaced as a hint instead, so the reporter can link them.
+    const similar = payload.errorLog?.trim()
+      ? await Bug.findOne({ fingerprint }).select('_id title').sort({ createdAt: 1 })
+      : null;
+
+    const now = new Date();
     const bug = await Bug.create({
       ...payload,
       fingerprint,
       occurrences: 1,
-      firstSeenAt: new Date(),
-      lastSeenAt: new Date(),
-      reporter: req.user?._id || null,
-      source: req.body.source || 'manual',
+      firstSeenAt: now,
+      lastSeenAt: now,
+      reporter: req.user._id,
+      source: 'manual',
     });
 
-    await bug.populate('reporter', 'name email avatar');
-
-    getIO().emit('bug:created', bug);
+    await emitBugCreated(bug);
     dispatchWebhookAlert(bug, 'created');
     logActivity({
       action: 'BUG_CREATED',
       entityType: 'bug',
       entityId: bug._id,
-      performedBy: req.user?._id || null,
-      performedByName: req.user?.name || 'Anonymous Reporter',
+      performedBy: req.user._id,
+      performedByName: req.user.name,
       details: `Reported incident: "${bug.title}" (${bug.severity} / ${bug.priority})`,
     });
 
-    return res.status(201).json(bug);
+    const body = bug.toObject();
+    if (similar) body.possibleDuplicateOf = { _id: similar._id, title: similar.title };
+    return res.status(201).json(body);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const getBugById = async (req, res) => {
+export const getBugById = async (req, res, next) => {
   try {
     const bug = await Bug.findById(req.params.id)
-      .populate('reporter', 'name email avatar')
-      .populate('assignedTo', 'name email avatar')
+      .populate(BUG_POPULATE)
       .populate({
         path: 'comments',
         populate: { path: 'author', select: 'name email avatar' },
-      })
-      .populate('statusHistory.changedBy', 'name avatar');
+      });
 
     if (!bug) return res.status(404).json({ message: 'Bug not found' });
     return res.json(bug);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const updateBug = async (req, res) => {
+export const updateBug = async (req, res, next) => {
   try {
     const bug = await Bug.findById(req.params.id);
     if (!bug) return res.status(404).json({ message: 'Bug not found' });
 
-    const isOwner = bug.reporter?.toString() === req.user._id.toString();
-    const isAdmin = req.user.role === 'admin';
-    const isDeveloper = req.user.role === 'developer';
-
-    if (!isOwner && !isAdmin && !isDeveloper) {
+    if (!canModifyBug(req.user, bug)) {
       return res.status(403).json({ message: 'Not authorized to update this bug' });
     }
 
-    if (req.body.status && req.body.status !== bug.status) {
+    const payload = pickWritableFields(req.body);
+
+    if ('assignedTo' in payload) {
+      const current = bug.assignedTo?.toString() || null;
+      const next_ = payload.assignedTo ? String(payload.assignedTo) : null;
+      if (current === next_) {
+        delete payload.assignedTo;
+      } else if (!isStaff(req.user)) {
+        return res.status(403).json({ message: 'Only developers and admins can assign bugs' });
+      } else if (!(await assertAssignable(payload.assignedTo))) {
+        return badRequest(res, 'Bugs can only be assigned to developers or admins');
+      }
+    }
+
+    if (payload.status && payload.status !== bug.status) {
       bug.statusHistory.push({
-        status: req.body.status,
+        status: payload.status,
         changedBy: req.user._id,
         changedAt: new Date(),
-        note: req.body.statusNote || '',
+        note: typeof req.body.statusNote === 'string' ? req.body.statusNote.slice(0, 500) : '',
       });
     }
 
-    // Whitelist client-writable fields — never let a request rewrite
-    // ownership, dedup or telemetry bookkeeping.
-    for (const field of UPDATABLE_BUG_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(req.body, field)) continue;
-      const value = req.body[field];
-      // An unassigned <select> submits '', which Mongoose cannot cast to ObjectId.
-      bug[field] = field === 'assignedTo' && !value ? null : value;
-    }
+    bug.set(payload);
     await bug.save();
+    await emitBugUpdated(bug);
 
-    await bug.populate('reporter', 'name email avatar');
-    await bug.populate('assignedTo', 'name email avatar');
-    await bug.populate('statusHistory.changedBy', 'name avatar');
-
-    getIO().emit('bug:updated', bug);
-    getIO().to(`bug:${bug._id}`).emit('bug:detail:updated', bug);
     logActivity({
       action: 'BUG_UPDATED',
       entityType: 'bug',
       entityId: bug._id,
-      performedBy: req.user?._id || null,
-      performedByName: req.user?.name || 'Team Member',
+      performedBy: req.user._id,
+      performedByName: req.user.name,
       details: `Updated incident #${bug._id.toString().slice(-6)} (Status: ${bug.status}, Priority: ${bug.priority})`,
     });
 
     return res.json(bug);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const deleteBug = async (req, res) => {
+export const deleteBug = async (req, res, next) => {
   try {
     const bug = await Bug.findById(req.params.id);
     if (!bug) return res.status(404).json({ message: 'Bug not found' });
 
     await Comment.deleteMany({ bug: bug._id });
     await bug.deleteOne();
+    await Promise.all([removeUpload(bug.screenshot), removeUpload(bug.annotatedScreenshot)]);
 
-    getIO().emit('bug:deleted', { _id: req.params.id });
+    emitBugDeleted(bug._id);
     logActivity({
       action: 'BUG_DELETED',
       entityType: 'bug',
-      entityId: req.params.id,
-      performedBy: req.user?._id || null,
-      performedByName: req.user?.name || 'Administrator',
+      entityId: bug._id,
+      performedBy: req.user._id,
+      performedByName: req.user.name,
       details: `Deleted incident: "${bug.title}" (${bug.occurrences || 1} occurrence(s))`,
     });
 
     return res.json({ message: 'Bug deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const uploadScreenshot = async (req, res) => {
+// Shared by the screenshot and annotation uploads: both replace one image field
+// on a bug the caller is allowed to modify, and remove the file it replaces.
+const replaceBugImage = (field) => async (req, res, next) => {
   try {
-    const bug = await Bug.findById(req.params.id);
-    if (!bug) return res.status(404).json({ message: 'Bug not found' });
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
-    bug.screenshot = `/uploads/${req.file.filename}`;
+    const bug = await Bug.findById(req.params.id);
+    if (!bug || !canModifyBug(req.user, bug)) {
+      await removeUpload(`/uploads/${req.file.filename}`);
+      if (!bug) return res.status(404).json({ message: 'Bug not found' });
+      return res.status(403).json({ message: 'Not authorized to update this bug' });
+    }
+
+    const previous = bug[field];
+    bug[field] = `/uploads/${req.file.filename}`;
     await bug.save();
+    await removeUpload(previous);
+    await emitBugUpdated(bug);
 
-    getIO().to(`bug:${bug._id}`).emit('bug:detail:updated', { _id: bug._id, screenshot: bug.screenshot });
-
-    return res.json({ screenshot: bug.screenshot });
+    return res.json({ [field]: bug[field] });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const getDashboardStats = async (req, res) => {
+export const uploadScreenshot = replaceBugImage('screenshot');
+export const uploadAnnotation = replaceBugImage('annotatedScreenshot');
+
+export const getDashboardStats = async (req, res, next) => {
   try {
     const [total, open, inProgress, resolved, closed, byPriority, recent] = await Promise.all([
       Bug.countDocuments(),
@@ -268,21 +302,33 @@ export const getDashboardStats = async (req, res) => {
       Bug.countDocuments({ status: 'resolved' }),
       Bug.countDocuments({ status: 'closed' }),
       Bug.aggregate([{ $group: { _id: '$priority', count: { $sum: 1 } } }]),
-      Bug.find().sort({ createdAt: -1 }).limit(5).populate('reporter', 'name avatar'),
+      Bug.find().select('title status priority createdAt reporter').sort({ createdAt: -1 }).limit(5).populate('reporter', 'name avatar'),
     ]);
 
     return res.json({ total, open, inProgress, resolved, closed, byPriority, recent });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const exportToGitHub = async (req, res) => {
-  const { repoOwner, repoName, githubToken } = req.body;
-  const token = githubToken || process.env.GITHUB_TOKEN;
+// GitHub's own naming rules; anything else could smuggle extra path segments
+// into the API URL.
+const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 
-  if (!repoOwner || !repoName) {
-    return res.status(400).json({ message: 'Repository owner and name are required' });
+export const exportToGitHub = async (req, res, next) => {
+  const { repoOwner, repoName, githubToken } = req.body;
+
+  if (typeof repoOwner !== 'string' || typeof repoName !== 'string' || !repoOwner || !repoName) {
+    return badRequest(res, 'Repository owner and name are required');
+  }
+  if (!GITHUB_OWNER.test(repoOwner) || !GITHUB_REPO.test(repoName) || repoName === '.' || repoName === '..') {
+    return badRequest(res, 'Repository owner or name contains invalid characters');
+  }
+
+  const token = typeof githubToken === 'string' && githubToken ? githubToken : process.env.GITHUB_TOKEN;
+  if (!token) {
+    return badRequest(res, 'A GitHub token is required (none is configured on the server)');
   }
 
   try {
@@ -296,7 +342,7 @@ ${bug.description?.replace(/<[^>]*>?/gm, '') || ''}
 
 ${bug.steps?.length ? `### Steps to Reproduce\n${bug.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n` : ''}
 ${bug.errorLog ? `### Error Log\n\`\`\`\n${bug.errorLog}\n\`\`\`\n` : ''}
-${bug.aiInsights?.possibleCause ? `### AI Diagnosis\n**Possible Cause:** ${bug.aiInsights.possibleCause}\n\n**Suggested Fix:**\n${bug.aiInsights.suggestedFix}\n` : ''}
+${bug.aiInsights?.possibleCause ? `### ${bug.aiInsights.source === 'heuristic' ? 'Heuristic' : 'AI'} Diagnosis\n**Possible Cause:** ${bug.aiInsights.possibleCause}\n\n**Suggested Fix:**\n${bug.aiInsights.suggestedFix}\n` : ''}
 
 ---
 - **Priority:** ${bug.priority}
@@ -305,27 +351,31 @@ ${bug.aiInsights?.possibleCause ? `### AI Diagnosis\n**Possible Cause:** ${bug.a
 - **Tracked in BugSense:** [View in BugSense](${clientUrl}/bugs/${bug._id})
 `;
 
-    const headers = {
-      'Accept': 'application/vnd.github.v3+json',
-      'Content-Type': 'application/json',
-      'User-Agent': 'BugSense-Observability',
-    };
-    if (token) headers['Authorization'] = `token ${token}`;
-
-    const ghRes = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/issues`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        title: `[BugSense] ${bug.title}`,
-        body: issueBody,
-        labels: ['bug', bug.priority].filter(Boolean),
-      }),
-    });
+    const ghRes = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(repoOwner)}/${encodeURIComponent(repoName)}/issues`,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'BugSense-Observability',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: `[BugSense] ${bug.title}`,
+          body: issueBody,
+          labels: ['bug', bug.priority].filter(Boolean),
+        }),
+        signal: AbortSignal.timeout(10000),
+      }
+    );
 
     if (!ghRes.ok) {
       const errData = await ghRes.json().catch(() => ({}));
-      return res.status(ghRes.status).json({
-        message: errData.message || 'GitHub API rejected the request. Ensure repo exists and token has "repo" scope.',
+      // GitHub's 401 must not look like a BugSense session expiry to the client.
+      const status = ghRes.status === 401 || ghRes.status === 403 ? 400 : ghRes.status >= 500 ? 502 : ghRes.status;
+      return res.status(status).json({
+        message: `GitHub: ${errData.message || 'request rejected. Check the repository exists and the token has "repo" scope.'}`,
       });
     }
 
@@ -336,13 +386,14 @@ ${bug.aiInsights?.possibleCause ? `### AI Diagnosis\n**Possible Cause:** ${bug.a
       exportedAt: new Date(),
     };
     await bug.save();
+    await emitBugUpdated(bug);
 
     logActivity({
       action: 'GITHUB_EXPORTED',
       entityType: 'bug',
       entityId: bug._id,
-      performedBy: req.user?._id || null,
-      performedByName: req.user?.name || 'Developer',
+      performedBy: req.user._id,
+      performedByName: req.user.name,
       details: `Exported incident to GitHub: ${repoOwner}/${repoName} #${ghIssue.number}`,
     });
 
@@ -351,6 +402,6 @@ ${bug.aiInsights?.possibleCause ? `### AI Diagnosis\n**Possible Cause:** ${bug.a
       githubIssue: bug.githubIssue,
     });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };

@@ -53,6 +53,8 @@ const bugSchema = new mongoose.Schema(
     aiInsights: {
       possibleCause: { type: String, default: '' },
       suggestedFix: { type: String, default: '' },
+      // 'claude' for a model response, 'heuristic' for the offline fallback.
+      source: { type: String, enum: ['claude', 'heuristic'], default: 'claude' },
       analyzedAt: { type: Date },
     },
     reporter: {
@@ -92,7 +94,6 @@ const bugSchema = new mongoose.Schema(
     fingerprint: {
       type: String,
       default: null,
-      index: true,
     },
     occurrences: {
       type: Number,
@@ -138,6 +139,15 @@ const bugSchema = new mongoose.Schema(
 );
 
 bugSchema.index({ status: 1, priority: 1, reporter: 1 });
+bugSchema.index({ fingerprint: 1 });
+// SDK telemetry deduplicates by fingerprint. The unique partial index makes
+// concurrent reports of a new error converge on one incident instead of racing
+// to create duplicates. Manual reports are excluded: two people may file the
+// same error separately and both reports must be kept.
+bugSchema.index(
+  { fingerprint: 1, source: 1 },
+  { unique: true, partialFilterExpression: { fingerprint: { $type: 'string' }, source: 'sdk' } }
+);
 
 const Bug = mongoose.model('Bug', bugSchema);
 export default Bug;

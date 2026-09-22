@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck, Mail, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAuth from '../../hooks/useAuth.js';
@@ -8,6 +8,11 @@ import useAuth from '../../hooks/useAuth.js';
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where ProtectedRoute bounced the user from; only same-app paths are allowed.
+  const from = typeof location.state?.from === 'string' && location.state.from.startsWith('/') && !location.state.from.startsWith('//')
+    ? location.state.from
+    : '/dashboard';
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -18,7 +23,7 @@ export default function Login() {
     try {
       await login(data.email, data.password);
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      navigate(from, { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Login failed');
     } finally {

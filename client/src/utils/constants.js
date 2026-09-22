@@ -48,7 +48,13 @@ export const SEVERITY_COLORS = {
   blocker: 'text-red-500 bg-red-500/10 border-red-500/30',
 };
 
-export const CHART_COLORS = ['#6366F1', '#8B5CF6', '#EF4444', '#7C3AED'];
+// Design-system priority colors, in severity order (drives chart ordering).
+export const PRIORITY_CHART_COLORS = {
+  low: '#22C55E',
+  medium: '#F59E0B',
+  high: '#EF4444',
+  critical: '#7C3AED',
+};
 
 export const STATUS_CHART_COLORS = {
   open: '#3B82F6',

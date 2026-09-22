@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Activity, Database, Cpu, HardDrive, RefreshCw, CheckCircle2, ShieldCheck, Zap } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Activity, Database, Cpu, HardDrive, RefreshCw, CheckCircle2, ShieldCheck, Zap, AlertTriangle } from 'lucide-react';
+import useSocket from '../../hooks/useSocket.js';
+import { StatsCardSkeleton } from '../../components/common/Loader.jsx';
 import toast from 'react-hot-toast';
 import api from '../../api/axios.js';
 
@@ -7,26 +9,35 @@ export default function SystemMetrics() {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const { connected } = useSocket();
+  // The background poll reports failures once (inline), not with a toast every 10s.
+  const failedRef = useRef(false);
 
-  const fetchMetrics = async (showToast = false) => {
+  const fetchMetrics = useCallback(async (manual = false) => {
     try {
       setRefreshing(true);
       const res = await api.get('/health/metrics');
       setMetrics(res.data);
-      if (showToast) toast.success('Metrics refreshed');
-    } catch {
-      toast.error('Failed to load system metrics');
+      setError(null);
+      failedRef.current = false;
+      if (manual) toast.success('Metrics refreshed');
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to load system metrics';
+      setError(message);
+      if (manual || !failedRef.current) toast.error(message);
+      failedRef.current = true;
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMetrics();
     const timer = setInterval(() => fetchMetrics(), 10000);
     return () => clearInterval(timer);
-  }, []);
+  }, [fetchMetrics]);
 
   const formatUptime = (seconds = 0) => {
     const hrs = Math.floor(seconds / 3600);
@@ -37,12 +48,18 @@ export default function SystemMetrics() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-muted">
-        <RefreshCw size={24} className="animate-spin text-primary mr-2" />
-        Loading system observability metrics...
+      <div className="space-y-6 max-w-6xl">
+        <div className="skeleton h-8 w-72 rounded" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <StatsCardSkeleton key={i} />)}
+        </div>
+        <div className="skeleton h-40 w-full rounded-xl" />
       </div>
     );
   }
+
+  const dbConnected = metrics?.database?.status === 'connected';
+  const operational = !error && metrics?.status === 'operational';
 
   const memPercent = metrics?.memory
     ? Math.min(100, Math.round((parseFloat(metrics.memory.heapUsedMb) / parseFloat(metrics.memory.heapTotalMb)) * 100))
@@ -55,8 +72,15 @@ export default function SystemMetrics() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-xl font-bold text-text-base">System Vitals & Observability</h1>
-            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-semibold bg-green-500/15 text-green-400 border border-green-500/30 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Operational
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-mono font-semibold border flex items-center gap-1 ${
+                operational
+                  ? 'bg-green-500/15 text-green-400 border-green-500/30'
+                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${operational ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
+              {error ? 'Unreachable' : operational ? 'Operational' : 'Degraded'}
             </span>
           </div>
           <p className="text-xs text-muted">
@@ -72,26 +96,33 @@ export default function SystemMetrics() {
         </button>
       </div>
 
+      {error && (
+        <div className="glass-card p-4 border border-amber-500/30 bg-amber-500/5 flex items-center gap-2 text-sm text-amber-300">
+          <AlertTriangle size={16} /> {error}{metrics ? ' — showing the last successful reading.' : ''}
+        </div>
+      )}
+
       {/* Grid of 4 Vitals Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Database Health */}
         <div className="glass-card p-5 border border-white/10 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted font-medium">Database Layer</span>
-            <div className="w-7 h-7 rounded-lg bg-green-500/15 text-green-400 flex items-center justify-center">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dbConnected ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
               <Database size={15} />
             </div>
           </div>
           <div>
             <div className="text-xl font-bold text-text-base font-mono capitalize">
-              {metrics?.database?.status || 'Connected'}
+              {metrics?.database?.status || 'Unknown'}
             </div>
             <p className="text-[11px] text-muted font-mono mt-0.5 truncate">
               {metrics?.database?.name} @ {metrics?.database?.host}
             </p>
           </div>
-          <div className="pt-2 border-t border-white/5 flex items-center gap-1 text-[11px] text-green-400">
-            <CheckCircle2 size={12} /> Read/Write Operations Active
+          <div className={`pt-2 border-t border-white/5 flex items-center gap-1 text-[11px] ${dbConnected ? 'text-green-400' : 'text-amber-400'}`}>
+            {dbConnected ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+            {dbConnected ? 'Accepting reads and writes' : 'Database not connected'}
           </div>
         </div>
 
@@ -157,8 +188,8 @@ export default function SystemMetrics() {
               Runtime: Node.js {metrics?.nodeVersion}
             </p>
           </div>
-          <div className="pt-2 border-t border-white/5 flex items-center gap-1 text-[11px] text-amber-400">
-            <ShieldCheck size={12} /> WebSocket Daemon Active
+          <div className={`pt-2 border-t border-white/5 flex items-center gap-1 text-[11px] ${connected ? 'text-green-400' : 'text-muted'}`}>
+            <ShieldCheck size={12} /> {connected ? 'Your live connection is active' : 'Live connection offline'}
           </div>
         </div>
       </div>

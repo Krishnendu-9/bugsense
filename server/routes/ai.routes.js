@@ -10,7 +10,7 @@ router.post(
   '/analyze',
   protect,
   aiLimiter,
-  [body('errorLog').trim().notEmpty().withMessage('Error log is required')],
+  [body('errorLog').isString().trim().notEmpty().withMessage('Error log is required')],
   analyzeErrorLog
 );
 

@@ -1,36 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Play, AlertOctagon, Terminal, ShoppingBag, ArrowRight, Zap, RefreshCw, CheckCircle2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSocketEvent } from '../../hooks/useSocket.js';
-import { timeAgo } from '../../utils/helpers.js';
+import { timeAgo, getApiOrigin } from '../../utils/helpers.js';
 
 export default function SDKPlayground() {
   const [recentBugs, setRecentBugs] = useState([]);
   const [sdkReady, setSdkReady] = useState(false);
 
-  // Dynamically load the BugSense SDK script if not already present
+  // Loads the real SDK into this page for the demo. The SDK patches globals
+  // (fetch, console.error, history, error handlers), so leaving the page must
+  // call destroy() — otherwise every later crash in BugSense itself would be
+  // reported as a 'Storefront Demo' incident.
   useEffect(() => {
-    let script = document.getElementById('bugsense-sdk-script');
-    if (!script) {
-      script = document.createElement('script');
-      script.id = 'bugsense-sdk-script';
-      script.src = '/sdk/bugsense.js';
-      script.setAttribute('data-api-url', window.location.origin);
-      script.setAttribute('data-project', 'Storefront Demo');
-      script.onload = () => setSdkReady(true);
-      document.body.appendChild(script);
-    } else {
-      setSdkReady(true);
-    }
+    const script = document.createElement('script');
+    script.src = `${getApiOrigin()}/sdk/bugsense.js`;
+    script.setAttribute('data-api-url', getApiOrigin());
+    script.setAttribute('data-project', 'Storefront Demo');
+    script.onload = () => setSdkReady(Boolean(window.BugSense));
+    script.onerror = () => toast.error('Could not load the BugSense SDK script');
+    document.body.appendChild(script);
 
     return () => {
-      // Clean up floating pill when leaving playground
-      const pill = document.getElementById('bugsense-floating-pill');
-      const modal = document.getElementById('bugsense-modal-container');
-      if (pill) pill.remove();
-      if (modal) modal.remove();
-      if (script) script.remove();
+      window.BugSense?.destroy?.();
+      script.remove();
+      setSdkReady(false);
     };
   }, []);
 
@@ -57,7 +52,7 @@ export default function SDKPlayground() {
   };
 
   const handleSimulateApiError = async () => {
-    toast('Simulating 500 Internal Server Error network call...', { icon: '🌐' });
+    toast('Calling a missing API endpoint (HTTP 404)...', { icon: '🌐' });
     try {
       await fetch('/api/non-existent-order-endpoint', {
         method: 'POST',
@@ -178,7 +173,7 @@ export default function SDKPlayground() {
                   className="p-3.5 rounded-xl text-left glass-card border-amber-500/30 hover:border-amber-500 hover:bg-amber-500/5 transition-all group"
                 >
                   <div className="flex items-center gap-2 text-amber-400 mb-1.5 font-semibold text-xs">
-                    <Terminal size={15} /> Simulated API Network 500
+                    <Terminal size={15} /> Failing API Call (404)
                   </div>
                   <p className="text-[11px] text-muted leading-snug">
                     Executes failing <code>window.fetch</code> to log API breadcrumbs into telemetry.

@@ -41,7 +41,9 @@ export default function AIAnalyzer() {
 
   const onSubmit = async (data) => {
     const result = await analyze(data.errorLog, data.bugContext);
-    if (result) toast.success('Analysis complete!');
+    if (result) {
+      toast.success(result.source === 'claude' ? 'Analysis complete!' : 'Heuristic analysis complete (AI not configured)');
+    }
   };
 
   const handleReset = () => {
@@ -65,7 +67,7 @@ export default function AIAnalyzer() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-text-base">AI Debug Analyzer</h1>
-            <p className="text-muted text-sm">Powered by Claude — paste any error and get instant debug insights</p>
+            <p className="text-muted text-sm">Powered by Claude (keyword heuristics when no API key is configured) — paste any error and get debug insights</p>
           </div>
         </div>
       </div>
@@ -139,7 +141,7 @@ export default function AIAnalyzer() {
             >
               {loading ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <Zap size={16} className="animate-pulse" />
                   Analyzing...
                 </>
               ) : (

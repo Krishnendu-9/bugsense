@@ -149,6 +149,54 @@
   }
 }
 
+/* Rendered bug descriptions (sanitized Quill HTML) */
+.rich-text > * + * {
+  margin-top: 0.75em;
+}
+
+.rich-text a {
+  color: #818CF8;
+  text-decoration: underline;
+}
+
+.rich-text ol,
+.rich-text ul {
+  padding-left: 1.5em;
+}
+
+.rich-text ol {
+  list-style: decimal;
+}
+
+.rich-text ul,
+.rich-text li[data-list='bullet'] {
+  list-style: disc;
+}
+
+.rich-text pre,
+.rich-text code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8125rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 0.375rem;
+}
+
+.rich-text pre {
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.rich-text code {
+  padding: 0.1em 0.35em;
+}
+
+.rich-text blockquote {
+  border-left: 3px solid #334155;
+  padding-left: 0.75rem;
+  color: #94A3B8;
+}
+
 /* React Quill dark theme overrides */
 .ql-toolbar {
   background-color: #1E293B !important;

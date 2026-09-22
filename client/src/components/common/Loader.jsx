@@ -56,11 +56,15 @@ export function BugDetailSkeleton() {
   );
 }
 
-export default function Loader({ text = 'Loading...' }) {
+// Generic page-level placeholder; per the design system, loading states use
+// skeletons rather than spinners.
+export default function Loader({ text = 'Loading...', lines = 4 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 gap-3">
-      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      <p className="text-muted text-sm">{text}</p>
+    <div className="glass-card p-6 space-y-3" aria-busy="true" aria-label={text}>
+      <div className="skeleton h-5 w-1/3 rounded" />
+      {Array.from({ length: lines }).map((_, i) => (
+        <div key={i} className="skeleton h-4 rounded" style={{ width: `${100 - i * 12}%` }} />
+      ))}
     </div>
   );
 }

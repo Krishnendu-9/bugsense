@@ -1,111 +1,215 @@
 /**
- * BugSense Client SDK & Observability Telemetry Agent (v1.0.0)
+ * BugSense Client SDK & Observability Telemetry Agent (v1.1.0)
  * Embed in any website:
- * <script src="http://localhost:5000/sdk/bugsense.js" data-api-url="http://localhost:5000" data-project="My Client App"></script>
+ * <script src="https://your-bugsense-host/sdk/bugsense.js"
+ *         data-api-url="https://your-bugsense-host"
+ *         data-project="My Client App"
+ *         data-key="optional-ingest-key"></script>
+ *
+ * Privacy: the SDK never records form field values, and strips query strings
+ * and fragments from every URL it reports, since those commonly carry tokens.
  */
 (function (window, document) {
   'use strict';
 
+  // Loading the script twice would wrap fetch/console twice and double-report.
+  if (window.BugSense && window.BugSense.__initialized) return;
+
   // Read configuration from current script tag
   const currentScript = document.currentScript || Array.from(document.querySelectorAll('script')).pop();
-  const apiUrl = currentScript?.getAttribute('data-api-url') || 'http://localhost:5000';
+  const apiUrl = (currentScript?.getAttribute('data-api-url') || 'http://localhost:5000').replace(/\/+$/, '');
   const project = currentScript?.getAttribute('data-project') || 'Production Web App';
+  const ingestKey = currentScript?.getAttribute('data-key') || '';
   const enableWidget = currentScript?.getAttribute('data-widget') !== 'false';
 
-  // In-memory Flight Recorder Breadcrumbs ring buffer (last 15 actions)
+  const MAX_BREADCRUMBS = 15;
+  const MAX_TITLE_LENGTH = 200;
+  const MAX_REPORTS_PER_SESSION = 20;
+  const REPEAT_SUPPRESSION_MS = 10000;
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  // Drops ?query and #fragment, which frequently contain tokens or PII.
+  function redactUrl(value) {
+    try {
+      const url = new URL(String(value), window.location.href);
+      return url.origin === window.location.origin ? url.pathname : url.origin + url.pathname;
+    } catch (err) {
+      return String(value).split(/[?#]/)[0];
+    }
+  }
+
+  // JSON.stringify that cannot throw (circular refs, BigInt, exotic objects).
+  function safeStringify(value) {
+    const seen = new WeakSet();
+    try {
+      return JSON.stringify(value, function (_key, val) {
+        if (typeof val === 'bigint') return val.toString();
+        if (val && typeof val === 'object') {
+          if (seen.has(val)) return '[Circular]';
+          seen.add(val);
+        }
+        return val;
+      });
+    } catch (err) {
+      return '[Unserializable]';
+    }
+  }
+
+  function describeArg(arg) {
+    if (arg instanceof Error) return arg.stack || arg.message;
+    if (typeof arg === 'object' && arg !== null) return safeStringify(arg);
+    return String(arg);
+  }
+
+  function clamp(text, max) {
+    const str = String(text || '');
+    return str.length > max ? str.slice(0, max) : str;
+  }
+
+  // Elements whose visible text or value may be something the user typed.
+  function isSensitiveElement(el) {
+    const tag = el.tagName ? el.tagName.toLowerCase() : '';
+    return (
+      tag === 'input' ||
+      tag === 'textarea' ||
+      tag === 'select' ||
+      el.isContentEditable ||
+      (el.closest && el.closest('[data-bugsense-mask]'))
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Flight Recorder breadcrumbs (ring buffer)
+  // ---------------------------------------------------------------------------
+
   const breadcrumbs = [];
-  function addBreadcrumb(category, message, data = {}) {
+  function addBreadcrumb(category, message, data) {
     breadcrumbs.push({
       timestamp: new Date().toISOString(),
       category,
-      message,
-      data,
+      message: clamp(message, 300),
+      data: data || {},
     });
-    if (breadcrumbs.length > 15) {
+    if (breadcrumbs.length > MAX_BREADCRUMBS) {
       breadcrumbs.shift();
     }
   }
 
-  // Initial Breadcrumb: Page loaded
-  addBreadcrumb('navigation', `Page loaded: ${window.location.pathname}${window.location.search}`, {
-    url: window.location.href,
+  addBreadcrumb('navigation', 'Page loaded: ' + redactUrl(window.location.href), {
+    url: redactUrl(window.location.href),
   });
 
-  // 1. Intercept DOM Clicks
-  document.addEventListener(
+  // Everything patched or subscribed is recorded here so destroy() can undo it.
+  const cleanups = [];
+  function listen(target, event, handler, options) {
+    target.addEventListener(event, handler, options);
+    cleanups.push(function () {
+      target.removeEventListener(event, handler, options);
+    });
+  }
+
+  // 1. DOM clicks — element identity only, never typed content
+  listen(
+    document,
     'click',
     function (e) {
       try {
         const target = e.target;
-        if (!target) return;
-        const tag = target.tagName ? target.tagName.toLowerCase() : 'element';
-        const id = target.id ? `#${target.id}` : '';
-        const cls = target.className && typeof target.className === 'string' ? `.${target.className.split(' ').slice(0, 2).join('.')}` : '';
-        const text = (target.innerText || target.value || '').slice(0, 30).trim();
-        const snippet = text ? ` "${text}"` : '';
+        if (!target || !target.tagName) return;
+        const tag = target.tagName.toLowerCase();
+        const id = target.id ? '#' + target.id : '';
+        const cls = typeof target.className === 'string' && target.className.trim()
+          ? '.' + target.className.trim().split(/\s+/).slice(0, 2).join('.')
+          : '';
+        const text = isSensitiveElement(target) ? '' : (target.innerText || '').trim().slice(0, 30);
+        const snippet = text ? ' "' + text + '"' : '';
 
-        addBreadcrumb('click', `Clicked <${tag}${id}${cls}>${snippet}`, {
+        addBreadcrumb('click', 'Clicked <' + tag + id + cls + '>' + snippet, {
           tag,
           id: target.id || null,
         });
-      } catch (err) {}
+      } catch (err) {
+        // Breadcrumbs are best-effort and must never break the host page.
+      }
     },
     true
   );
 
-  // 2. Intercept History Navigation
+  // 2. History navigation
   const originalPushState = window.history.pushState;
   if (originalPushState) {
     window.history.pushState = function () {
-      originalPushState.apply(this, arguments);
-      const newUrl = arguments[2] || window.location.pathname;
-      addBreadcrumb('navigation', `Navigated to ${newUrl}`, { url: String(newUrl) });
+      const result = originalPushState.apply(this, arguments);
+      const newUrl = redactUrl(arguments[2] || window.location.href);
+      addBreadcrumb('navigation', 'Navigated to ' + newUrl, { url: newUrl });
+      return result;
     };
-  }
-  window.addEventListener('popstate', function () {
-    addBreadcrumb('navigation', `Browser back/forward to ${window.location.pathname}`, {
-      url: window.location.href,
+    cleanups.push(function () {
+      window.history.pushState = originalPushState;
     });
+  }
+  listen(window, 'popstate', function () {
+    const url = redactUrl(window.location.href);
+    addBreadcrumb('navigation', 'Browser back/forward to ' + url, { url });
   });
 
-  // 3. Intercept Fetch API calls
+  // 3. Fetch API calls
   const originalFetch = window.fetch;
   if (originalFetch) {
-    window.fetch = async function () {
-      const url = typeof arguments[0] === 'string' ? arguments[0] : arguments[0]?.url || 'unknown';
-      const method = arguments[1]?.method || 'GET';
-      try {
-        const response = await originalFetch.apply(this, arguments);
-        addBreadcrumb('xhr', `API [${method.toUpperCase()}] ${url} (HTTP ${response.status})`, {
-          method,
-          status: response.status,
-          url,
-        });
-        return response;
-      } catch (err) {
-        addBreadcrumb('xhr', `API [${method.toUpperCase()}] ${url} (FAILED)`, {
-          method,
-          error: err.message,
-          url,
-        });
-        throw err;
-      }
+    window.fetch = function (input, init) {
+      const rawUrl = typeof input === 'string' || input instanceof URL ? input : input?.url || 'unknown';
+      const url = redactUrl(rawUrl);
+      const method = String(init?.method || input?.method || 'GET').toUpperCase();
+
+      return originalFetch.apply(this, arguments).then(
+        function (response) {
+          addBreadcrumb('xhr', 'API [' + method + '] ' + url + ' (HTTP ' + response.status + ')', {
+            method,
+            status: response.status,
+            url,
+          });
+          return response;
+        },
+        function (err) {
+          addBreadcrumb('xhr', 'API [' + method + '] ' + url + ' (FAILED)', {
+            method,
+            error: err?.message,
+            url,
+          });
+          throw err;
+        }
+      );
     };
+    cleanups.push(function () {
+      window.fetch = originalFetch;
+    });
   }
 
-  // 4. Intercept Console Errors & Warnings
+  // 4. Console errors
   const originalConsoleError = console.error;
   console.error = function () {
-    const msg = Array.from(arguments).map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-    addBreadcrumb('console', `Console Error: ${msg.slice(0, 120)}`, { raw: msg });
-    originalConsoleError.apply(console, arguments);
+    try {
+      const msg = Array.from(arguments).map(describeArg).join(' ');
+      addBreadcrumb('console', 'Console Error: ' + msg.slice(0, 120), { raw: msg.slice(0, 1000) });
+    } catch (err) {
+      // Never let recording interfere with the host's own logging.
+    }
+    return originalConsoleError.apply(console, arguments);
   };
+  cleanups.push(function () {
+    console.error = originalConsoleError;
+  });
+
+  // ---------------------------------------------------------------------------
+  // Transport
+  // ---------------------------------------------------------------------------
 
   // Guardrails: a render loop can fire window.onerror continuously. Cap the
   // number of reports per page session and suppress repeats of an error we
   // have already reported, so a broken host page cannot flood the ingest API.
-  const MAX_REPORTS_PER_SESSION = 20;
-  const REPEAT_SUPPRESSION_MS = 10000;
   let reportsSent = 0;
   const recentlySent = Object.create(null);
 
@@ -121,85 +225,99 @@
     return true;
   }
 
-  // Helper to send telemetry
-  function sendTelemetry(payload) {
-    if (!shouldSend(payload)) return;
+  function detectBrowser() {
+    const ua = navigator.userAgent;
+    if (ua.includes('Edg/')) return 'Edge';
+    if (ua.includes('Firefox/')) return 'Firefox';
+    if (ua.includes('Chrome/')) return 'Chrome';
+    if (ua.includes('Safari/')) return 'Safari';
+    return 'Browser';
+  }
 
-    const fullPayload = {
-      ...payload,
+  // Resolves true when the server accepted the report.
+  function sendTelemetry(payload) {
+    if (!shouldSend(payload)) return Promise.resolve(false);
+
+    const fullPayload = Object.assign({}, payload, {
+      title: clamp(payload.title, MAX_TITLE_LENGTH),
       project,
-      breadcrumbs: [...breadcrumbs],
+      breadcrumbs: breadcrumbs.slice(),
       browserInfo: {
-        browser: navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Firefox') ? 'Firefox' : 'Browser',
-        version: navigator.appVersion?.slice(0, 20) || 'Unknown',
-        os: navigator.platform || 'Unknown OS',
-        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        browser: detectBrowser(),
+        version: '',
+        os: navigator.userAgentData?.platform || navigator.platform || 'Unknown OS',
+        screenSize: window.innerWidth + 'x' + window.innerHeight,
         userAgent: navigator.userAgent,
-        url: window.location.href,
       },
-    };
+    });
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (ingestKey) headers['X-BugSense-Key'] = ingestKey;
 
     // Use the unpatched fetch: routing through our own wrapper would record an
     // xhr breadcrumb for every report the SDK itself sends.
-    const send = originalFetch ? originalFetch.bind(window) : window.fetch.bind(window);
-    send(`${apiUrl}/api/telemetry/report`, {
+    const send = (originalFetch || window.fetch).bind(window);
+    return send(apiUrl + '/api/telemetry/report', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(fullPayload),
-    }).catch(function (err) {
-      console.warn('[BugSense SDK] Failed to send telemetry report:', err);
-    });
+      headers,
+      body: safeStringify(fullPayload),
+      keepalive: true,
+    })
+      .then(function (res) {
+        return res.ok;
+      })
+      .catch(function (err) {
+        originalConsoleError.call(console, '[BugSense SDK] Failed to send telemetry report:', err);
+        return false;
+      });
   }
 
-  // 5. Global Error Handlers (Auto-telemetry on unhandled crashes)
-  window.addEventListener('error', function (event) {
-    const errorLog = event.error?.stack || `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`;
-    addBreadcrumb('error', `Crash: ${event.message}`, { errorLog });
+  // 5. Global error handlers (auto-telemetry on unhandled crashes)
+  listen(window, 'error', function (event) {
+    // Resource load errors (img/script 404s) bubble here without an Error.
+    if (!event.message && !event.error) return;
+    const errorLog = event.error?.stack || event.message + ' at ' + redactUrl(event.filename) + ':' + event.lineno + ':' + event.colno;
+    addBreadcrumb('error', 'Crash: ' + event.message, {});
 
     sendTelemetry({
       title: event.message || 'Uncaught JavaScript Error',
       errorLog,
-      description: `Auto-captured crash on ${window.location.pathname}`,
+      description: 'Auto-captured crash on ' + redactUrl(window.location.href),
       severity: 'major',
       priority: 'high',
-      source: 'sdk',
     });
   });
 
-  window.addEventListener('unhandledrejection', function (event) {
+  listen(window, 'unhandledrejection', function (event) {
     const reason = event.reason;
-    const errorLog = reason?.stack || (typeof reason === 'object' ? JSON.stringify(reason) : String(reason));
-    const title = `Unhandled Promise Rejection: ${reason?.message || String(reason).slice(0, 80)}`;
-    addBreadcrumb('error', title, { errorLog });
+    const errorLog = reason?.stack || describeArg(reason);
+    const title = 'Unhandled Promise Rejection: ' + clamp(reason?.message || describeArg(reason), 150);
+    addBreadcrumb('error', title, {});
 
     sendTelemetry({
       title,
       errorLog,
-      description: `Unhandled async promise failure on ${window.location.pathname}`,
+      description: 'Unhandled async promise failure on ' + redactUrl(window.location.href),
       severity: 'major',
       priority: 'high',
-      source: 'sdk',
     });
   });
 
-  // 6. In-App Floating Bug Feedback Widget
-  if (enableWidget) {
-    window.addEventListener('DOMContentLoaded', function () {
-      injectWidget();
-    });
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      injectWidget();
-    }
-  }
+  // ---------------------------------------------------------------------------
+  // 6. In-app floating bug feedback widget
+  // ---------------------------------------------------------------------------
 
   let widgetInjected = false;
+  let widgetNodes = [];
+
   function injectWidget() {
-    if (widgetInjected) return;
+    if (widgetInjected || !document.body) return;
     widgetInjected = true;
 
     // Trigger Pill Button
     const btn = document.createElement('button');
     btn.id = 'bugsense-floating-pill';
+    btn.type = 'button';
     btn.innerHTML = '🐞 <span style="font-weight:600;font-size:13px;letter-spacing:0.3px;">Report Bug</span>';
     btn.style.cssText = `
       position: fixed;
@@ -229,13 +347,17 @@
     // Modal Container
     const modal = document.createElement('div');
     modal.id = 'bugsense-modal-container';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-label', 'Report an issue');
+    modal.setAttribute('data-bugsense-mask', '');
     modal.style.cssText = `
       display: none;
       position: fixed;
       bottom: 80px;
       right: 24px;
       z-index: 999999;
-      width: 360px;
+      width: min(360px, calc(100vw - 48px));
+      box-sizing: border-box;
       background: #0F172A;
       border: 1px solid #334155;
       border-radius: 16px;
@@ -251,18 +373,18 @@
           <span style="font-size:18px;">🐞</span>
           <span style="font-weight:700;font-size:15px;color:#F1F5F9;">Report an Issue</span>
         </div>
-        <button id="bugsense-close-btn" style="background:none;border:none;color:#94A3B8;cursor:pointer;font-size:18px;line-height:1;">✕</button>
+        <button type="button" id="bugsense-close-btn" aria-label="Close" style="background:none;border:none;color:#94A3B8;cursor:pointer;font-size:18px;line-height:1;">✕</button>
       </div>
       <p style="font-size:12px;color:#94A3B8;margin-bottom:12px;line-height:1.4;">
-        Describe what broke. Flight Recorder breadcrumbs and diagnostic telemetry will automatically attach.
+        Describe what broke. Recent page activity (without anything you typed) will be attached.
       </p>
       <div style="margin-bottom:12px;">
-        <label style="font-size:11px;font-weight:600;color:#CBD5E1;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">What happened?</label>
-        <textarea id="bugsense-desc-input" rows="3" placeholder="e.g. Clicking checkout threw an alert without updating my cart..." style="width:100%;box-sizing:border-box;background:#1E293B;border:1px solid #475569;border-radius:8px;padding:8px 10px;font-size:13px;color:#F8FAFC;resize:none;outline:none;font-family:inherit;"></textarea>
+        <label for="bugsense-desc-input" style="font-size:11px;font-weight:600;color:#CBD5E1;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">What happened?</label>
+        <textarea id="bugsense-desc-input" rows="3" maxlength="2000" placeholder="e.g. Clicking checkout threw an alert without updating my cart..." style="width:100%;box-sizing:border-box;background:#1E293B;border:1px solid #475569;border-radius:8px;padding:8px 10px;font-size:13px;color:#F8FAFC;resize:none;outline:none;font-family:inherit;"></textarea>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <div style="flex:1;">
-          <label style="font-size:11px;font-weight:600;color:#CBD5E1;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Severity</label>
+          <label for="bugsense-severity-input" style="font-size:11px;font-weight:600;color:#CBD5E1;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Severity</label>
           <select id="bugsense-severity-input" style="width:100%;box-sizing:border-box;background:#1E293B;border:1px solid #475569;border-radius:8px;padding:7px 8px;font-size:12px;color:#F8FAFC;outline:none;">
             <option value="minor">Minor glitch</option>
             <option value="major" selected>Major defect</option>
@@ -270,7 +392,7 @@
           </select>
         </div>
         <div style="flex:1;">
-          <label style="font-size:11px;font-weight:600;color:#CBD5E1;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Priority</label>
+          <label for="bugsense-priority-input" style="font-size:11px;font-weight:600;color:#CBD5E1;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Priority</label>
           <select id="bugsense-priority-input" style="width:100%;box-sizing:border-box;background:#1E293B;border:1px solid #475569;border-radius:8px;padding:7px 8px;font-size:12px;color:#F8FAFC;outline:none;">
             <option value="low">Low</option>
             <option value="medium" selected>Medium</option>
@@ -280,36 +402,36 @@
         </div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;">
-        <button id="bugsense-cancel-btn" style="background:#334155;border:none;border-radius:8px;color:#E2E8F0;padding:8px 14px;font-size:12px;cursor:pointer;">Cancel</button>
-        <button id="bugsense-submit-btn" style="background:#4F46E5;border:none;border-radius:8px;color:#FFFFFF;font-weight:600;padding:8px 16px;font-size:12px;cursor:pointer;">Send Report</button>
+        <button type="button" id="bugsense-cancel-btn" style="background:#334155;border:none;border-radius:8px;color:#E2E8F0;padding:8px 14px;font-size:12px;cursor:pointer;">Cancel</button>
+        <button type="button" id="bugsense-submit-btn" style="background:#4F46E5;border:none;border-radius:8px;color:#FFFFFF;font-weight:600;padding:8px 16px;font-size:12px;cursor:pointer;">Send Report</button>
       </div>
     `;
 
     document.body.appendChild(btn);
     document.body.appendChild(modal);
+    widgetNodes = [btn, modal];
+
+    const descInput = modal.querySelector('#bugsense-desc-input');
+    const submitBtn = modal.querySelector('#bugsense-submit-btn');
+
+    function closeModal() {
+      modal.style.display = 'none';
+    }
 
     btn.onclick = function () {
       modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+      if (modal.style.display === 'block') descInput.focus();
     };
+    modal.querySelector('#bugsense-close-btn').onclick = closeModal;
+    modal.querySelector('#bugsense-cancel-btn').onclick = closeModal;
 
-    document.getElementById('bugsense-close-btn').onclick = function () {
-      modal.style.display = 'none';
-    };
-    document.getElementById('bugsense-cancel-btn').onclick = function () {
-      modal.style.display = 'none';
-    };
-
-    document.getElementById('bugsense-submit-btn').onclick = function () {
-      const descInput = document.getElementById('bugsense-desc-input');
+    submitBtn.onclick = function () {
       const desc = descInput.value.trim();
       if (!desc) {
         descInput.style.borderColor = '#EF4444';
         return;
       }
-
-      const severity = document.getElementById('bugsense-severity-input').value;
-      const priority = document.getElementById('bugsense-priority-input').value;
-      const submitBtn = document.getElementById('bugsense-submit-btn');
+      descInput.style.borderColor = '#475569';
 
       submitBtn.innerText = 'Sending...';
       submitBtn.disabled = true;
@@ -317,44 +439,70 @@
       sendTelemetry({
         title: desc.slice(0, 100),
         description: desc,
-        severity,
-        priority,
-        source: 'sdk',
-      });
-
-      setTimeout(function () {
-        submitBtn.innerText = 'Sent ✓';
+        severity: modal.querySelector('#bugsense-severity-input').value,
+        priority: modal.querySelector('#bugsense-priority-input').value,
+      }).then(function (ok) {
+        submitBtn.innerText = ok ? 'Sent ✓' : 'Failed — try again';
         setTimeout(function () {
-          modal.style.display = 'none';
-          descInput.value = '';
+          if (ok) {
+            closeModal();
+            descInput.value = '';
+          }
           submitBtn.innerText = 'Send Report';
           submitBtn.disabled = false;
-        }, 1000);
-      }, 500);
+        }, 1200);
+      });
     };
   }
 
-  // Expose global namespace
+  if (enableWidget) {
+    if (document.readyState === 'loading') {
+      listen(document, 'DOMContentLoaded', injectWidget);
+    } else {
+      injectWidget();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
   window.BugSense = {
-    addBreadcrumb,
+    __initialized: true,
+    addBreadcrumb: function (category, message, data) {
+      addBreadcrumb(category, message, data);
+    },
     captureError: function (error, customTitle) {
-      const errorLog = error?.stack || String(error);
-      sendTelemetry({
+      return sendTelemetry({
         title: customTitle || error?.message || 'Manual Error Capture',
-        errorLog,
+        errorLog: error?.stack || String(error),
         severity: 'major',
         priority: 'high',
-        source: 'sdk',
       });
     },
-    captureMessage: function (msg, priority = 'medium') {
-      sendTelemetry({
-        title: msg,
-        description: msg,
-        priority,
+    captureMessage: function (msg, priority) {
+      return sendTelemetry({
+        title: String(msg),
+        description: String(msg),
+        priority: priority || 'medium',
         severity: 'minor',
-        source: 'sdk',
       });
+    },
+    // Restores every patched global, removes listeners and the widget. Lets a
+    // single-page app mount and unmount the SDK cleanly.
+    destroy: function () {
+      while (cleanups.length) {
+        try {
+          cleanups.pop()();
+        } catch (err) {
+          // Keep unwinding the remaining hooks.
+        }
+      }
+      widgetNodes.forEach(function (node) {
+        node.remove();
+      });
+      widgetNodes = [];
+      delete window.BugSense;
     },
   };
 })(window, document);

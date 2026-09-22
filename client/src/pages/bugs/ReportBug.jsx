@@ -16,34 +16,45 @@ export default function ReportBug() {
     setIsLoading(true);
     const { screenshotFile, ...bugData } = formData;
 
+    let bug;
     try {
-      const bug = await createBug(bugData);
-
-      if (screenshotFile) {
-        try {
-          await uploadScreenshot(bug._id, screenshotFile);
-        } catch {
-          toast.error('Bug saved but screenshot upload failed');
-        }
-      }
-
-      if (bugData.errorLog?.trim()) {
-        try {
-          await analyze(bugData.errorLog, bugData.description, bug._id);
-          toast.success('Bug reported with AI analysis!');
-        } catch {
-          toast.success('Bug reported successfully!');
-        }
-      } else {
-        toast.success('Bug reported successfully!');
-      }
-
-      navigate(`/bugs/${bug._id}`);
+      bug = await createBug(bugData);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to submit bug report');
-    } finally {
       setIsLoading(false);
+      return;
     }
+
+    const problems = [];
+
+    if (screenshotFile) {
+      try {
+        await uploadScreenshot(bug._id, screenshotFile);
+      } catch (err) {
+        problems.push(err.response?.data?.message || 'screenshot upload failed');
+      }
+    }
+
+    let analysis = null;
+    if (bugData.errorLog?.trim()) {
+      // analyze() shows its own error toast and resolves to null on failure.
+      analysis = await analyze(bugData.errorLog, bugData.description, bug._id);
+    }
+
+    if (problems.length) {
+      toast.error(`Bug saved, but ${problems.join('; ')}`);
+    } else if (analysis?.source === 'claude') {
+      toast.success('Bug reported with AI analysis!');
+    } else {
+      toast.success('Bug reported successfully!');
+    }
+
+    if (bug.possibleDuplicateOf) {
+      toast(`Looks similar to an existing report: "${bug.possibleDuplicateOf.title}"`, { icon: '🔁', duration: 6000 });
+    }
+
+    setIsLoading(false);
+    navigate(`/bugs/${bug._id}`);
   };
 
   return (
@@ -51,6 +62,7 @@ export default function ReportBug() {
       <div className="flex items-center gap-4">
         <button
           onClick={() => navigate(-1)}
+          aria-label="Go back"
           className="p-2 rounded-lg hover:bg-white/5 text-muted hover:text-text-base transition-colors duration-200"
         >
           <ArrowLeft size={20} />
@@ -60,7 +72,7 @@ export default function ReportBug() {
             <Bug size={20} className="text-primary" />
             <h1 className="text-2xl font-bold text-text-base">Report a Bug</h1>
           </div>
-          <p className="text-muted text-sm">Fill in the details below. AI will auto-analyze any error logs.</p>
+          <p className="text-muted text-sm">Fill in the details below. Any error log is analyzed automatically.</p>
         </div>
       </div>
 

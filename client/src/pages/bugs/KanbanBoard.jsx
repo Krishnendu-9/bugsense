@@ -1,12 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { LayoutGrid, List, MessageSquare, ArrowRight, ArrowLeft } from 'lucide-react';
+import { LayoutGrid, List, MessageSquare, ArrowRight, ArrowLeft, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
 import { useSocketEvent } from '../../hooks/useSocket.js';
+import useAuth from '../../hooks/useAuth.js';
 import { PriorityBadge, SeverityBadge } from '../../components/common/Badge.jsx';
-import { timeAgo, truncate, stripHtml } from '../../utils/helpers.js';
+import { timeAgo, truncate, stripHtml, isStaff } from '../../utils/helpers.js';
 import api from '../../api/axios.js';
+
+// The board shows at most one API page; beyond that it links to the list view.
+const BOARD_LIMIT = 100;
 
 const COLUMNS = [
   { id: 'open', label: 'Open', color: 'border-blue-500/30 bg-blue-500/5', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
@@ -16,13 +20,18 @@ const COLUMNS = [
 ];
 
 export default function KanbanBoard() {
-  const { bugs: allBugs, setBugs, fetchBugs } = useBugs();
+  const { user } = useAuth();
+  const { bugs: allBugs, setBugs, fetchBugs, loading, pagination } = useBugs();
+  const [initialized, setInitialized] = useState(false);
   const [draggingBugId, setDraggingBugId] = useState(null);
   const [dragOverColId, setDragOverColId] = useState(null);
 
   useEffect(() => {
-    fetchBugs({ limit: 100 });
+    fetchBugs({ limit: BOARD_LIMIT }).finally(() => setInitialized(true));
   }, [fetchBugs]);
+
+  // Reporters can only move bugs they filed; the API enforces the same rule.
+  const canMove = (bug) => isStaff(user) || (bug.reporter?._id ?? bug.reporter) === user?._id;
 
   // Real-time socket sync
   useSocketEvent('bug:updated', (updatedBug) => {
@@ -33,22 +42,29 @@ export default function KanbanBoard() {
     setBugs((prev) => (prev.some((b) => b._id === newBug._id) ? prev : [newBug, ...prev]));
   });
 
+  useSocketEvent('bug:deleted', ({ _id }) => {
+    setBugs((prev) => prev.filter((b) => b._id !== _id));
+  });
+
   const handleStatusChange = async (bugId, newStatus) => {
     const targetBug = (allBugs || []).find((b) => b._id === bugId);
     if (!targetBug || targetBug.status === newStatus) return;
+    if (!canMove(targetBug)) {
+      toast.error('Only developers, admins or the reporter can move this bug');
+      return;
+    }
 
+    const previousStatus = targetBug.status;
     // Optimistic UI update
     setBugs((prev) => prev.map((b) => (b._id === bugId ? { ...b, status: newStatus } : b)));
 
-    const colConfig = COLUMNS.find((c) => c.id === newStatus);
-    toast.success(`Moved to ${colConfig?.label || newStatus}`);
-
     try {
       await api.put(`/bugs/${bugId}`, { status: newStatus });
-    } catch {
-      toast.error('Failed to update status on server');
-      // Revert on error
-      fetchBugs({ limit: 100 });
+      const colConfig = COLUMNS.find((c) => c.id === newStatus);
+      toast.success(`Moved to ${colConfig?.label || newStatus}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update status');
+      setBugs((prev) => prev.map((b) => (b._id === bugId ? { ...b, status: previousStatus } : b)));
     }
   };
 
@@ -118,7 +134,26 @@ export default function KanbanBoard() {
         </div>
       </div>
 
+      {pagination.total > BOARD_LIMIT && (
+        <div className="glass-card p-3 flex items-center gap-2 text-xs text-muted">
+          <Info size={14} className="text-primary flex-shrink-0" />
+          Showing the {BOARD_LIMIT} most recent of {pagination.total} bugs.{' '}
+          <Link to="/bugs" className="text-primary hover:underline">Use the list view</Link> to see the rest.
+        </div>
+      )}
+
       {/* Kanban Columns Grid */}
+      {!initialized && loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {COLUMNS.map((col) => (
+            <div key={col.id} className="glass-card p-3.5 space-y-3 min-h-[300px]">
+              <div className="skeleton h-6 w-24 rounded-full" />
+              <div className="skeleton h-24 w-full rounded-xl" />
+              <div className="skeleton h-24 w-full rounded-xl" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start select-none">
         {COLUMNS.map((col) => {
           const colBugs = (allBugs || []).filter((b) => b.status === col.id);
@@ -165,14 +200,15 @@ export default function KanbanBoard() {
 
                 {colBugs.map((bug) => {
                   const isBeingDragged = draggingBugId === bug._id;
+                  const movable = canMove(bug);
 
                   return (
                     <div
                       key={bug._id}
-                      draggable={true}
+                      draggable={movable}
                       onDragStart={(e) => handleDragStart(e, bug._id)}
                       onDragEnd={handleDragEnd}
-                      className={`p-3.5 rounded-xl bg-[#0B0F19]/90 border transition-all space-y-2.5 group cursor-grab active:cursor-grabbing ${
+                      className={`p-3.5 rounded-xl bg-[#0B0F19]/90 border transition-all space-y-2.5 group ${movable ? 'cursor-grab active:cursor-grabbing' : ''} ${
                         isBeingDragged
                           ? 'opacity-40 scale-95 border-dashed border-primary/80 shadow-none'
                           : 'border-white/[0.08] hover:border-primary/50 hover:bg-white/[0.04] hover:-translate-y-0.5 hover:shadow-lg'
@@ -218,7 +254,7 @@ export default function KanbanBoard() {
 
                         {/* Quick Shift Status Controls (Accessible fallback) */}
                         <div className="flex items-center gap-1">
-                          {col.id !== 'open' && (
+                          {movable && col.id !== 'open' && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -226,12 +262,13 @@ export default function KanbanBoard() {
                                 if (prevIdx >= 0) handleStatusChange(bug._id, COLUMNS[prevIdx].id);
                               }}
                               title="Move back"
+                              aria-label={`Move "${bug.title}" back`}
                               className="p-1 rounded hover:bg-white/10 text-muted hover:text-text-base transition-colors"
                             >
                               <ArrowLeft size={11} />
                             </button>
                           )}
-                          {col.id !== 'closed' && (
+                          {movable && col.id !== 'closed' && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -239,6 +276,7 @@ export default function KanbanBoard() {
                                 if (nextIdx < COLUMNS.length) handleStatusChange(bug._id, COLUMNS[nextIdx].id);
                               }}
                               title="Advance status"
+                              aria-label={`Advance "${bug.title}"`}
                               className="p-1 rounded hover:bg-white/10 text-muted hover:text-text-base transition-colors"
                             >
                               <ArrowRight size={11} />
@@ -264,6 +302,7 @@ export default function KanbanBoard() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

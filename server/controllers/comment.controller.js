@@ -1,9 +1,10 @@
+import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import Comment from '../models/Comment.model.js';
 import Bug from '../models/Bug.model.js';
-import { getIO } from '../config/socket.js';
+import { broadcast } from '../config/socket.js';
 
-export const addComment = async (req, res) => {
+export const addComment = async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ message: errors.array()[0].msg });
@@ -12,37 +13,40 @@ export const addComment = async (req, res) => {
   const { bugId, content } = req.body;
 
   try {
-    const bug = await Bug.findById(bugId);
+    if (!mongoose.isValidObjectId(bugId)) return res.status(404).json({ message: 'Bug not found' });
+    const bug = await Bug.findById(bugId).select('_id');
     if (!bug) return res.status(404).json({ message: 'Bug not found' });
 
     const comment = await Comment.create({ bug: bugId, author: req.user._id, content });
-    bug.comments.push(comment._id);
-    await bug.save();
+    await Bug.updateOne({ _id: bugId }, { $push: { comments: comment._id } });
 
     await comment.populate('author', 'name email avatar');
 
-    getIO().to(`bug:${bugId}`).emit('comment:added', comment);
+    broadcast('comment:added', comment, `bug:${bugId}`);
 
     return res.status(201).json(comment);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const getCommentsByBug = async (req, res) => {
+export const getCommentsByBug = async (req, res, next) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.bugId)) return res.json([]);
+
     const comments = await Comment.find({ bug: req.params.bugId })
       .populate('author', 'name email avatar')
       .sort({ createdAt: 1 });
 
     return res.json(comments);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };
 
-export const deleteComment = async (req, res) => {
+export const deleteComment = async (req, res, next) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Comment not found' });
     const comment = await Comment.findById(req.params.id);
     if (!comment) return res.status(404).json({ message: 'Comment not found' });
 
@@ -57,10 +61,10 @@ export const deleteComment = async (req, res) => {
     await Bug.findByIdAndUpdate(comment.bug, { $pull: { comments: comment._id } });
     await comment.deleteOne();
 
-    getIO().to(`bug:${bugId}`).emit('comment:deleted', { _id: req.params.id, bugId });
+    broadcast('comment:deleted', { _id: req.params.id, bugId }, `bug:${bugId}`);
 
     return res.json({ message: 'Comment deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };

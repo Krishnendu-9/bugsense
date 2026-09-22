@@ -38,6 +38,12 @@ const userSchema = new mongoose.Schema(
       alertOnCritical: { type: Boolean, default: true },
       alertOnRegression: { type: Boolean, default: true },
     },
+    // Embedded in every JWT; bumping it (on password change) revokes all
+    // previously issued tokens.
+    tokenVersion: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );
@@ -46,6 +52,9 @@ userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+  if (!this.isNew) {
+    this.tokenVersion = (this.tokenVersion || 0) + 1;
+  }
   next();
 });
 

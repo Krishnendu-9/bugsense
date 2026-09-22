@@ -2,12 +2,16 @@ import { useState, useCallback } from 'react';
 import api from '../api/axios.js';
 import toast from 'react-hot-toast';
 
+/**
+ * `analyze` resolves to the insights on success and to null on failure (after
+ * showing an error toast), so callers can report the outcome accurately.
+ */
 export default function useAI() {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const analyze = useCallback(async (errorLog, bugContext = '', bugId = null) => {
-    if (!errorLog.trim()) {
+    if (!errorLog?.trim()) {
       toast.error('Please provide an error log to analyze');
       return null;
     }

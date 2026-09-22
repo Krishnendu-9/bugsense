@@ -1,32 +1,42 @@
-import multer from 'multer';
+import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import multer from 'multer';
+import { UPLOADS_DIR } from '../utils/uploads.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const ALLOWED_TYPES = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/gif': ['.gif'],
+  'image/webp': ['.webp'],
+};
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, path.join(__dirname, '../uploads'));
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    cb(null, UPLOADS_DIR);
   },
   filename: (_req, file, cb) => {
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
+    // The extension comes from the validated MIME type, never from the
+    // client-supplied file name.
+    cb(null, `${uniqueSuffix}${ALLOWED_TYPES[file.mimetype][0]}`);
   },
 });
 
 const fileFilter = (_req, file, cb) => {
-  const allowed = /jpeg|jpg|png|gif|webp/;
-  const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
-  const mimeOk = allowed.test(file.mimetype);
-  if (extOk && mimeOk) return cb(null, true);
-  cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
+  const allowedExts = ALLOWED_TYPES[file.mimetype];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowedExts && (allowedExts.includes(ext) || ext === '')) return cb(null, true);
+
+  const err = new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)');
+  err.statusCode = 400;
+  cb(err);
 };
 
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 });
 
 export default upload;

@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/common/ProtectedRoute.jsx';
+import RoleRoute from './components/common/RoleRoute.jsx';
 import Login from './pages/auth/Login.jsx';
 import Register from './pages/auth/Register.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
@@ -12,6 +13,8 @@ import KanbanBoard from './pages/bugs/KanbanBoard.jsx';
 import SDKPlayground from './pages/playground/SDKPlayground.jsx';
 import SystemMetrics from './pages/metrics/SystemMetrics.jsx';
 import AuditTrail from './pages/audit/AuditTrail.jsx';
+
+const STAFF = ['developer', 'admin'];
 
 export default function App() {
   return (
@@ -27,8 +30,8 @@ export default function App() {
         <Route path="/bugs/:id" element={<BugDetail />} />
         <Route path="/report" element={<ReportBug />} />
         <Route path="/ai" element={<AIAnalyzer />} />
-        <Route path="/metrics" element={<SystemMetrics />} />
-        <Route path="/audit" element={<AuditTrail />} />
+        <Route path="/metrics" element={<RoleRoute roles={STAFF}><SystemMetrics /></RoleRoute>} />
+        <Route path="/audit" element={<RoleRoute roles={STAFF}><AuditTrail /></RoleRoute>} />
         <Route path="/sdk-demo" element={<SDKPlayground />} />
         <Route path="/profile" element={<Profile />} />
       </Route>

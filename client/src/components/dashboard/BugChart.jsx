@@ -1,11 +1,10 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { Filter } from 'lucide-react';
-import { CHART_COLORS, STATUS_CHART_COLORS } from '../../utils/constants.js';
+import { PRIORITY_CHART_COLORS, STATUS_CHART_COLORS } from '../../utils/constants.js';
 import { capitalize } from '../../utils/helpers.js';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -30,10 +29,14 @@ const CustomTooltip = ({ active, payload, label }) => {
 export function PriorityBarChart({ data = [] }) {
   const navigate = useNavigate();
 
-  const chartData = data.map((item) => ({
-    name: capitalize(item._id),
-    priorityKey: (item._id || '').toLowerCase(),
-    count: item.count,
+  // MongoDB returns groups in no particular order, so bars are laid out low to
+  // critical and every priority is shown, including those with zero bugs.
+  const counts = Object.fromEntries(data.map((item) => [item._id, item.count]));
+  const chartData = Object.entries(PRIORITY_CHART_COLORS).map(([key, color]) => ({
+    name: capitalize(key),
+    priorityKey: key,
+    count: counts[key] || 0,
+    color,
   }));
 
   const handleBarClick = (entry) => {
@@ -67,10 +70,10 @@ export function PriorityBarChart({ data = [] }) {
             onClick={handleBarClick}
             className="cursor-pointer"
           >
-            {chartData.map((_, index) => (
+            {chartData.map((entry) => (
               <Cell
-                key={index}
-                fill={CHART_COLORS[index % CHART_COLORS.length]}
+                key={entry.priorityKey}
+                fill={entry.color}
                 className="cursor-pointer hover:opacity-80 transition-opacity"
               />
             ))}

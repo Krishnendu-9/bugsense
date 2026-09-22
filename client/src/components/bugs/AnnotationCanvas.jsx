@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pencil, Square, Circle, Minus, RotateCcw, Download, Palette } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const TOOLS = [
   { id: 'pencil', icon: Pencil, label: 'Pencil' },
@@ -10,150 +11,175 @@ const TOOLS = [
 
 const COLORS = ['#EF4444', '#F59E0B', '#22C55E', '#6366F1', '#F1F5F9', '#000000'];
 
+const CANVAS_WIDTH = 800;
+const STROKE_WIDTH = 3;
+
+// Fabric 7 positions objects by their centre by default; drawing from the
+// pointer is far simpler with a top-left origin.
+const TOP_LEFT = { originX: 'left', originY: 'top' };
+
 export default function AnnotationCanvas({ imageUrl, onSave }) {
   const canvasRef = useRef(null);
-  const fabricRef = useRef(null);
+  const fabricCanvasRef = useRef(null);
+  // The fabric module is loaded lazily (it is large) and kept here so event
+  // handlers can use it synchronously.
+  const fabricModRef = useRef(null);
   const [activeTool, setActiveTool] = useState('pencil');
   const [activeColor, setActiveColor] = useState('#EF4444');
   const [fabricReady, setFabricReady] = useState(false);
 
   useEffect(() => {
+    let disposed = false;
     let canvas;
-    import('fabric').then(({ fabric }) => {
-      if (!canvasRef.current || fabricRef.current) return;
+
+    import('fabric').then(async (fabric) => {
+      if (disposed || !canvasRef.current) return;
+      fabricModRef.current = fabric;
 
       canvas = new fabric.Canvas(canvasRef.current, {
-        width: 800,
+        width: CANVAS_WIDTH,
         height: 500,
         backgroundColor: '#1E293B',
       });
-      fabricRef.current = canvas;
+      fabricCanvasRef.current = canvas;
+
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      canvas.freeDrawingBrush.width = STROKE_WIDTH;
+      canvas.isDrawingMode = true;
 
       if (imageUrl) {
-        // crossOrigin is required: once the screenshot is served from the API
-        // origin rather than the app origin, an unqualified load taints the
-        // canvas and toDataURL() throws a SecurityError on save.
-        fabric.Image.fromURL(
-          imageUrl,
-          (img) => {
-            if (!img) return;
-            img.scaleToWidth(800);
-            canvas.setHeight(img.getScaledHeight());
-            canvas.add(img);
-            img.sendToBack();
-            canvas.renderAll();
-          },
-          { crossOrigin: 'anonymous' }
-        );
+        try {
+          // crossOrigin is required: the screenshot is served from the API
+          // origin, and an unqualified load taints the canvas so toDataURL()
+          // throws a SecurityError on save.
+          const img = await fabric.FabricImage.fromURL(imageUrl, { crossOrigin: 'anonymous' });
+          if (disposed) return;
+          img.scaleToWidth(CANVAS_WIDTH);
+          img.set({ ...TOP_LEFT, left: 0, top: 0, selectable: false, evented: false });
+          canvas.setDimensions({ height: Math.round(img.getScaledHeight()) });
+          canvas.add(img);
+          canvas.sendObjectToBack(img);
+          canvas.requestRenderAll();
+        } catch {
+          toast.error('Could not load the screenshot for annotation');
+        }
       }
 
-      canvas.isDrawingMode = true;
-      canvas.freeDrawingBrush.color = '#EF4444';
-      canvas.freeDrawingBrush.width = 3;
-
-      setFabricReady(true);
+      if (!disposed) setFabricReady(true);
     });
 
     return () => {
-      if (fabricRef.current) {
-        fabricRef.current.dispose();
-        fabricRef.current = null;
+      disposed = true;
+      if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.dispose();
+        fabricCanvasRef.current = null;
       }
     };
   }, [imageUrl]);
 
   useEffect(() => {
-    const canvas = fabricRef.current;
-    if (!canvas || !fabricReady) return;
+    const canvas = fabricCanvasRef.current;
+    const fabric = fabricModRef.current;
+    if (!canvas || !fabric || !fabricReady) return undefined;
 
     canvas.isDrawingMode = activeTool === 'pencil';
-    if (canvas.freeDrawingBrush) {
-      canvas.freeDrawingBrush.color = activeColor;
-      canvas.freeDrawingBrush.width = 3;
-    }
+    canvas.freeDrawingBrush.color = activeColor;
+    canvas.selection = activeTool === 'pencil';
 
-    canvas.off('mouse:down');
-    canvas.off('mouse:move');
-    canvas.off('mouse:up');
+    if (activeTool === 'pencil') return undefined;
 
-    if (activeTool !== 'pencil') {
-      canvas.selection = false;
-      let isDown = false;
-      let origX, origY;
-      let shape;
+    let origin = null;
+    let shape = null;
 
-      canvas.on('mouse:down', (opt) => {
-        isDown = true;
-        const pointer = canvas.getPointer(opt.e);
-        origX = pointer.x;
-        origY = pointer.y;
+    const onDown = (opt) => {
+      const { x, y } = opt.scenePoint;
+      origin = { x, y };
+      const stroke = { stroke: activeColor, strokeWidth: STROKE_WIDTH, fill: 'transparent', selectable: false };
 
-        import('fabric').then(({ fabric }) => {
-          if (activeTool === 'rect') {
-            shape = new fabric.Rect({
-              left: origX, top: origY,
-              width: 0, height: 0,
-              stroke: activeColor, strokeWidth: 2,
-              fill: 'transparent', selectable: false,
-            });
-          } else if (activeTool === 'circle') {
-            shape = new fabric.Ellipse({
-              left: origX, top: origY,
-              rx: 0, ry: 0,
-              stroke: activeColor, strokeWidth: 2,
-              fill: 'transparent', selectable: false,
-            });
-          } else if (activeTool === 'line') {
-            shape = new fabric.Line([origX, origY, origX, origY], {
-              stroke: activeColor, strokeWidth: 2, selectable: false,
-            });
-          }
-          if (shape) canvas.add(shape);
+      if (activeTool === 'rect') {
+        shape = new fabric.Rect({ ...TOP_LEFT, ...stroke, left: x, top: y, width: 0, height: 0 });
+      } else if (activeTool === 'circle') {
+        shape = new fabric.Ellipse({ ...TOP_LEFT, ...stroke, left: x, top: y, rx: 0, ry: 0 });
+      } else if (activeTool === 'line') {
+        shape = new fabric.Line([x, y, x, y], { ...stroke, strokeLineCap: 'round' });
+      }
+      if (shape) canvas.add(shape);
+    };
+
+    const onMove = (opt) => {
+      if (!origin || !shape) return;
+      const { x, y } = opt.scenePoint;
+
+      if (activeTool === 'rect') {
+        shape.set({
+          left: Math.min(x, origin.x),
+          top: Math.min(y, origin.y),
+          width: Math.abs(x - origin.x),
+          height: Math.abs(y - origin.y),
         });
-      });
+      } else if (activeTool === 'circle') {
+        // Drawn inside the dragged box, in whichever direction the drag goes.
+        shape.set({
+          left: Math.min(x, origin.x),
+          top: Math.min(y, origin.y),
+          rx: Math.abs(x - origin.x) / 2,
+          ry: Math.abs(y - origin.y) / 2,
+        });
+      } else if (activeTool === 'line') {
+        shape.set({ x2: x, y2: y });
+      }
+      shape.setCoords();
+      canvas.requestRenderAll();
+    };
 
-      canvas.on('mouse:move', (opt) => {
-        if (!isDown || !shape) return;
-        const pointer = canvas.getPointer(opt.e);
-        if (activeTool === 'rect') {
-          if (pointer.x < origX) shape.set({ left: pointer.x });
-          if (pointer.y < origY) shape.set({ top: pointer.y });
-          shape.set({ width: Math.abs(pointer.x - origX), height: Math.abs(pointer.y - origY) });
-        } else if (activeTool === 'circle') {
-          shape.set({ rx: Math.abs(pointer.x - origX) / 2, ry: Math.abs(pointer.y - origY) / 2 });
-        } else if (activeTool === 'line') {
-          shape.set({ x2: pointer.x, y2: pointer.y });
-        }
-        canvas.renderAll();
-      });
+    const onUp = () => {
+      // A click without a drag leaves an invisible zero-size shape behind.
+      if (shape && shape.width < 2 && shape.height < 2) canvas.remove(shape);
+      origin = null;
+      shape = null;
+    };
 
-      canvas.on('mouse:up', () => { isDown = false; shape = null; });
-    } else {
-      canvas.selection = true;
-    }
+    canvas.on('mouse:down', onDown);
+    canvas.on('mouse:move', onMove);
+    canvas.on('mouse:up', onUp);
+
+    return () => {
+      canvas.off('mouse:down', onDown);
+      canvas.off('mouse:move', onMove);
+      canvas.off('mouse:up', onUp);
+    };
   }, [activeTool, activeColor, fabricReady]);
 
+  // Removes the most recent annotation, never the screenshot underneath.
   const handleUndo = () => {
-    const canvas = fabricRef.current;
+    const canvas = fabricCanvasRef.current;
     if (!canvas) return;
-    const objects = canvas.getObjects();
+    const objects = canvas.getObjects().filter((obj) => obj.type !== 'image');
     if (objects.length > 0) {
       canvas.remove(objects[objects.length - 1]);
-      canvas.renderAll();
+      canvas.requestRenderAll();
+    }
+  };
+
+  const exportImage = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return null;
+    try {
+      return canvas.toDataURL({ format: 'png', multiplier: 1 });
+    } catch {
+      toast.error('This image cannot be exported (it was loaded from another origin)');
+      return null;
     }
   };
 
   const handleSave = () => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    const dataUrl = canvas.toDataURL({ format: 'png', quality: 1 });
-    if (onSave) onSave(dataUrl);
+    const dataUrl = exportImage();
+    if (dataUrl && onSave) onSave(dataUrl);
   };
 
   const handleDownload = () => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    const dataUrl = canvas.toDataURL({ format: 'png', quality: 1 });
+    const dataUrl = exportImage();
+    if (!dataUrl) return;
     const link = document.createElement('a');
     link.href = dataUrl;
     link.download = `annotation-${Date.now()}.png`;
@@ -163,12 +189,14 @@ export default function AnnotationCanvas({ imageUrl, onSave }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 p-1 bg-surface rounded-lg border border-border">
+        <div className="flex items-center gap-1 p-1 bg-surface rounded-lg border border-border" role="toolbar" aria-label="Drawing tools">
           {TOOLS.map(({ id, icon: Icon, label }) => (
             <button
               key={id}
               type="button"
               title={label}
+              aria-label={label}
+              aria-pressed={activeTool === id}
               onClick={() => setActiveTool(id)}
               className={`p-2 rounded-md transition-colors duration-200 ${
                 activeTool === id
@@ -181,12 +209,14 @@ export default function AnnotationCanvas({ imageUrl, onSave }) {
           ))}
         </div>
 
-        <div className="flex items-center gap-1 p-1 bg-surface rounded-lg border border-border">
+        <div className="flex items-center gap-1 p-1 bg-surface rounded-lg border border-border" role="toolbar" aria-label="Colors">
           <Palette size={14} className="text-muted ml-1" />
           {COLORS.map((color) => (
             <button
               key={color}
               type="button"
+              aria-label={`Color ${color}`}
+              aria-pressed={activeColor === color}
               onClick={() => setActiveColor(color)}
               className={`w-5 h-5 rounded-full border-2 transition-transform duration-150 hover:scale-110 ${
                 activeColor === color ? 'border-white scale-110' : 'border-transparent'
@@ -211,7 +241,8 @@ export default function AnnotationCanvas({ imageUrl, onSave }) {
         </div>
       </div>
 
-      <div className="border border-border rounded-xl overflow-hidden">
+      <div className="border border-border rounded-xl overflow-auto max-w-full">
+        {!fabricReady && <div className="skeleton h-[500px] w-[800px] max-w-full" />}
         <canvas ref={canvasRef} />
       </div>
     </div>

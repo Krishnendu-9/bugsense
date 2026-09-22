@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { MousePointer, Compass, Network, Terminal, AlertOctagon, ChevronDown, ChevronUp, History } from 'lucide-react';
 
 const CATEGORY_ICONS = {
@@ -41,6 +41,7 @@ export default function BreadcrumbTimeline({ breadcrumbs = [] }) {
           const diffSeconds = ((currentTimestamp - lastTime) / 1000).toFixed(1);
           const timeLabel = isLast ? 'CRASH' : `${diffSeconds}s`;
           const isExpanded = expandedIndex === idx;
+          const hasData = crumb.data && Object.keys(crumb.data).length > 0;
 
           return (
             <div key={idx} className="relative group">
@@ -52,8 +53,17 @@ export default function BreadcrumbTimeline({ breadcrumbs = [] }) {
               </div>
 
               <div
-                onClick={() => setExpandedIndex(isExpanded ? null : idx)}
-                className={`glass-card p-2.5 text-xs transition-colors hover:border-white/20 cursor-pointer ${
+                role={hasData ? 'button' : undefined}
+                tabIndex={hasData ? 0 : undefined}
+                aria-expanded={hasData ? isExpanded : undefined}
+                onClick={() => hasData && setExpandedIndex(isExpanded ? null : idx)}
+                onKeyDown={(e) => {
+                  if (hasData && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    setExpandedIndex(isExpanded ? null : idx);
+                  }
+                }}
+                className={`glass-card p-2.5 text-xs transition-colors ${hasData ? 'hover:border-white/20 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary' : ''} ${
                   isLast ? 'border-priority-high/40 bg-priority-high/5' : ''
                 }`}
               >
@@ -70,7 +80,7 @@ export default function BreadcrumbTimeline({ breadcrumbs = [] }) {
                     <span className={`font-mono text-[11px] font-semibold ${isLast ? 'text-priority-high' : 'text-muted'}`}>
                       {timeLabel}
                     </span>
-                    {crumb.data && Object.keys(crumb.data).length > 0 && (
+                    {hasData && (
                       <span className="text-muted">
                         {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </span>
@@ -78,7 +88,7 @@ export default function BreadcrumbTimeline({ breadcrumbs = [] }) {
                   </div>
                 </div>
 
-                {isExpanded && crumb.data && Object.keys(crumb.data).length > 0 && (
+                {isExpanded && hasData && (
                   <div className="mt-2.5 pt-2 border-t border-white/5 bg-black/40 rounded p-2 text-[11px] font-mono text-muted overflow-x-auto">
                     <pre className="whitespace-pre-wrap">{JSON.stringify(crumb.data, null, 2)}</pre>
                   </div>

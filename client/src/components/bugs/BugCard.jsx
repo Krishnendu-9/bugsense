@@ -1,15 +1,13 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { MessageSquare, Clock, Tag } from 'lucide-react';
 import { PriorityBadge, StatusBadge, SeverityBadge } from '../common/Badge.jsx';
 import { timeAgo, getInitials, stripHtml, truncate, getImageUrl } from '../../utils/helpers.js';
 
 export default function BugCard({ bug }) {
-  const navigate = useNavigate();
-
   return (
-    <div
-      onClick={() => navigate(`/bugs/${bug._id}`)}
-      className="glass-card glass-card-hover p-5 cursor-pointer hover:bg-white/[0.04] relative group"
+    <Link
+      to={`/bugs/${bug._id}`}
+      className="block glass-card glass-card-hover p-5 hover:bg-white/[0.04] relative group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <h3 className="font-semibold text-text-base group-hover:text-primary transition-colors duration-200 line-clamp-2 text-sm leading-snug flex-1">
@@ -62,7 +60,7 @@ export default function BugCard({ bug }) {
         <div className="flex items-center gap-3">
           {bug.reporter && (
             <div className="flex items-center gap-1.5">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
+              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0 overflow-hidden">
                 {bug.reporter.avatar ? (
                   <img src={getImageUrl(bug.reporter.avatar)} alt="" className="w-full h-full object-cover rounded-full" />
                 ) : (
@@ -82,6 +80,6 @@ export default function BugCard({ bug }) {
           <span>{timeAgo(bug.createdAt)}</span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

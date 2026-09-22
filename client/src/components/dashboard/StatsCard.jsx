@@ -61,7 +61,11 @@ export default function StatsCard({ title, value, icon: Icon, color = 'text-prim
   }
 
   if (onClick) {
-    return <div onClick={onClick}>{cardContent}</div>;
+    return (
+      <button type="button" onClick={onClick} className="block w-full text-left">
+        {cardContent}
+      </button>
+    );
   }
 
   return cardContent;

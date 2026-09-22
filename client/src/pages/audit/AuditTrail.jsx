@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, RefreshCw, AlertTriangle, Bug, Terminal, Github, CheckCircle2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -14,32 +14,60 @@ const ACTION_ICONS = {
   BUG_DELETED: { icon: Trash2, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
 };
 
+const PAGE_SIZE = 30;
+
+function AuditSkeleton() {
+  return (
+    <div className="glass-card divide-y divide-white/5 border border-white/10 overflow-hidden">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="p-4 flex items-start gap-3.5">
+          <div className="skeleton w-8 h-8 rounded-lg" />
+          <div className="flex-1 space-y-2">
+            <div className="skeleton h-3.5 w-3/4 rounded" />
+            <div className="skeleton h-3 w-1/3 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AuditTrail() {
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchLogs = async (showToast = false) => {
+  const fetchLogs = useCallback(async (manual = false) => {
     try {
       setRefreshing(true);
-      const url = filterType ? `/audit?entityType=${filterType}` : '/audit';
-      const res = await api.get(url);
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (filterType) params.set('entityType', filterType);
+      const res = await api.get(`/audit?${params}`);
       setLogs(res.data.logs || []);
       setTotal(res.data.total || 0);
-      if (showToast) toast.success('Audit trail refreshed');
-    } catch {
-      toast.error('Failed to load audit logs');
+      setPages(res.data.pages || 1);
+      if (manual) toast.success('Audit trail refreshed');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load audit logs');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [page, filterType]);
 
   useEffect(() => {
     fetchLogs();
-  }, [filterType]);
+  }, [fetchLogs]);
+
+  const selectFilter = (id) => {
+    setFilterType(id);
+    setPage(1);
+    setLoading(true);
+  };
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -47,13 +75,13 @@ export default function AuditTrail() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-text-base">Enterprise Audit Trail</h1>
+            <h1 className="text-xl font-bold text-text-base">Audit Trail</h1>
             <span className="px-2 py-0.5 rounded-full text-xs font-mono font-semibold bg-primary/15 text-primary border border-primary/30 flex items-center gap-1">
-              <Shield size={12} /> SOC2 / Compliance
+              <Shield size={12} /> Staff only
             </span>
           </div>
           <p className="text-xs text-muted">
-            Immutable log of system modifications, developer actions, telemetry events, and external syncs.
+            Chronological record of bug changes, telemetry events and GitHub exports.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -68,40 +96,44 @@ export default function AuditTrail() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 border-b border-white/5 pb-3 overflow-x-auto text-xs">
+      <div className="flex gap-2 border-b border-white/5 pb-3 overflow-x-auto text-xs" role="tablist">
         {[
-          { id: '', label: `All Events (${total})` },
+          { id: '', label: 'All Events' },
           { id: 'bug', label: 'Bugs & Mutations' },
           { id: 'telemetry', label: 'SDK Telemetry' },
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setFilterType(tab.id)}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+            role="tab"
+            aria-selected={filterType === tab.id}
+            onClick={() => selectFilter(tab.id)}
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ${
               filterType === tab.id
                 ? 'bg-primary/20 text-primary border border-primary/30'
                 : 'text-muted hover:text-text-base hover:bg-white/5'
             }`}
           >
             {tab.label}
+            {filterType === tab.id && ` (${total})`}
           </button>
         ))}
       </div>
 
       {/* Audit Log Timeline */}
       {loading ? (
-        <div className="text-center py-20 text-muted text-xs">Loading audit trail...</div>
+        <AuditSkeleton />
       ) : logs.length === 0 ? (
         <div className="text-center py-20 text-muted text-xs space-y-2">
           <Shield size={32} className="mx-auto text-muted/40 mb-2" />
           <p>No audit records found.</p>
-          <p className="text-[11px] text-muted/60">New developer actions and telemetry events will appear here automatically.</p>
+          <p className="text-[11px] text-muted/60">New developer actions and telemetry events will appear here.</p>
         </div>
       ) : (
         <div className="glass-card divide-y divide-white/5 border border-white/10 overflow-hidden">
           {logs.map((log) => {
             const config = ACTION_ICONS[log.action] || { icon: Shield, color: 'text-muted bg-white/5 border-white/10' };
             const Icon = config.icon;
+            const linksToBug = log.entityId && log.action !== 'BUG_DELETED' && ['bug', 'telemetry'].includes(log.entityType);
 
             return (
               <div key={log._id} className="p-4 flex items-start gap-3.5 hover:bg-white/[0.02] transition-colors">
@@ -110,8 +142,8 @@ export default function AuditTrail() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-xs font-semibold text-text-base truncate">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="text-xs font-semibold text-text-base break-words">
                       {log.details}
                     </span>
                     <span className="text-[10px] text-muted whitespace-nowrap flex items-center gap-1 font-mono">
@@ -127,7 +159,7 @@ export default function AuditTrail() {
                     <span className="font-mono text-[10px] bg-black/30 px-1.5 py-px rounded border border-white/5">
                       {log.action}
                     </span>
-                    {log.entityId && log.entityType === 'bug' && (
+                    {linksToBug && (
                       <>
                         <span>•</span>
                         <Link to={`/bugs/${log.entityId}`} className="text-primary hover:underline">
@@ -140,6 +172,26 @@ export default function AuditTrail() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-muted px-2">Page {page} of {pages}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            disabled={page >= pages}
+            className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50"
+          >
+            Next
+          </button>
         </div>
       )}
     </div>

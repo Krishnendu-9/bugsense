@@ -1,4 +1,4 @@
-import { Lightbulb, Wrench, Cpu, Clock } from 'lucide-react';
+import { Lightbulb, Wrench, Cpu, Clock, Info } from 'lucide-react';
 import { formatDate } from '../../utils/helpers.js';
 
 export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
@@ -28,18 +28,25 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
     );
   }
 
-  if (!insights) return null;
+  if (!insights?.possibleCause) return null;
+
+  // Records saved before `source` existed were produced by Claude.
+  const isHeuristic = insights.source === 'heuristic';
 
   return (
     <div className="glass-card p-6 border-primary/20 bg-primary/5">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
             <Cpu size={16} className="text-primary" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-text-base">AI Analysis</h3>
-            <p className="text-xs text-muted">Powered by Claude</p>
+            <h3 className="text-sm font-semibold text-text-base">
+              {isHeuristic ? 'Heuristic Analysis' : 'AI Analysis'}
+            </h3>
+            <p className="text-xs text-muted">
+              {isHeuristic ? 'Keyword-based rules — AI not configured or unavailable' : 'Powered by Claude'}
+            </p>
           </div>
         </div>
         {analyzedAt && (
@@ -49,6 +56,16 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
           </div>
         )}
       </div>
+
+      {isHeuristic && (
+        <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-white/5 border border-white/10 text-xs text-muted">
+          <Info size={14} className="flex-shrink-0 mt-0.5" />
+          <span>
+            This is a generic suggestion matched from keywords in the log, not a model diagnosis.
+            Set <code className="font-mono text-text-base">ANTHROPIC_API_KEY</code> on the server for Claude analysis.
+          </span>
+        </div>
+      )}
 
       <div className="space-y-4">
         <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">

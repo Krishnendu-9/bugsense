@@ -1,29 +1,39 @@
 import AuditLog from '../models/AuditLog.model.js';
 
-export const getAuditLogs = async (req, res) => {
-  try {
-    const { entityType, action, page = 1, limit = 30 } = req.query;
-    const filter = {};
-    if (entityType) filter.entityType = entityType;
-    if (action) filter.action = action;
+const ENTITY_TYPES = ['bug', 'user', 'comment', 'system', 'telemetry'];
 
-    const skip = (Number(page) - 1) * Number(limit);
+export const getAuditLogs = async (req, res, next) => {
+  try {
+    const { entityType, action } = req.query;
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 30));
+
+    const filter = {};
+    if (entityType) {
+      if (!ENTITY_TYPES.includes(entityType)) return res.status(400).json({ message: 'Invalid entityType filter' });
+      filter.entityType = entityType;
+    }
+    if (action) {
+      if (typeof action !== 'string') return res.status(400).json({ message: 'Invalid action filter' });
+      filter.action = action;
+    }
+
     const [logs, total] = await Promise.all([
       AuditLog.find(filter)
         .populate('performedBy', 'name email avatar')
         .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit)),
+        .skip((page - 1) * limit)
+        .limit(limit),
       AuditLog.countDocuments(filter),
     ]);
 
     return res.json({
       logs,
       total,
-      page: Number(page),
-      pages: Math.ceil(total / Number(limit)),
+      page,
+      pages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return next(err);
   }
 };

@@ -3,8 +3,11 @@ services:
     image: mongo:8-noble
     container_name: bugsense-mongodb
     restart: unless-stopped
+    # Bound to the host's loopback only: the database has no authentication, so
+    # it must not be reachable from the network. Containers reach it over
+    # bugsense-network regardless of this mapping.
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo-data:/data/db
     networks:
@@ -16,16 +19,25 @@ services:
       dockerfile: Dockerfile
     container_name: bugsense-server
     restart: unless-stopped
-    ports:
-      - "5000:5000"
+    # Only reached through the client container's nginx; the SDK and sockets go
+    # through it as well.
+    expose:
+      - "5000"
     environment:
+      - NODE_ENV=production
       - PORT=5000
       - MONGO_URI=mongodb://mongodb:27017/bugsense
-      # Override these in a root .env file (see .env.example). The defaults are
-      # for local demo use only and must not be used for a real deployment.
+      # Override these in a root .env file (see .env.example). The JWT default
+      # is for local demo use only and must not be used for a real deployment.
       - JWT_SECRET=${JWT_SECRET:-bugsense_local_demo_secret_change_me}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLIENT_URL=${CLIENT_URL:-http://localhost:5173}
+      - TELEMETRY_INGEST_KEY=${TELEMETRY_INGEST_KEY:-}
+      - TELEMETRY_ALLOWED_ORIGINS=${TELEMETRY_ALLOWED_ORIGINS:-}
+      - TELEMETRY_AI_HOURLY_BUDGET=${TELEMETRY_AI_HOURLY_BUDGET:-20}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
     volumes:
       - ./server/uploads:/app/uploads
     depends_on:

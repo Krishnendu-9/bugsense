@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import User from '../models/User.model.js';
 import Bug from '../models/Bug.model.js';
 import Comment from '../models/Comment.model.js';
+import AuditLog from '../models/AuditLog.model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,9 +16,24 @@ const seed = async () => {
   await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB');
 
-  await User.deleteMany({});
-  await Bug.deleteMany({});
-  await Comment.deleteMany({});
+  // Seeding wipes every collection. Refuse on a database that already has
+  // accounts unless the caller explicitly asks for a reset.
+  const force = process.argv.includes('--force');
+  if (!force && (await User.estimatedDocumentCount()) > 0) {
+    console.error(
+      'Refusing to seed: this database already contains users and seeding deletes ALL data.\n' +
+        'Run `npm run seed:reset` (or `node scripts/seed.js --force`) if you really want to reset it.'
+    );
+    await mongoose.disconnect();
+    process.exit(1);
+  }
+
+  await Promise.all([
+    User.deleteMany({}),
+    Bug.deleteMany({}),
+    Comment.deleteMany({}),
+    AuditLog.deleteMany({}),
+  ]);
   console.log('Cleared existing data');
 
   const admin = await User.create({
@@ -112,7 +128,7 @@ const seed = async () => {
       reporter: admin._id,
       errorLog: `SyntaxError: Unexpected token ` + '`' + ` in JSON at position 0
   at JSON.parse (<anonymous>)
-  at analyzeError (server/utils/anthropic.js:18)
+  at analyzeError (server/services/ai.service.js:18)
   at analyzeErrorLog (server/controllers/ai.controller.js:12)`,
     },
     {

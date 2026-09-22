@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bug, CheckCircle2, Clock, AlertCircle, Activity, Sparkles, Terminal, LayoutGrid, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Bug, CheckCircle2, Clock, AlertCircle, Activity, Sparkles, Terminal, LayoutGrid, ArrowRight, Wifi, WifiOff } from 'lucide-react';
+import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
 import useAuth from '../../hooks/useAuth.js';
+import useSocket from '../../hooks/useSocket.js';
 import StatsCard from '../../components/dashboard/StatsCard.jsx';
 import { PriorityBarChart, StatusPieChart } from '../../components/dashboard/BugChart.jsx';
 import RecentBugs from '../../components/dashboard/RecentBugs.jsx';
@@ -11,13 +13,14 @@ import { StatsCardSkeleton } from '../../components/common/Loader.jsx';
 export default function Dashboard() {
   const { fetchStats } = useBugs();
   const { user } = useAuth();
+  const { connected } = useSocket();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchStats()
       .then((data) => setStats(data))
-      .catch(() => {})
+      .catch((err) => toast.error(err.response?.data?.message || 'Failed to load dashboard stats'))
       .finally(() => setLoading(false));
   }, [fetchStats]);
 
@@ -36,8 +39,16 @@ export default function Dashboard() {
               <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-primary/20 text-primary border border-primary/30 flex items-center gap-1.5">
                 <Sparkles size={12} className="text-secondary" /> Enterprise Incident Hub
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                <ShieldCheck size={12} /> Pipeline 100% Operational
+              {/* Reflects the real-time connection, not a fixed claim. */}
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border flex items-center gap-1 ${
+                  connected
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                }`}
+              >
+                {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
+                {connected ? 'Live updates on' : 'Live updates offline'}
               </span>
             </div>
             <h1 className="text-2xl font-bold text-text-base tracking-tight mb-1">

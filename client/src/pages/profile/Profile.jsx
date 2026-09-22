@@ -20,7 +20,7 @@ import { RoleBadge } from '../../components/common/Badge.jsx';
 import { getInitials, formatDate, getImageUrl } from '../../utils/helpers.js';
 
 export default function Profile() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, replaceToken } = useAuth();
   const fileInputRef = useRef(null);
 
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -118,11 +118,14 @@ export default function Profile() {
   const onPasswordSubmit = async (data) => {
     setPasswordSaving(true);
     try {
-      await api.put('/users/profile', {
+      const res = await api.put('/users/profile', {
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
       });
-      toast.success('Password changed successfully!');
+      // Changing the password revokes every existing session token, this one
+      // included; the response carries its replacement.
+      if (res.data.token) replaceToken(res.data.token);
+      toast.success('Password changed. Other sessions have been signed out.');
       resetPasswordForm();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update password');
