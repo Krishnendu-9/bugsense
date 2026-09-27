@@ -6,7 +6,7 @@
 ![Node](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-v3-38B2AC?logo=tailwind-css&logoColor=white)
 
-> A production-grade, fault-tolerant MERN stack application that transforms chaotic bug reports into structured, real-time, AI-powered debug sessions.
+> A MERN-stack bug tracker that turns vague bug reports into structured, reproducible ones — with an embeddable crash-reporting SDK, real-time collaboration and AI-assisted debugging.
 
 ---
 
@@ -40,9 +40,29 @@ Add a key to see Claude drive all three.
 
 ---
 
+## Screenshots
+
+| Dashboard | Kanban Board |
+|---|---|
+| ![Dashboard with incident counts and charts](docs/screenshots/dashboard.png) | ![Kanban board with four status columns](docs/screenshots/kanban.png) |
+
+| Bug Detail | AI Diagnostics |
+|---|---|
+| ![A recurring SDK crash: occurrence count, flight recorder timeline, labelled analysis and comments](docs/screenshots/bug-detail.png) | ![Error analysis, labelled as heuristic when no AI key is configured](docs/screenshots/ai-analyzer.png) |
+
+| SDK Sandbox | Audit Trail |
+|---|---|
+| ![SDK sandbox with fault-injection buttons and a live ingestion feed](docs/screenshots/sdk-sandbox.png) | ![Audit trail of bug changes and telemetry events](docs/screenshots/audit-trail.png) |
+
+<p align="center"><img src="docs/screenshots/mobile-dashboard.png" alt="Dashboard on a phone" width="260"></p>
+
+*Screenshots use the seeded demo data plus simulated SDK traffic, with no AI key configured — which is why analyses are labelled "Heuristic".*
+
+---
+
 ## Why I Built This
 
-Bug reports are the worst part of software development — not because bugs exist, but because reports are incomplete. Developers waste hours asking "what browser?", "what error?", "can you reproduce it?". BugSense eliminates that friction: it auto-captures browser context, guides reporters through structured reproduction steps, and uses Claude AI to instantly diagnose error logs and suggest fixes.
+Bug reports are the worst part of software development — not because bugs exist, but because reports are incomplete. Developers waste hours asking "what browser?", "what error?", "can you reproduce it?". BugSense removes most of that back-and-forth: it auto-captures browser context, guides reporters through structured reproduction steps, records what a user did before a crash, and uses AI to suggest a likely cause and fix.
 
 ---
 
@@ -68,7 +88,7 @@ Bug reports are the worst part of software development — not because bugs exis
 - **Profile & Settings** — Manage display names, avatar uploads, and bcrypt password changes that sign out every other session
 - **Security** — Server- and client-side HTML sanitization, role-based access control on every mutating route, authenticated WebSockets, SSRF-safe webhooks, optional SDK ingest key, multi-tier rate limiting, and Helmet headers
 - **Developer Dashboard** — Recharts metrics, priority distributions, and recent incident streams
-- **Dark Theme Glassmorphism** — Sleek modern aesthetic built entirely in Tailwind CSS
+- **Responsive Dark UI** — Tailwind design tokens, skeleton loading states, keyboard-accessible controls, and a mobile navigation drawer
 
 ---
 
@@ -78,10 +98,10 @@ Bug reports are the worst part of software development — not because bugs exis
 |-------|-----------|
 | Frontend Framework | React 18 (Vite) |
 | Styling | Tailwind CSS v3 |
-| Routing | React Router DOM v6 |
+| Routing | React Router v7 |
 | HTTP Client | Axios |
 | Forms | React Hook Form |
-| Rich Text | React Quill |
+| Rich Text | React Quill (react-quill-new) + DOMPurify |
 | Canvas Annotations | Fabric.js |
 | Icons | Lucide React |
 | Charts | Recharts |
@@ -91,22 +111,24 @@ Bug reports are the worst part of software development — not because bugs exis
 | Database | MongoDB + Mongoose |
 | Authentication | JWT + bcryptjs |
 | File Uploads | Multer |
-| Validation | express-validator |
+| Validation & Sanitization | express-validator, sanitize-html |
 | Real-time | Socket.io (server + client) |
 | Security | Helmet, CORS, express-rate-limit |
 | AI | Anthropic SDK (Claude Sonnet) |
 | Logging | Morgan |
 | Linting | ESLint 9 (flat config, both packages) |
 | Containers | Docker + Docker Compose + nginx |
-| CI | GitHub Actions (lint, build, image builds) |
+| Testing | node:test + Supertest + mongodb-memory-server (API), Vitest + React Testing Library (client) |
+| CI | GitHub Actions (lint, tests, build, image builds) |
 
 ---
 
 ## Architecture
 
 Two ways in: a human filing a structured report, or an SDK in someone else's app
-reporting a crash automatically. Both converge on the same fingerprint-and-dedup
-pipeline, and every write fans back out over WebSockets.
+reporting a crash automatically. Both are fingerprinted, but only SDK crashes are
+deduplicated — a person's report is always kept, with a "looks similar" hint.
+Every write fans back out over authenticated WebSockets.
 
 ```mermaid
 flowchart TB
@@ -118,10 +140,10 @@ flowchart TB
     subgraph api["Express API"]
         AUTH["JWT auth<br/>reporter · developer · admin"]
         BUGS["Bug routes<br/>CRUD · search · filters"]
-        TEL["Telemetry ingest<br/>public · rate limited"]
+        TEL["Telemetry ingest<br/>public · rate limited<br/>optional ingest key"]
         FP{{"Fingerprint<br/>SHA-256 of normalised<br/>stack trace + project"}}
         INC["increment occurrences<br/>reopen if resolved<br/>= regression"]
-        AI["AI service<br/>Claude, heuristic fallback"]
+        AI["AI service<br/>Claude, labelled fallbacks<br/>hourly budget for SDK"]
     end
 
     subgraph out["Side effects"]
@@ -137,12 +159,14 @@ flowchart TB
     AUTH --> BUGS
     SDK -->|"crash + breadcrumbs"| TEL
 
-    BUGS --> FP
+    BUGS -->|"always a new bug"| DB
+    BUGS -.->|"similar report?"| FP
     TEL --> FP
 
-    FP -->|"new fingerprint"| DB
-    FP -->|"seen before"| INC
+    FP -->|"new SDK crash"| DB
+    FP -->|"seen before (SDK)"| INC
     INC --> DB
+    TEL --> AI
 
     DB --> WS
     DB --> AUDIT
@@ -156,10 +180,74 @@ flowchart TB
 
 **The part worth reading the code for** is the fingerprint step. Incoming stack
 traces are normalised — UUIDs, memory addresses, timestamps and line numbers
-stripped — then hashed with the project name. Identical crashes collapse into one
-incident with an occurrence counter instead of a thousand duplicate rows, and a
-crash that reappears after being marked resolved is automatically flagged as a
-regression. See [`fingerprint.util.js`](server/utils/fingerprint.util.js).
+stripped — then hashed with the project name. Identical SDK crashes collapse into
+one incident with an occurrence counter instead of a thousand duplicate rows, and
+a crash that reappears after being marked resolved is automatically flagged as a
+regression. See [`fingerprint.util.js`](server/utils/fingerprint.util.js) and
+[`telemetry.controller.js`](server/controllers/telemetry.controller.js).
+
+---
+
+## Engineering Decisions
+
+The choices below shaped the code most. Each one records what was done, why, and
+what it costs.
+
+**Only machine reports are deduplicated.** Merging two SDK crashes loses nothing,
+because they're the same stack trace. Merging two *human* reports throws away
+someone's description and steps, so manual reports are always kept and the
+reporter is shown the similar incident instead.
+
+**Deduplication is race-safe by construction.** A crash loop can send many
+identical reports at once. Counting uses a single atomic `$inc`, and a unique
+partial index on `{fingerprint, source: 'sdk'}` means two simultaneous "first"
+reports can't both create an incident — the loser gets a duplicate-key error and
+is retried as a repeat. A regression is flipped with one conditional update, so
+it's recorded exactly once. The API tests fire eight reports concurrently to
+prove it.
+
+**Rich text is sanitised twice.** Descriptions are cleaned with `sanitize-html` on
+write and with DOMPurify before rendering. The server copy protects every
+consumer of the API; the client copy also covers records stored before
+sanitising existed. This matters more than usual because the JWT lives in
+`localStorage` (a project requirement): any script injection could read it. An
+`httpOnly` cookie would be the stronger choice in a real deployment.
+
+**Sessions can be revoked.** Each user has a `tokenVersion` embedded in their JWT.
+Changing a password increments it, which invalidates every other session
+immediately without keeping a server-side token list.
+
+**The public endpoint is treated as hostile.** `/api/telemetry/report` must accept
+unauthenticated traffic from other origins, so it has its own CORS policy, a
+64 KB body limit, per-field length caps, enum coercion, its own rate limit and an
+optional shared ingest key. Each new crash triggers an AI analysis, so those are
+capped per hour — otherwise anyone could run up the API bill.
+
+**AI output always says where it came from.** Every result carries `source`
+(`claude`, `heuristic`, `template` or `unavailable`) and the UI labels it. Without
+an API key, patch generation returns nothing rather than an invented diff: a
+plausible-looking fake patch is worse than none.
+
+**One payload shape everywhere.** REST responses and every Socket.io event send the
+same fully populated bug, so a listener can replace its copy without losing
+names or history. Sockets require the same JWT as the REST API.
+
+**Permissions live on the server; the UI mirrors them.** Every mutating route checks
+the role or ownership (`authorize()`, `canModifyBug()`); the client hides
+controls the user can't use, but never relies on that for security.
+
+**Testable by design.** The Express app is built by `createApp()` in `app.js`,
+separate from the process that listens and connects to the database, so the API
+tests run the real middleware stack against an in-memory MongoDB.
+
+### Known limitations
+
+- Uploads are stored on the server's local disk; a multi-instance deployment
+  would need object storage (S3, Cloudinary).
+- The AI budget and rate limits are per process, not shared across instances
+  (a Redis store would fix this).
+- Single workspace: every signed-in user can see every bug.
+- No email verification or password reset flow.
 
 ---
 
@@ -302,11 +390,14 @@ wipe and reseed deliberately.
 Both packages are linted with ESLint (flat config). The server has an API test
 suite (Node's built-in test runner + Supertest) that runs against an in-memory
 MongoDB, covering auth, permissions, XSS sanitization, SSRF protection, telemetry
-deduplication and socket authentication. CI runs all of it on every push.
+deduplication and socket authentication. The client has component and utility
+tests (Vitest + React Testing Library) for role-gated navigation, form
+validation, HTML sanitization and honest AI labelling. CI runs all of it on
+every push.
 
 ```bash
 cd server && npm run lint && npm test
-cd client && npm run lint
+cd client && npm run lint && npm test
 ```
 
 Set `MONGO_URI_TEST` to run the tests against an existing MongoDB instead
@@ -435,26 +526,6 @@ same error within 10 seconds, so a crash loop in the host page cannot flood the
 ingestion endpoint. Try it live at `/sdk-demo`.
 
 ---
-
-<!-- SCREENSHOTS — uncomment this block once the six PNGs exist in docs/screenshots/
-
-## Screenshots
-
-| Dashboard | Kanban Board |
-|---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Kanban board](docs/screenshots/kanban.png) |
-
-| Bug Detail | AI Diagnostics |
-|---|---|
-| ![Bug detail](docs/screenshots/bug-detail.png) | ![AI analyzer](docs/screenshots/ai-analyzer.png) |
-
-| SDK Sandbox | Audit Trail |
-|---|---|
-| ![SDK sandbox](docs/screenshots/sdk-sandbox.png) | ![Audit trail](docs/screenshots/audit-trail.png) |
-
----
-
--->
 
 ## Environment Variables Reference
 

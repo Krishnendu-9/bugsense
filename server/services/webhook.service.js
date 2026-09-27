@@ -26,7 +26,7 @@ const buildDiscordPayload = (bug, eventType, bugUrl) => {
           { name: 'Project', value: bug.project || 'General', inline: true },
           { name: 'Status', value: bug.status || 'open', inline: true },
         ],
-        footer: { text: 'BugSense Incident Hub' },
+        footer: { text: 'BugSense' },
         timestamp: new Date().toISOString(),
       },
     ],
@@ -55,11 +55,13 @@ const post = async (type, url, payload) => {
 };
 
 // Per-user preferences from the Profile page: "critical" alerts cover newly
-// reported critical-priority incidents, "regression" alerts cover resolved
-// incidents that re-occur.
+// reported incidents with critical priority or blocker severity, "regression"
+// alerts cover resolved incidents that re-occur.
 const userWantsAlert = (webhooks, bug, eventType) => {
   if (eventType === 'regression') return webhooks.alertOnRegression !== false;
-  if (eventType === 'created') return webhooks.alertOnCritical !== false && bug.priority === 'critical';
+  if (eventType === 'created') {
+    return webhooks.alertOnCritical !== false && (bug.priority === 'critical' || bug.severity === 'blocker');
+  }
   return false;
 };
 

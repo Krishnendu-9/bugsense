@@ -307,24 +307,27 @@ export default function BugDetail() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-4">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Go back"
-          className="p-2 rounded-lg hover:bg-white/5 text-muted hover:text-text-base transition-colors duration-200"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <div className="flex-1 min-w-[200px]">
-          <div className="flex items-center gap-2 text-xs text-muted mb-1">
-            <span>Bug Report</span>
-            <span>•</span>
-            <span>{formatDate(bug.createdAt)}</span>
+      {/* Header: title on its own row so long titles use the full width, with
+          the actions underneath. */}
+      <div className="space-y-3">
+        <div className="flex items-start gap-4">
+          <button
+            onClick={() => navigate(-1)}
+            aria-label="Go back"
+            className="p-2 rounded-lg hover:bg-white/5 text-muted hover:text-text-base transition-colors duration-200 flex-shrink-0"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 text-xs text-muted mb-1">
+              <span>Bug Report</span>
+              <span>•</span>
+              <span>{formatDate(bug.createdAt)}</span>
+            </div>
+            <h1 className="text-xl font-bold text-text-base break-words">{bug.title}</h1>
           </div>
-          <h1 className="text-xl font-bold text-text-base break-words">{bug.title}</h1>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2 flex-wrap sm:pl-14">
           {canEdit && (
             <button
               onClick={handleGeneratePatch}

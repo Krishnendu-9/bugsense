@@ -13,6 +13,12 @@ const VENDOR_CHUNKS = [
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.js',
+    include: ['src/**/*.test.{js,jsx}'],
+    css: false,
+  },
   build: {
     rollupOptions: {
       output: {

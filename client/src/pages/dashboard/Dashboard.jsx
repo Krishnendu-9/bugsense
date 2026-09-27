@@ -35,13 +35,13 @@ export default function Dashboard() {
         <div className="absolute -top-24 -right-24 w-72 h-72 bg-gradient-to-br from-primary/20 via-secondary/15 to-transparent rounded-full blur-3xl pointer-events-none" />
         <div className="flex items-start justify-between gap-6 flex-wrap relative z-10">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-primary/20 text-primary border border-primary/30 flex items-center gap-1.5">
-                <Sparkles size={12} className="text-secondary" /> Enterprise Incident Hub
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-primary/20 text-primary border border-primary/30 flex items-center gap-1.5 whitespace-nowrap">
+                <Sparkles size={12} className="text-secondary" /> Incident Tracker
               </span>
               {/* Reflects the real-time connection, not a fixed claim. */}
               <span
-                className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border flex items-center gap-1 ${
+                className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border flex items-center gap-1 whitespace-nowrap ${
                   connected
                     ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
                     : 'bg-slate-500/10 text-slate-400 border-slate-500/20'

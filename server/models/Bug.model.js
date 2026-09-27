@@ -90,7 +90,7 @@ const bugSchema = new mongoose.Schema(
         note: { type: String, default: '' },
       },
     ],
-    // Enterprise Observability fields
+    // Telemetry and deduplication fields (fingerprinting, occurrence counts, breadcrumbs)
     fingerprint: {
       type: String,
       default: null,

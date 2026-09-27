@@ -41,6 +41,16 @@
     }
   }
 
+  // Stack traces embed script and page URLs, query strings included (e.g.
+  // "at click (https://shop.example/?token=abc:14:5)"). Strip the query and
+  // fragment while keeping the :line:column suffix.
+  function scrubUrls(text) {
+    return String(text || '').replace(
+      /(https?:\/\/[^\s?#()]+)[?#][^\s()]*?(?=:\d+:\d+|\)|\s|$)/g,
+      '$1'
+    );
+  }
+
   // JSON.stringify that cannot throw (circular refs, BigInt, exotic objects).
   function safeStringify(value) {
     const seen = new WeakSet();
@@ -239,7 +249,9 @@
     if (!shouldSend(payload)) return Promise.resolve(false);
 
     const fullPayload = Object.assign({}, payload, {
-      title: clamp(payload.title, MAX_TITLE_LENGTH),
+      title: clamp(scrubUrls(payload.title), MAX_TITLE_LENGTH),
+      errorLog: payload.errorLog ? scrubUrls(payload.errorLog) : payload.errorLog,
+      description: payload.description ? scrubUrls(payload.description) : payload.description,
       project,
       breadcrumbs: breadcrumbs.slice(),
       browserInfo: {

@@ -20,7 +20,7 @@ const navSections = [
     ],
   },
   {
-    category: 'OBSERVABILITY & AI',
+    category: 'MONITORING & AI',
     items: [
       { to: '/metrics', icon: Activity, label: 'System Vitals', roles: STAFF },
       { to: '/audit', icon: Shield, label: 'Audit Trail', roles: STAFF },
@@ -89,7 +89,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
               <span className="text-base font-bold text-text-base tracking-tight whitespace-nowrap">
                 Bug<span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Sense</span>
               </span>
-              <span className="text-[10px] font-mono text-muted/70 tracking-widest uppercase">Observability</span>
+              <span className="text-[10px] font-mono text-muted/70 tracking-widest uppercase">Bug Tracker</span>
             </div>
           )}
           <button

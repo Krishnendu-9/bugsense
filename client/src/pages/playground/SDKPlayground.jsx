@@ -102,7 +102,7 @@ export default function SDKPlayground() {
               </span>
             </div>
             <h1 className="text-xl font-bold text-text-base mb-1">
-              Client SDK Observability Simulator
+              Client SDK Demo
             </h1>
             <p className="text-xs text-muted max-w-2xl leading-relaxed">
               This interactive playground demonstrates the BugSense Client SDK (<code>bugsense.js</code>).

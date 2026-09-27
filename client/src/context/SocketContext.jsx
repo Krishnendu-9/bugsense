@@ -15,11 +15,13 @@ export function SocketProvider({ children }) {
   useEffect(() => {
     if (!token) return undefined;
 
+    // Retries indefinitely (with back-off), so a server restart of any length
+    // recovers on its own instead of leaving every client "Offline".
     const s = io(getApiOrigin(), {
       auth: { token },
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
       reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
     });
 
     s.on('connect', () => setConnected(true));

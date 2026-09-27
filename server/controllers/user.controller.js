@@ -158,7 +158,7 @@ export const testWebhook = async (req, res, next) => {
                 { name: 'Status', value: 'Connected & Operational', inline: true },
                 { name: 'Timestamp', value: new Date().toLocaleTimeString(), inline: true },
               ],
-              footer: { text: 'BugSense Incident Hub' },
+              footer: { text: 'BugSense' },
             },
           ],
         }

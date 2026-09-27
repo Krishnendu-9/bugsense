@@ -68,6 +68,11 @@ jobs:
         working-directory: client
         run: npm run lint
 
+      # Component and utility tests (Vitest + React Testing Library, jsdom).
+      - name: Test
+        working-directory: client
+        run: npm test
+
       - name: Build
         working-directory: client
         run: npm run build

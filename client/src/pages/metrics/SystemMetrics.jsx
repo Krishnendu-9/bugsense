@@ -71,7 +71,7 @@ export default function SystemMetrics() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-text-base">System Vitals & Observability</h1>
+            <h1 className="text-xl font-bold text-text-base">System Vitals</h1>
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-mono font-semibold border flex items-center gap-1 ${
                 operational

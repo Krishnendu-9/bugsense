@@ -140,7 +140,7 @@ export const generateGitPatch = async (errorLog = '', bugDescription = '', steps
       model: MODEL,
       max_tokens: 1500,
       system:
-        'You are an elite staff software engineer. Given an error log and bug context, construct an exact, production-ready unified Git diff patch resolving the issue. Return ONLY a valid JSON object with exactly two fields: "diff" (string in standard unified diff format with --- a/... +++ b/... @@ ... @@ lines) and "explanation" (concise paragraph describing the code modification). No markdown fences outside the JSON.',
+        'You are a senior software engineer. Given an error log and bug context, write a minimal unified Git diff patch resolving the issue. Return ONLY a valid JSON object with exactly two fields: "diff" (string in standard unified diff format with --- a/... +++ b/... @@ ... @@ lines) and "explanation" (concise paragraph describing the code modification). No markdown fences outside the JSON.',
       messages: [{ role: 'user', content: context }],
     });
 
@@ -231,7 +231,7 @@ ${bug.aiInsights?.suggestedFix || '_To be completed by the incident owner._'}
       model: MODEL,
       max_tokens: 2000,
       system:
-        'You are a Principal Site Reliability Engineer (SRE). Given the incident details, generate a comprehensive, executive-ready Incident Post-Mortem in professional GitHub-flavored Markdown. Include sections: Executive Summary, Impact & Scope, Timeline of Events, Root Cause Analysis, Resolution, and Action Items. Return ONLY the markdown document without additional conversational filler.',
+        'You are a senior site reliability engineer. Given the incident details, write a clear, factual Incident Post-Mortem in professional GitHub-flavored Markdown. Include sections: Executive Summary, Impact & Scope, Timeline of Events, Root Cause Analysis, Resolution, and Action Items. Return ONLY the markdown document without additional conversational filler.',
       messages: [{ role: 'user', content: context }],
     });
 
