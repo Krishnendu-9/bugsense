@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState, useCallback, useMemo } from 'react';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import {
   ArrowLeft, Trash2, Edit3, MessageSquare, Send, Monitor,
   Tag, AlertTriangle, Cpu, X, Check, Pencil, History,
-  GitPullRequest, ExternalLink, Github, Zap, FileText, UserCheck,
+  GitPullRequest, ExternalLink, Github, Zap, FileText, UserCheck, FileEdit,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
@@ -13,13 +13,16 @@ import useAuth from '../../hooks/useAuth.js';
 import useSocket, { useSocketEvent } from '../../hooks/useSocket.js';
 import { PriorityBadge, StatusBadge, SeverityBadge } from '../../components/common/Badge.jsx';
 import ErrorInsights from '../../components/ai/ErrorInsights.jsx';
-import AnnotationCanvas from '../../components/bugs/AnnotationCanvas.jsx';
+import Modal from '../../components/common/Modal.jsx';
+import ConfirmDialog from '../../components/common/ConfirmDialog.jsx';
 import BreadcrumbTimeline from '../../components/bugs/BreadcrumbTimeline.jsx';
 import GitPatchModal from '../../components/ai/GitPatchModal.jsx';
 import PostMortemModal from '../../components/ai/PostMortemModal.jsx';
+import GitHubExportModal from '../../components/bugs/GitHubExportModal.jsx';
 import { BugDetailSkeleton } from '../../components/common/Loader.jsx';
 import {
   timeAgo, getInitials, formatDate, getImageUrl, sanitizeHtml, isStaff, dataUrlToFile,
+  isBugReporter, statusOptionsFor,
 } from '../../utils/helpers.js';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, STATUS_COLORS } from '../../utils/constants.js';
 import api from '../../api/axios.js';
@@ -36,9 +39,38 @@ function Avatar({ person, size = 'w-8 h-8', text = 'text-xs' }) {
   );
 }
 
+// Fabric (annotation) and Quill (editing) are large and only needed once their
+// dialogs open, so they load on demand.
+const AnnotationCanvas = lazy(() => import('../../components/bugs/AnnotationCanvas.jsx'));
+const EditBugModal = lazy(() => import('../../components/bugs/EditBugModal.jsx'));
+
+// How long to wait for a background analysis before refetching once and
+// letting the user run it manually.
+const ANALYSIS_WAIT_MS = 30000;
+
+function AnnotationSkeleton() {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-label="Loading annotation tools">
+      <div className="skeleton h-9 w-2/3 rounded-lg" />
+      <div className="skeleton h-[360px] w-full rounded-xl" />
+    </div>
+  );
+}
+
+// One instance per bug: following a link from one bug to another remounts the
+// page, so comments, open dialogs, the triage panel and any pending analysis
+// never carry over from the previous bug.
 export default function BugDetail() {
   const { id } = useParams();
+  return <BugDetailView key={id} />;
+}
+
+function BugDetailView() {
+  const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Set by ReportBug when the server started analysing the new bug's error log.
+  const [pendingAnalysisId, setPendingAnalysisId] = useState(() => (location.state?.analysisPending ? id : null));
   const { user } = useAuth();
   const { socket } = useSocket();
   const { bug, setBug, loading, fetchBugById, updateBug, deleteBug, uploadAnnotation } = useBugs();
@@ -52,10 +84,8 @@ export default function BugDetail() {
   const [gitPatch, setGitPatch] = useState(null);
   const [patchLoading, setPatchLoading] = useState(false);
   const [showGithubModal, setShowGithubModal] = useState(false);
-  const [githubLoading, setGithubLoading] = useState(false);
-  const [repoOwner, setRepoOwner] = useState('');
-  const [repoName, setRepoName] = useState('');
-  const [githubToken, setGithubToken] = useState('');
+  const [showEditDetails, setShowEditDetails] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [postMortem, setPostMortem] = useState(null);
   const [postMortemLoading, setPostMortemLoading] = useState(false);
 
@@ -68,11 +98,28 @@ export default function BugDetail() {
     fetchBugById(id);
   }, [id, fetchBugById]);
 
+  // The pending flag is one-shot: drop it from history so a reload does not
+  // show a spinner for an analysis that finished long ago.
+  useEffect(() => {
+    if (location.state?.analysisPending) navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
+
+  const analysisPending = pendingAnalysisId === id && !bug?.aiInsights?.possibleCause;
+
+  useEffect(() => {
+    if (!analysisPending) return undefined;
+    const timer = setTimeout(() => {
+      fetchBugById(id, { silent: true });
+      setPendingAnalysisId(null);
+    }, ANALYSIS_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [analysisPending, id, fetchBugById]);
+
   // Comments load once per bug; live additions and deletions arrive over the
   // socket, so they are not refetched every time the bug itself changes.
+  // (Each bug id gets a fresh component instance, so they start empty.)
   useEffect(() => {
     let cancelled = false;
-    setComments([]);
     api.get(`/comments/bug/${id}`)
       .then((res) => { if (!cancelled) setComments(res.data); })
       .catch(() => {});
@@ -167,9 +214,8 @@ export default function BugDetail() {
   const openEditor = () => {
     resetEdit({
       status: bug.status,
-      priority: bug.priority,
       statusNote: '',
-      ...(staff ? { assignedTo: bug.assignedTo?._id || '' } : {}),
+      ...(staff ? { priority: bug.priority, assignedTo: bug.assignedTo?._id || '' } : {}),
     });
     setIsEditing(true);
   };
@@ -179,17 +225,17 @@ export default function BugDetail() {
     const result = await analyze(bug.errorLog, bug.description, bug._id);
     if (!result) return;
     setBug((prev) => (prev ? { ...prev, aiInsights: result } : prev));
-    toast.success(result.source === 'claude' ? 'AI analysis complete' : 'Heuristic analysis complete (AI not configured)');
+    toast.success(result.source === 'claude' ? 'AI analysis complete' : 'Heuristic analysis complete (AI unavailable)');
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Delete this bug? This cannot be undone.')) return;
     try {
       await deleteBug(id);
       toast.success('Bug deleted');
       navigate('/bugs');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete bug');
+      setConfirmingDelete(false);
     }
   };
 
@@ -241,12 +287,16 @@ export default function BugDetail() {
     }
   };
 
-  const handleGeneratePatch = async () => {
+  const generatePatch = async () => {
     setPatchLoading(true);
     try {
       const res = await api.post('/ai/generate-patch', { bugId: id });
       setGitPatch(res.data);
-      if (res.data.source === 'claude') toast.success('AI patch generated');
+      if (res.data.source === 'claude') {
+        const { diff, explanation, generatedAt } = res.data;
+        setBug((prev) => (prev ? { ...prev, gitPatch: { diff, explanation, generatedAt } } : prev));
+        toast.success('AI patch generated');
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to generate patch');
     } finally {
@@ -254,28 +304,19 @@ export default function BugDetail() {
     }
   };
 
-  const handleExportToGithub = async (e) => {
-    e.preventDefault();
-    if (!repoOwner || !repoName) {
-      toast.error('Repository owner and name are required');
+  // A patch is a paid model call, so a saved one is shown instead of
+  // regenerating it; the dialog offers Regenerate explicitly.
+  const handleOpenPatch = () => {
+    if (bug.gitPatch?.diff) {
+      setGitPatch({ ...bug.gitPatch, source: 'claude' });
       return;
     }
-    setGithubLoading(true);
-    try {
-      const res = await api.post(`/bugs/${id}/github`, {
-        repoOwner: repoOwner.trim(),
-        repoName: repoName.trim(),
-        githubToken: githubToken || undefined,
-      });
-      setBug((prev) => (prev ? { ...prev, githubIssue: res.data.githubIssue } : prev));
-      toast.success('Successfully converted to GitHub Issue!');
-      setShowGithubModal(false);
-      setGithubToken('');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to export to GitHub');
-    } finally {
-      setGithubLoading(false);
-    }
+    generatePatch();
+  };
+
+  const handleGithubExported = (githubIssue) => {
+    setBug((prev) => (prev ? { ...prev, githubIssue } : prev));
+    setShowGithubModal(false);
   };
 
   const handleGeneratePostMortem = async () => {
@@ -302,7 +343,8 @@ export default function BugDetail() {
   }
 
   const canDelete = user?.role === 'admin';
-  const canEdit = staff || bug.reporter?._id === user?._id;
+  const canEdit = staff || isBugReporter(user, bug);
+  const allowedStatuses = statusOptionsFor(user, bug);
   const hasScreenshot = bug.screenshot || bug.annotatedScreenshot;
 
   return (
@@ -330,13 +372,13 @@ export default function BugDetail() {
         <div className="flex items-center gap-2 flex-wrap sm:pl-14">
           {canEdit && (
             <button
-              onClick={handleGeneratePatch}
+              onClick={handleOpenPatch}
               disabled={patchLoading}
               className="btn-secondary flex items-center gap-1.5 text-sm border-secondary/30 text-secondary hover:bg-secondary/10"
-              title="Generate a code patch with Claude"
+              title={bug.gitPatch?.diff ? 'Show the saved AI patch' : 'Generate a code patch with Claude'}
             >
               <GitPullRequest size={15} />
-              {patchLoading ? 'Patching...' : 'AI PR Fix'}
+              {patchLoading && !gitPatch ? 'Patching...' : bug.gitPatch?.diff ? 'View AI Patch' : 'AI PR Fix'}
             </button>
           )}
           {bug.githubIssue?.url ? (
@@ -376,15 +418,24 @@ export default function BugDetail() {
           )}
           {canEdit && (
             <button
+              onClick={() => setShowEditDetails(true)}
+              className="btn-secondary flex items-center gap-2 text-sm"
+            >
+              <FileEdit size={15} /> Edit Details
+            </button>
+          )}
+          {canEdit && (
+            <button
               onClick={() => (isEditing ? setIsEditing(false) : openEditor())}
+              aria-expanded={isEditing}
               className="btn-secondary flex items-center gap-2 text-sm"
             >
               {isEditing ? <X size={15} /> : <Edit3 size={15} />}
-              {isEditing ? 'Cancel' : 'Edit'}
+              {isEditing ? 'Cancel' : staff ? 'Triage' : 'Status'}
             </button>
           )}
           {canDelete && (
-            <button onClick={handleDelete} className="btn-danger flex items-center gap-2 text-sm">
+            <button onClick={() => setConfirmingDelete(true)} className="btn-danger flex items-center gap-2 text-sm">
               <Trash2 size={15} /> Delete
             </button>
           )}
@@ -423,24 +474,31 @@ export default function BugDetail() {
       {/* Edit panel */}
       {isEditing && (
         <div className="glass-card p-5">
-          <h3 className="text-sm font-semibold text-text-base mb-4">Update Bug</h3>
-          <form onSubmit={handleEditSubmit(handleEditSubmitFn)} className="flex flex-wrap gap-3 items-end">
+          <h3 className="text-sm font-semibold text-text-base mb-1">{staff ? 'Triage' : 'Update Status'}</h3>
+          {!staff && (
+            <p className="text-xs text-muted mb-4">
+              You can close your bug if it no longer happens, or reopen it if it came back. The team handles the rest of the workflow.
+            </p>
+          )}
+          <form onSubmit={handleEditSubmit(handleEditSubmitFn)} className={`flex flex-wrap gap-3 items-end ${staff ? 'mt-3' : ''}`}>
             <div>
               <label className="label" htmlFor="edit-status">Status</label>
               <select id="edit-status" {...regEdit('status')} className="input-field py-1.5 text-sm">
-                {STATUS_OPTIONS.map((opt) => (
+                {STATUS_OPTIONS.filter((opt) => allowedStatuses.includes(opt.value)).map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="label" htmlFor="edit-priority">Priority</label>
-              <select id="edit-priority" {...regEdit('priority')} className="input-field py-1.5 text-sm">
-                {PRIORITY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
+            {staff && (
+              <div>
+                <label className="label" htmlFor="edit-priority">Priority</label>
+                <select id="edit-priority" {...regEdit('priority')} className="input-field py-1.5 text-sm">
+                  {PRIORITY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             {staff && (
               <div>
                 <label className="label" htmlFor="edit-assignee">Assignee</label>
@@ -469,32 +527,24 @@ export default function BugDetail() {
 
       {/* Annotation modal */}
       {showAnnotation && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Annotate screenshot">
-          <div className="bg-surface rounded-2xl border border-border shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-5 border-b border-border">
-              <div className="flex items-center gap-2">
-                <Pencil size={16} className="text-primary" />
-                <h3 className="text-sm font-semibold text-text-base">Annotate Screenshot</h3>
-              </div>
-              <button onClick={() => setShowAnnotation(false)} aria-label="Close" className="p-1.5 rounded-lg hover:bg-white/5 text-muted hover:text-text-base transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-5">
-              {savingAnnotation ? (
-                <div className="space-y-3">
-                  <div className="skeleton h-9 w-2/3 rounded-lg" />
-                  <div className="skeleton h-[360px] w-full rounded-xl" />
-                </div>
-              ) : (
-                <AnnotationCanvas
-                  imageUrl={getImageUrl(bug.screenshot || bug.annotatedScreenshot)}
-                  onSave={handleSaveAnnotation}
-                />
-              )}
-            </div>
-          </div>
-        </div>
+        <Modal
+          title="Annotate Screenshot"
+          icon={Pencil}
+          onClose={() => setShowAnnotation(false)}
+          size="2xl"
+          closeDisabled={savingAnnotation}
+        >
+          {savingAnnotation ? (
+            <AnnotationSkeleton />
+          ) : (
+            <Suspense fallback={<AnnotationSkeleton />}>
+              <AnnotationCanvas
+                imageUrl={getImageUrl(bug.screenshot || bug.annotatedScreenshot)}
+                onSave={handleSaveAnnotation}
+              />
+            </Suspense>
+          )}
+        </Modal>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -602,11 +652,11 @@ export default function BugDetail() {
           )}
 
           {/* AI Insights */}
-          {(aiLoading || bug.aiInsights?.possibleCause) && (
+          {(aiLoading || analysisPending || bug.aiInsights?.possibleCause) && (
             <ErrorInsights
               insights={bug.aiInsights}
               analyzedAt={bug.aiInsights?.analyzedAt}
-              isLoading={aiLoading}
+              isLoading={aiLoading || analysisPending}
             />
           )}
 
@@ -780,74 +830,42 @@ export default function BugDetail() {
 
       {/* AI Git Patch Modal */}
       {gitPatch && (
-        <GitPatchModal patch={gitPatch} onClose={() => setGitPatch(null)} />
+        <GitPatchModal
+          patch={gitPatch}
+          onClose={() => setGitPatch(null)}
+          onRegenerate={canEdit ? generatePatch : undefined}
+          regenerating={patchLoading}
+        />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete this bug?"
+          message={`"${bug.title}", its comments and screenshots will be permanently deleted. This cannot be undone.`}
+          confirmLabel="Delete Bug"
+          danger
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
+
+      {showEditDetails && (
+        <Suspense fallback={null}>
+          <EditBugModal
+            bug={bug}
+            onSave={(content) => updateBug(id, content)}
+            onClose={() => setShowEditDetails(false)}
+          />
+        </Suspense>
       )}
 
       {/* GitHub Export Modal */}
       {showGithubModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Export to GitHub">
-          <div className="glass-card max-w-md w-full p-6 space-y-4 border border-white/10 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Github size={20} className="text-text-base" />
-                <h3 className="font-semibold text-text-base text-sm">Export to GitHub Issue</h3>
-              </div>
-              <button onClick={() => setShowGithubModal(false)} aria-label="Close" className="text-muted hover:text-text-base">
-                <X size={18} />
-              </button>
-            </div>
-            <p className="text-xs text-muted">
-              Convert this bug report into a GitHub issue with reproduction steps, error logs, and diagnostics attached.
-            </p>
-            <form onSubmit={handleExportToGithub} className="space-y-3">
-              <div>
-                <label className="label text-xs" htmlFor="gh-owner">Repository Owner</label>
-                <input
-                  id="gh-owner"
-                  value={repoOwner}
-                  onChange={(e) => setRepoOwner(e.target.value)}
-                  placeholder="e.g. facebook or your-username"
-                  className="input-field text-sm"
-                  pattern="[A-Za-z0-9][A-Za-z0-9\-]{0,38}"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label text-xs" htmlFor="gh-repo">Repository Name</label>
-                <input
-                  id="gh-repo"
-                  value={repoName}
-                  onChange={(e) => setRepoName(e.target.value)}
-                  placeholder="e.g. react or my-app"
-                  className="input-field text-sm"
-                  pattern="[A-Za-z0-9._\-]{1,100}"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label text-xs" htmlFor="gh-token">Personal Access Token (optional if set on server)</label>
-                <input
-                  id="gh-token"
-                  type="password"
-                  autoComplete="off"
-                  value={githubToken}
-                  onChange={(e) => setGithubToken(e.target.value)}
-                  placeholder="ghp_..."
-                  className="input-field text-sm font-mono"
-                />
-                <p className="text-[11px] text-muted mt-1">Sent once to the BugSense server for this request and not stored.</p>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowGithubModal(false)} className="btn-secondary text-xs">
-                  Cancel
-                </button>
-                <button type="submit" disabled={githubLoading} className="btn-primary text-xs flex items-center gap-1.5">
-                  {githubLoading ? 'Exporting...' : 'Create GitHub Issue'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <GitHubExportModal
+          bugId={id}
+          onClose={() => setShowGithubModal(false)}
+          onExported={handleGithubExported}
+        />
       )}
 
       {/* Incident Post-Mortem Modal */}
