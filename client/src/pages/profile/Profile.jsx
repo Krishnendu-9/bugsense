@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import {
   User as UserIcon,
   Mail,
@@ -31,10 +31,6 @@ export default function Profile() {
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
-  const [discordUrl, setDiscordUrl] = useState(user?.webhooks?.discordUrl || '');
-  const [slackUrl, setSlackUrl] = useState(user?.webhooks?.slackUrl || '');
-  const [alertOnCritical, setAlertOnCritical] = useState(user?.webhooks?.alertOnCritical !== false);
-  const [alertOnRegression, setAlertOnRegression] = useState(user?.webhooks?.alertOnRegression !== false);
   const [webhookSaving, setWebhookSaving] = useState(false);
   const [testingDiscord, setTestingDiscord] = useState(false);
   const [testingSlack, setTestingSlack] = useState(false);
@@ -55,7 +51,7 @@ export default function Profile() {
     register: regPassword,
     handleSubmit: handlePasswordSubmit,
     reset: resetPasswordForm,
-    watch: watchPassword,
+    control: passwordControl,
     formState: { errors: passwordErrors },
   } = useForm({
     defaultValues: {
@@ -65,7 +61,23 @@ export default function Profile() {
     },
   });
 
-  const newPasswordValue = watchPassword('newPassword');
+  const newPasswordValue = useWatch({ control: passwordControl, name: 'newPassword' });
+
+  // Form for alert webhooks
+  const {
+    register: regWebhook,
+    handleSubmit: handleWebhookSubmit,
+    control: webhookControl,
+    getValues: getWebhookValues,
+  } = useForm({
+    defaultValues: {
+      discordUrl: user?.webhooks?.discordUrl || '',
+      slackUrl: user?.webhooks?.slackUrl || '',
+      alertOnCritical: user?.webhooks?.alertOnCritical !== false,
+      alertOnRegression: user?.webhooks?.alertOnRegression !== false,
+    },
+  });
+  const [discordUrl, slackUrl] = useWatch({ control: webhookControl, name: ['discordUrl', 'slackUrl'] });
 
   // Handle Avatar Upload
   const handleAvatarChange = async (e) => {
@@ -134,15 +146,14 @@ export default function Profile() {
     }
   };
 
-  const handleSaveWebhooks = async (e) => {
-    e.preventDefault();
+  const onWebhookSubmit = async (values) => {
     setWebhookSaving(true);
     try {
       const res = await api.put('/users/webhooks', {
-        discordUrl,
-        slackUrl,
-        alertOnCritical,
-        alertOnRegression,
+        discordUrl: values.discordUrl.trim(),
+        slackUrl: values.slackUrl.trim(),
+        alertOnCritical: values.alertOnCritical,
+        alertOnRegression: values.alertOnRegression,
       });
       updateUser({ webhooks: res.data.webhooks });
       toast.success('Webhook configurations saved successfully');
@@ -154,7 +165,7 @@ export default function Profile() {
   };
 
   const handleTestWebhook = async (type) => {
-    const url = type === 'discord' ? discordUrl : slackUrl;
+    const url = getWebhookValues(type === 'discord' ? 'discordUrl' : 'slackUrl').trim();
     if (!url) {
       toast.error(`Please enter a valid ${type} webhook URL first`);
       return;
@@ -216,7 +227,7 @@ export default function Profile() {
                 className="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity duration-200 cursor-pointer disabled:opacity-100"
               >
                 {avatarUploading ? (
-                  <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <Camera size={20} className="animate-pulse" aria-label="Uploading" />
                 ) : (
                   <>
                     <Camera size={20} className="mb-0.5" />
@@ -319,7 +330,7 @@ export default function Profile() {
                 >
                   {profileSaving ? (
                     <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
                       Saving...
                     </>
                   ) : (
@@ -434,7 +445,7 @@ export default function Profile() {
                 >
                   {passwordSaving ? (
                     <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
                       Updating Password...
                     </>
                   ) : (
@@ -459,55 +470,38 @@ export default function Profile() {
               </div>
             </div>
 
-            <form onSubmit={handleSaveWebhooks} className="space-y-4">
-              <div>
-                <label className="label">Discord Webhook URL</label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={discordUrl}
-                    onChange={(e) => setDiscordUrl(e.target.value)}
-                    placeholder="https://discord.com/api/webhooks/..."
-                    className="input-field text-sm font-mono flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleTestWebhook('discord')}
-                    disabled={testingDiscord || !discordUrl}
-                    className="btn-secondary text-xs px-3 disabled:opacity-40"
-                  >
-                    {testingDiscord ? 'Testing...' : 'Test'}
-                  </button>
+            <form onSubmit={handleWebhookSubmit(onWebhookSubmit)} className="space-y-4">
+              {[
+                { type: 'discord', label: 'Discord Webhook URL', field: 'discordUrl', placeholder: 'https://discord.com/api/webhooks/...', value: discordUrl, testing: testingDiscord },
+                { type: 'slack', label: 'Slack Webhook URL', field: 'slackUrl', placeholder: 'https://hooks.slack.com/services/...', value: slackUrl, testing: testingSlack },
+              ].map(({ type, label, field, placeholder, value, testing }) => (
+                <div key={type}>
+                  <label className="label" htmlFor={`webhook-${type}`}>{label}</label>
+                  <div className="flex gap-2">
+                    <input
+                      id={`webhook-${type}`}
+                      type="url"
+                      {...regWebhook(field)}
+                      placeholder={placeholder}
+                      className="input-field text-sm font-mono flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleTestWebhook(type)}
+                      disabled={testing || !value}
+                      className="btn-secondary text-xs px-3 disabled:opacity-40"
+                    >
+                      {testing ? 'Testing...' : 'Test'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-
-              <div>
-                <label className="label">Slack Webhook URL</label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={slackUrl}
-                    onChange={(e) => setSlackUrl(e.target.value)}
-                    placeholder="https://hooks.slack.com/services/..."
-                    className="input-field text-sm font-mono flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleTestWebhook('slack')}
-                    disabled={testingSlack || !slackUrl}
-                    className="btn-secondary text-xs px-3 disabled:opacity-40"
-                  >
-                    {testingSlack ? 'Testing...' : 'Test'}
-                  </button>
-                </div>
-              </div>
+              ))}
 
               <div className="pt-2 flex flex-wrap gap-4 text-xs text-muted">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={alertOnCritical}
-                    onChange={(e) => setAlertOnCritical(e.target.checked)}
+                    {...regWebhook('alertOnCritical')}
                     className="rounded border-border bg-black/40 text-primary"
                   />
                   Alert on Critical & Blocker incidents
@@ -515,8 +509,7 @@ export default function Profile() {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={alertOnRegression}
-                    onChange={(e) => setAlertOnRegression(e.target.checked)}
+                    {...regWebhook('alertOnRegression')}
                     className="rounded border-border bg-black/40 text-primary"
                   />
                   Alert on Telemetry Regressions
