@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { register, login, getMe } from '../controllers/auth.controller.js';
+import { register, login, getMe, getAuthConfig } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 import { authLimiter } from '../middleware/rateLimit.middleware.js';
 
 const router = Router();
+
+router.get('/config', getAuthConfig);
 
 router.post(
   '/register',

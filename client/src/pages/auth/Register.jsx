@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useEffect, useState } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck, Mail, Lock, User, UserCog } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAuth from '../../hooks/useAuth.js';
+import api from '../../api/axios.js';
 import { SIGNUP_ROLE_OPTIONS } from '../../utils/constants.js';
 
 export default function Register() {
@@ -11,10 +12,26 @@ export default function Register() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  // Whether this deployment lets visitors sign up as developers. Until the
+  // server answers, only the always-allowed Reporter option is offered.
+  const [developerSignup, setDeveloperSignup] = useState(false);
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, control, formState: { errors } } = useForm({
     defaultValues: { role: 'reporter' },
   });
+  const role = useWatch({ control, name: 'role' });
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/auth/config')
+      .then((res) => { if (!cancelled) setDeveloperSignup(Boolean(res.data.developerSignup)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const roleOptions = developerSignup
+    ? SIGNUP_ROLE_OPTIONS
+    : SIGNUP_ROLE_OPTIONS.filter((opt) => opt.value === 'reporter');
 
   const onSubmit = async (data) => {
     setIsLoading(true);
@@ -45,10 +62,11 @@ export default function Register() {
         <div className="glass-card p-8">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <label className="label">Full Name</label>
+              <label className="label" htmlFor="register-name">Full Name</label>
               <div className="relative">
                 <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
+                  id="register-name"
                   {...register('name', { required: 'Name is required', minLength: { value: 2, message: 'Name is too short' } })}
                   type="text"
                   className="input-field pl-9"
@@ -60,10 +78,11 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="label">Email</label>
+              <label className="label" htmlFor="register-email">Email</label>
               <div className="relative">
                 <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
+                  id="register-email"
                   {...register('email', {
                     required: 'Email is required',
                     pattern: { value: /^\S+@\S+\.\S+$/, message: 'Invalid email address' },
@@ -78,10 +97,11 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="label">Password</label>
+              <label className="label" htmlFor="register-password">Password</label>
               <div className="relative">
                 <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
+                  id="register-password"
                   {...register('password', {
                     required: 'Password is required',
                     minLength: { value: 6, message: 'Password must be at least 6 characters' },
@@ -94,6 +114,7 @@ export default function Register() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-base transition-colors"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -103,25 +124,27 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="label flex items-center gap-1">
+              <label className="label flex items-center gap-1" htmlFor="register-role">
                 <UserCog size={13} /> Role
               </label>
-              <select {...register('role')} className="input-field">
-                {SIGNUP_ROLE_OPTIONS.map((opt) => (
+              <select id="register-role" {...register('role')} className="input-field">
+                {roleOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
               <p className="text-xs text-muted mt-1">
-                {watch('role') === 'developer'
+                {role === 'developer'
                   ? 'Developers can update bug status and assign tickets.'
-                  : 'Reporters can submit and track their own bugs.'}
+                  : developerSignup
+                    ? 'Reporters can submit and track their own bugs.'
+                    : 'Reporters can submit and track their own bugs. Developer access is granted by an admin.'}
               </p>
             </div>
 
             <button type="submit" disabled={isLoading} className="btn-primary w-full py-2.5 mt-2">
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
                   Creating account...
                 </span>
               ) : (
