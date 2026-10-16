@@ -6,6 +6,10 @@ WORKDIR /app
 # talks to nginx, which proxies through to the server container.
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
+# Public SDK key for the SDK Playground; must match the server's
+# TELEMETRY_INGEST_KEY when that is set.
+ARG VITE_TELEMETRY_INGEST_KEY=
+ENV VITE_TELEMETRY_INGEST_KEY=$VITE_TELEMETRY_INGEST_KEY
 
 COPY package*.json ./
 RUN npm ci
