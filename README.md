@@ -23,7 +23,7 @@ git clone https://github.com/krishnendu-9/bugsense.git
 cd bugsense
 docker compose up --build
 
-# in a second terminal, load 3 demo users and 4 sample bugs
+# in a second terminal, load 3 demo users, 4 sample bugs and a comment
 docker compose exec server npm run seed
 ```
 
@@ -439,7 +439,7 @@ cd server
 npm run seed
 ```
 
-Creates three demo accounts and four sample bugs. Seeding **deletes all data**, so it
+Creates three demo accounts, four sample bugs and one comment. Seeding **deletes all data**, so it
 refuses to run on a database that already has users; use `npm run seed:reset` to
 wipe and reseed deliberately.
 
