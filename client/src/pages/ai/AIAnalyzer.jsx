@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { Cpu, Zap, RotateCcw, AlertTriangle, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAI from '../../hooks/useAI.js';
@@ -31,18 +30,19 @@ const EXAMPLE_ERRORS = [
 
 export default function AIAnalyzer() {
   const { insights, loading, analyze, reset } = useAI();
-  const [charCount, setCharCount] = useState(0);
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, control, formState: { errors } } = useForm({
     defaultValues: { errorLog: '', bugContext: '' },
   });
 
-  const errorLog = watch('errorLog');
+  // Read through react-hook-form rather than a separate onChange: overriding
+  // the registered onChange would hide typed and pasted text from the form.
+  const errorLog = useWatch({ control, name: 'errorLog' }) || '';
 
   const onSubmit = async (data) => {
     const result = await analyze(data.errorLog, data.bugContext);
     if (result) {
-      toast.success(result.source === 'claude' ? 'Analysis complete!' : 'Heuristic analysis complete (AI not configured)');
+      toast.success(result.source === 'claude' ? 'Analysis complete!' : 'Heuristic analysis complete (AI unavailable)');
     }
   };
 
@@ -50,12 +50,10 @@ export default function AIAnalyzer() {
     reset();
     setValue('errorLog', '');
     setValue('bugContext', '');
-    setCharCount(0);
   };
 
   const loadExample = (value) => {
-    setValue('errorLog', value);
-    setCharCount(value.length);
+    setValue('errorLog', value, { shouldValidate: true });
   };
 
   return (
@@ -95,17 +93,15 @@ export default function AIAnalyzer() {
         <div className="glass-card p-6 space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="label flex items-center gap-1.5">
+              <label className="label flex items-center gap-1.5" htmlFor="ai-error-log">
                 <AlertTriangle size={13} />
                 Error Log / Stack Trace <span className="text-priority-high">*</span>
               </label>
-              <span className="text-xs text-muted">{charCount} chars</span>
+              <span className="text-xs text-muted">{errorLog.length} chars</span>
             </div>
             <textarea
+              id="ai-error-log"
               {...register('errorLog', { required: 'Please provide an error log' })}
-              onChange={(e) => {
-                setCharCount(e.target.value.length);
-              }}
               className="input-field font-mono text-xs resize-none"
               rows={10}
               placeholder="Paste your error message, stack trace, console output, or any debug text here..."
@@ -116,8 +112,9 @@ export default function AIAnalyzer() {
           </div>
 
           <div>
-            <label className="label">Bug Context (optional)</label>
+            <label className="label" htmlFor="ai-bug-context">Bug Context (optional)</label>
             <textarea
+              id="ai-bug-context"
               {...register('bugContext')}
               className="input-field text-sm resize-none"
               rows={3}
