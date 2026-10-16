@@ -69,26 +69,29 @@ Bug reports are the worst part of software development — not because bugs exis
 ## Features
 
 - **One-Click CSV & JSON Data Export** — Export every incident matching the current filters to CSV (formula-injection safe) or JSON
-- **In-App Webhook Settings & Live Test Ping** — Each user configures their own Discord/Slack webhooks with alert preferences (new critical incidents, regressions) and a 1-click test ping
+- **In-App Webhook Settings & Live Test Ping** — Each user configures their own Discord/Slack webhooks with alert preferences (new critical/blocker incidents, regressions) and a 1-click test ping
 - **Live System Vitals & Health Metrics (`/metrics`, staff only)** — Real-time Node.js process heap, MongoDB connectivity status, uptime counters, and telemetry deduplication efficiency analytics
-- **Audit Trail (`/audit`, staff only)** — Paginated activity log of bug creation, updates and deletion, telemetry incidents and regressions, and GitHub exports
+- **Audit Trail (`/audit`, staff only)** — Paginated activity log of bug changes, telemetry incidents and regressions, comments, sign-ups, failed sign-ins, password and role changes, and GitHub exports
+- **Team Management (`/team`, admins only)** — Promote reporters to developers or admins; developer self-sign-up is an explicit per-deployment choice (`ALLOW_DEVELOPER_SIGNUP`)
 - **Embeddable Client SDK (`bugsense.js`)** — Zero-dependency agent any web app can install to auto-capture crashes and inject an in-app bug report pill; never records typed input, strips query strings from URLs, and can be torn down with `BugSense.destroy()`
-- **Flight Recorder Breadcrumbs** — Automatically records the user's last 15 actions (DOM clicks, page navigation, fetch API calls, and console logs) leading up to an incident
+- **Flight Recorder Breadcrumbs** — Automatically records the user's last 15 actions (DOM clicks, page navigation including `replaceState`, `fetch` *and* `XMLHttpRequest`/axios calls, and console errors) leading up to an incident
+- **Self-Monitoring** — The dashboard reports its own render crashes to its own telemetry endpoint (project "BugSense Dashboard"), and a crash in one page leaves the rest of the app usable
 - **Error Fingerprinting & Deduplication** — Deterministic SHA-256 stack trace hashing groups recurring SDK errors with atomic, race-safe occurrence counters (e.g. `42x occurrences`) and flags regressions; manual reports are never merged, but similar existing reports are pointed out
-- **AI Pull Request & Patch Generator** — Claude proposes unified Git diffs with syntax highlighting and copyable `git apply` commands (requires an API key)
+- **AI Pull Request & Patch Generator** — Claude proposes unified Git diffs with syntax highlighting and copyable `git apply` commands (requires an API key); the patch is saved on the bug and reopened without another model call until you choose Regenerate
 - **Interactive SDK Sandbox (`/sdk-demo`)** — Built-in simulated customer storefront allowing developers to inject real-world browser exceptions, failing API calls, and async rejections to demonstrate live telemetry ingestion
 - **AI Incident Post-Mortem Generator** — Formal engineering post-mortem synthesis in GitHub-flavored Markdown covering Executive Summary, Breadcrumb Timeline, RCA, and Action Items with 1-click `.md` download
 - **Real-Time Kanban Workflow Board (`/board`)** — Linear-style collaborative issue board featuring quick stage shifts (`Open`, `In Progress`, `Resolved`, `Closed`) synchronized via Socket.io
-- **GitHub Issues 1-Click Export** — Convert any bug report into an official GitHub Issue via GitHub REST API with stack traces and AI diagnostics attached
-- **Discord & Slack Webhooks** — Alerts for new and regressed incidents, sent only to genuine Discord/Slack webhook URLs
-- **Structured Bug Reporting** — Rich text descriptions, numbered reproduction steps, auto-captured browser/OS metadata
+- **GitHub Issues 1-Click Export** — Convert any bug report into an official GitHub Issue via GitHub REST API with stack traces and AI diagnostics attached; the server's token only works for allowlisted repositories
+- **Discord & Slack Webhooks** — Alerts for critical/blocker and regressed incidents, sent only to genuine Discord/Slack webhook URLs
+- **Structured Bug Reporting** — Rich text descriptions, numbered reproduction steps, auto-captured browser/OS metadata; details stay editable after filing, and the error log is analysed in the background so submitting never waits on the AI
+- **Clear Triage Rules** — Staff move bugs through the whole workflow; a reporter can close their own bug or reopen it, and the UI, Kanban board and API enforce the same rule
 - **Screenshot Uploads & Fabric.js Markup** — Drag-and-drop screenshot upload with canvas markup (pencil, lines, rectangles, ellipses)
 - **Real-Time Collaboration** — Authenticated Socket.io live updates for status changes, assignments, new incidents, and comments
 - **AI-Powered Diagnostics** — Claude diagnoses root causes and suggests actionable fix steps; offline heuristic results are labelled as heuristics
 - **Profile & Settings** — Manage display names, avatar uploads, and bcrypt password changes that sign out every other session
 - **Security** — Server- and client-side HTML sanitization, role-based access control on every mutating route, authenticated WebSockets, SSRF-safe webhooks, optional SDK ingest key, multi-tier rate limiting, and Helmet headers
 - **Developer Dashboard** — Recharts metrics, priority distributions, and recent incident streams
-- **Responsive Dark UI** — Tailwind design tokens, skeleton loading states, keyboard-accessible controls, and a mobile navigation drawer
+- **Responsive Dark UI** — Tailwind design tokens, skeleton loading states, accessible dialogs (Escape, focus trap, focus return), a mobile navigation drawer, and route-level code splitting (~130 kB gzipped first load)
 
 ---
 
@@ -221,20 +224,38 @@ immediately without keeping a server-side token list.
 unauthenticated traffic from other origins, so it has its own CORS policy, a
 64 KB body limit, per-field length caps, enum coercion, its own rate limit and an
 optional shared ingest key. Each new crash triggers an AI analysis, so those are
-capped per hour — otherwise anyone could run up the API bill.
+capped per hour — otherwise anyone could run up the API bill. Reports cannot claim
+`critical` priority or `blocker` severity either: those page every alert channel,
+so an SDK report tops out at high/major and staff escalate it after triage.
+
+**Nothing waits on the model.** Filing a bug with an error log returns at once;
+the analysis runs in the background (with its own hourly budget) and arrives on
+the bug page over the socket. A generated patch is saved and reopened for free,
+and only regenerated on request.
 
 **AI output always says where it came from.** Every result carries `source`
 (`claude`, `heuristic`, `template` or `unavailable`) and the UI labels it. Without
 an API key, patch generation returns nothing rather than an invented diff: a
 plausible-looking fake patch is worse than none.
 
-**One payload shape everywhere.** REST responses and every Socket.io event send the
-same fully populated bug, so a listener can replace its copy without losing
-names or history. Sockets require the same JWT as the REST API.
+**Two payload shapes, both populated.** Viewers of a bug receive the same fully
+populated document as `GET /bugs/:id`, so they can replace their copy without
+losing names or history. Everyone else gets the slim list shape that `GET /bugs`
+returns — a crash loop re-broadcasts its bug on every occurrence, and each copy
+would otherwise carry the full error log and breadcrumbs to every open tab.
+Sockets require the same JWT as the REST API.
 
 **Permissions live on the server; the UI mirrors them.** Every mutating route checks
-the role or ownership (`authorize()`, `canModifyBug()`); the client hides
-controls the user can't use, but never relies on that for security.
+the role or ownership (`authorize()`, `canModifyBug()`, `canSetStatus()`); the
+client hides controls the user can't use, but never relies on that for security.
+Being staff is a deliberate grant: developer self-sign-up is off in production
+unless `ALLOW_DEVELOPER_SIGNUP=true`, and the server's GitHub token only files
+issues in repositories listed in `GITHUB_ALLOWED_REPOS`.
+
+**Unsafe configuration fails loudly.** In production the server refuses to start
+with a missing, published or short `JWT_SECRET`. The Docker quick start runs with
+a public demo secret only because it sets `ALLOW_INSECURE_JWT_SECRET=true`, and
+the server prints a warning banner when it does.
 
 **Testable by design.** The Express app is built by `createApp()` in `app.js`,
 separate from the process that listens and connects to the database, so the API
@@ -242,10 +263,14 @@ tests run the real middleware stack against an in-memory MongoDB.
 
 ### Known limitations
 
-- Uploads are stored on the server's local disk; a multi-instance deployment
-  would need object storage (S3, Cloudinary).
-- The AI budget and rate limits are per process, not shared across instances
+- Uploads default to the server's local disk, which hosts like Render and Railway
+  wipe on every redeploy. Set `CLOUDINARY_URL` to keep them in Cloudinary instead.
+- The AI budgets and rate limits are per process, not shared across instances
   (a Redis store would fix this).
+- Search is a case-insensitive substring match, so "saf" finds "Safari" as you
+  type, but it scans rather than using an index. Queries are capped at 5 seconds;
+  at real scale this would move to Atlas Search (a plain MongoDB text index only
+  matches whole words).
 - Single workspace: every signed-in user can see every bug.
 - No email verification or password reset flow.
 
@@ -260,22 +285,25 @@ bugsense/
 ├── client/                   # React frontend (Vite)
 │   ├── eslint.config.js
 │   ├── nginx.conf            # Proxies /api, /uploads, /sdk, /socket.io
+│   ├── vercel.json           # SPA rewrites + asset caching for Vercel
 │   ├── Dockerfile
 │   └── src/
 │       ├── api/              # Axios instance with auth interceptor
 │       ├── components/
 │       │   ├── ai/           # ErrorInsights, GitPatchModal, PostMortemModal
 │       │   ├── bugs/         # BugCard, BugForm, BugFilters, StepsReproducer,
-│       │   │                 # AnnotationCanvas, BreadcrumbTimeline
+│       │   │                 # AnnotationCanvas, BreadcrumbTimeline,
+│       │   │                 # EditBugModal, GitHubExportModal
 │       │   ├── common/       # Navbar, Sidebar, Loader, Badge, ProtectedRoute,
-│       │   │                 # ErrorBoundary, RoleRoute
+│       │   │                 # ErrorBoundary, RoleRoute, Modal, ConfirmDialog
 │       │   └── dashboard/    # StatsCard, BugChart, RecentBugs
-│       ├── context/          # AuthContext, SocketContext
+│       ├── context/          # AuthContext, SocketContext (providers), contexts.js
 │       ├── hooks/            # useAuth, useBugs, useAI, useSocket, useDebouncedValue
 │       ├── pages/            # auth/, bugs/ (list, detail, report, kanban),
 │       │                     # dashboard/, ai/, audit/, metrics/,
-│       │                     # playground/, profile/
-│       └── utils/            # constants, helpers
+│       │                     # playground/, profile/, admin/ (Team)
+│       ├── test/             # Test helpers + SDK tests (jsdom)
+│       └── utils/            # constants, helpers, selfReport
 └── server/                   # Express backend
     ├── eslint.config.js
     ├── Dockerfile
@@ -288,10 +316,11 @@ bugsense/
     ├── public/sdk/           # bugsense.js — the embeddable client SDK
     ├── routes/               # auth, bugs, comments, ai, users, telemetry, audit
     ├── scripts/              # seed.js
-    ├── services/             # ai, token, audit, webhook, bugEvents
+    ├── services/             # ai, autoAnalysis, token, audit, webhook,
+    │                         # bugEvents, storage (disk / Cloudinary)
     ├── tests/                # node:test + Supertest API and unit tests
     ├── utils/                # fingerprint, sanitize, permissions, webhookUrl,
-    │                         # uploads, aiBudget
+    │                         # uploads, aiBudget, clientOrigins, trustProxy
     └── uploads/              # Multer file storage
 ```
 
@@ -326,8 +355,14 @@ docker compose up --build
 The client image is built with `VITE_API_URL=/api`, so all browser traffic goes
 through nginx, which proxies `/api`, `/uploads`, `/sdk` and `/socket.io`
 to the server container. The server itself is not published on a host port, and
-MongoDB is bound to `127.0.0.1` only. The server runs with `NODE_ENV=production`,
-so set a real `JWT_SECRET` in `.env` before exposing it anywhere.
+MongoDB is bound to `127.0.0.1` only. The API waits for MongoDB's healthcheck,
+runs as the unprivileged `node` user, and has its own healthcheck.
+
+The server runs with `NODE_ENV=production`. With no `JWT_SECRET` in `.env`, it
+falls back to a public demo secret and starts only because compose sets
+`ALLOW_INSECURE_JWT_SECRET=true` — it prints a warning banner saying so. Before
+exposing the stack anywhere, set `JWT_SECRET` (`openssl rand -hex 32`) and
+`ALLOW_INSECURE_JWT_SECRET=false` in `.env`.
 
 ---
 
@@ -389,15 +424,18 @@ wipe and reseed deliberately.
 
 Both packages are linted with ESLint (flat config). The server has an API test
 suite (Node's built-in test runner + Supertest) that runs against an in-memory
-MongoDB, covering auth, permissions, XSS sanitization, SSRF protection, telemetry
-deduplication and socket authentication. The client has component and utility
-tests (Vitest + React Testing Library) for role-gated navigation, form
-validation, HTML sanitization and honest AI labelling. CI runs all of it on
+MongoDB, covering auth and roles, permissions and triage rules, XSS
+sanitization, SSRF protection, telemetry deduplication and escalation limits,
+alert routing, upload storage (disk and a stubbed Cloudinary), audit events and
+socket authentication and payloads. The client has component and utility tests
+(Vitest + React Testing Library) for role-gated navigation, forms, dialogs,
+real-time updates on the bug page, crash self-reporting and honest AI labelling,
+plus jsdom tests for the embeddable SDK. CI runs all of it, with coverage, on
 every push.
 
 ```bash
-cd server && npm run lint && npm test
-cd client && npm run lint && npm test
+cd server && npm run lint && npm test      # npm run test:coverage for a report
+cd client && npm run lint && npm test      # npm run test:coverage for a report
 ```
 
 Set `MONGO_URI_TEST` to run the tests against an existing MongoDB instead
@@ -407,6 +445,29 @@ Set `MONGO_URI_TEST` to run the tests against an existing MongoDB instead
 
 Navigate to [http://localhost:5173](http://localhost:5173)
 
+### 7. Deploying (API on Render/Railway, client on Vercel)
+
+**API** — deploy `server/` (the Dockerfile works as-is, or `npm start`) and set:
+
+| Variable | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `MONGO_URI` | your Atlas connection string |
+| `JWT_SECRET` | `openssl rand -hex 32` |
+| `CLIENT_URL` | your Vercel URL(s), comma-separated |
+| `CLOUDINARY_URL` | needed: these hosts wipe local disk on every deploy |
+| `TRUST_PROXY` | `1` (one platform proxy in front) |
+| `ALLOW_DEVELOPER_SIGNUP` | `true` only if visitors should be able to try staff features |
+
+Optional: `ANTHROPIC_API_KEY`, `TELEMETRY_ALLOWED_ORIGINS`, `GITHUB_TOKEN` with
+`GITHUB_ALLOWED_REPOS`, and alert webhooks. Seed the demo accounts once with
+`npm run seed` from the service's shell.
+
+**Client** — import `client/` into Vercel (framework: Vite) and set
+`VITE_API_URL=https://<your-api-host>/api` (plus `VITE_TELEMETRY_INGEST_KEY` if you
+set an ingest key). `client/vercel.json` already rewrites deep links such as
+`/bugs/:id` to the SPA and caches hashed assets.
+
 ---
 
 ## API Endpoints
@@ -415,7 +476,8 @@ Navigate to [http://localhost:5173](http://localhost:5173)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| POST | `/register` | Register new user | — |
+| GET | `/config` | Public sign-up settings: `{ developerSignup }` | — |
+| POST | `/register` | Register new user (`role: developer` only when developer sign-up is allowed) | — |
 | POST | `/login` | Login, returns JWT | — |
 | GET | `/me` | Get current user | Bearer |
 
@@ -424,14 +486,15 @@ Navigate to [http://localhost:5173](http://localhost:5173)
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/` | List bugs (filter: `status`, `priority`, `assignedTo`, `reporter`, `project`, `search`, `page`, `limit`) | Bearer |
-| POST | `/` | Create bug | Bearer |
+| POST | `/` | Create bug; returns `analysisQueued` when the error log is being analysed in the background | Bearer |
 | GET | `/stats` | Dashboard statistics | Bearer |
+| GET | `/github-config` | Repositories the server's GitHub token may file issues in | Staff |
 | GET | `/:id` | Single bug with comments | Bearer |
-| PUT | `/:id` | Update bug (whitelisted fields only) | Bearer |
+| PUT | `/:id` | Update bug (whitelisted, validated fields). Reporters may edit their bug's content and close/reopen it; status workflow, priority and assignment are staff-only | Bug reporter / Staff |
 | DELETE | `/:id` | Delete bug | Admin only |
 | POST | `/:id/screenshot` | Upload screenshot (multipart `screenshot`) | Bug reporter / Staff |
 | POST | `/:id/annotation` | Upload annotated screenshot (multipart `annotation`) | Bug reporter / Staff |
-| POST | `/:id/github` | Export bug as a GitHub Issue | Staff |
+| POST | `/:id/github` | Export bug as a GitHub Issue (the server token only for `GITHUB_ALLOWED_REPOS`; otherwise send `githubToken`) | Staff |
 
 ### Comments `/api/comments`
 
@@ -455,6 +518,8 @@ Navigate to [http://localhost:5173](http://localhost:5173)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
+| GET | `/` | Every account, for the Team page | Admin only |
+| PUT | `/:id/role` | Change a user's role (`reporter`, `developer`, `admin`); not your own | Admin only |
 | GET | `/assignable` | Developers and admins a bug can be assigned to | Staff |
 | GET | `/profile` | Get current user profile | Bearer |
 | PUT | `/profile` | Update name / change password (returns a fresh token; other sessions are revoked) | Bearer |
@@ -488,8 +553,11 @@ Navigate to [http://localhost:5173](http://localhost:5173)
 ## Embedding the Client SDK
 
 `bugsense.js` is a zero-dependency agent any web app can drop in. It records the
-last 15 user actions, auto-reports uncaught errors and unhandled rejections, and
-injects a floating "Report Bug" widget.
+last 15 user actions (clicks, `pushState`/`replaceState` navigation, `fetch` and
+`XMLHttpRequest` calls — so axios traffic is included — and console errors),
+auto-reports uncaught errors and unhandled rejections, and injects a floating
+"Report Bug" widget. Reports can set priority up to `high` and severity up to
+`major`; escalation to critical/blocker is left to staff.
 
 ```html
 <script
@@ -505,7 +573,7 @@ injects a floating "Report Bug" widget.
 | `data-api-url` | `http://localhost:5000` | Base URL of the BugSense API |
 | `data-project` | `Production Web App` | Project name recorded on every incident |
 | `data-widget` | `true` | Set to `"false"` to suppress the floating report pill |
-| `data-key` | — | Ingest key, required when the server sets `TELEMETRY_INGEST_KEY` |
+| `data-key` | — | Ingest key, required when the server sets `TELEMETRY_INGEST_KEY`. It is visible in your page, so treat it as an identifier; `TELEMETRY_ALLOWED_ORIGINS` is what restricts who can report |
 
 Manual capture:
 
@@ -519,7 +587,7 @@ window.BugSense.destroy(); // restore patched globals and remove the widget
 **Privacy:** the SDK never records form field values or text from inputs,
 textareas, selects, contenteditable regions, or anything inside an element
 marked `data-bugsense-mask`. Query strings and fragments are stripped from every
-reported URL.
+reported URL, including those inside stack traces.
 
 The SDK caps itself at 20 reports per page session and suppresses repeats of the
 same error within 10 seconds, so a crash loop in the host page cannot flood the
@@ -535,15 +603,23 @@ ingestion endpoint. Try it live at `/sdk-demo`.
 |----------|----------|-------------|
 | `PORT` | no | Server port (default: 5000) |
 | `MONGO_URI` | no | MongoDB connection string (defaults to `mongodb://localhost:27017/bugsense`) |
-| `JWT_SECRET` | in production | Secret key for JWT signing. The server refuses to start without it when `NODE_ENV=production` |
-| `ANTHROPIC_API_KEY` | no | Anthropic API key. Without it, AI features fall back to heuristics |
-| `CLIENT_URL` | no | Frontend URL, used for CORS and links in webhook alerts |
-| `NODE_ENV` | no | Set to `production` to enforce the JWT check and production rate limits |
-| `DISCORD_WEBHOOK_URL` | no | Global Discord webhook for incident alerts |
-| `SLACK_WEBHOOK_URL` | no | Global Slack webhook for incident alerts |
-| `GITHUB_TOKEN` | no | Default token for GitHub Issue export (can also be supplied per request) |
-| `TELEMETRY_INGEST_KEY` | no | Shared secret the SDK must send (`data-key`). Unset = open ingestion, fine for local demos |
-| `TELEMETRY_ALLOWED_ORIGINS` | no | Comma-separated origins allowed to post telemetry (default: any) |
+| `JWT_SECRET` | in production | Secret key for JWT signing. In production the server refuses to start if it is missing, a published example value, or shorter than 32 characters. Generate one with `openssl rand -hex 32` |
+| `ALLOW_INSECURE_JWT_SECRET` | no | `true` lets production start with a weak `JWT_SECRET` (with a warning banner). Only the Docker local demo sets this |
+| `NODE_ENV` | no | Set to `production` to enforce the JWT check, production rate limits and the developer sign-up default |
+| `CLIENT_URL` | no | Dashboard origin(s), comma-separated (e.g. production plus a Vercel preview). All pass CORS and the socket handshake; the first is used for links in alerts and GitHub issues |
+| `TRUST_PROXY` | no | Express `trust proxy`: number of proxy hops (default `1`), `true`/`false`, or addresses. Use `0` when the API is reached directly, otherwise clients can spoof their IP past the rate limits |
+| `ANTHROPIC_API_KEY` | no | Anthropic API key. Without it, AI features fall back to clearly labelled heuristics and templates |
+| `REPORT_AI_HOURLY_BUDGET` | no | Max background analyses of new manual reports per hour (default: 100) |
+| `ALLOW_DEVELOPER_SIGNUP` | no | `true`/`false`: may visitors sign up as developers? Unset = allowed in development, refused in production (admins promote people on the Team page) |
+| `CLOUDINARY_URL` | no | `cloudinary://<key>:<secret>@<cloud>`. When set, screenshots, annotations and avatars are stored in Cloudinary instead of local disk (needed on hosts with ephemeral disks, like Render and Railway) |
+| `CLOUDINARY_FOLDER` | no | Cloudinary folder for uploads (default: `bugsense`). Only files inside it are ever deleted |
+| `UPLOADS_DIR` | no | Local upload directory (default: `server/uploads`) |
+| `GITHUB_TOKEN` | no | Server token for GitHub Issue export. Users can always supply their own token per request instead |
+| `GITHUB_ALLOWED_REPOS` | with `GITHUB_TOKEN` | Comma-separated `owner/repo` list the server token may file issues in; offered as one-click choices in the export dialog |
+| `DISCORD_WEBHOOK_URL` | no | Workspace Discord channel for alerts (critical/blocker incidents and regressions) |
+| `SLACK_WEBHOOK_URL` | no | Workspace Slack channel for the same alerts |
+| `TELEMETRY_INGEST_KEY` | no | Key the SDK must send (`data-key`). It ships in page HTML, so it is not a secret; unset = open ingestion, fine for local demos |
+| `TELEMETRY_ALLOWED_ORIGINS` | no | Comma-separated origins allowed to post telemetry (default: any). This is what actually limits who can report; include the dashboard's own origin, since it reports its own crashes |
 | `TELEMETRY_AI_HOURLY_BUDGET` | no | Max background AI analyses started by public telemetry per hour (default: 20) |
 
 ### client/.env
@@ -551,6 +627,8 @@ ingestion endpoint. Try it live at `/sdk-demo`.
 | Variable | Description |
 |----------|-------------|
 | `VITE_API_URL` | Backend API base URL — absolute (`https://api.example.com/api`) or relative (`/api`). Sockets and uploads use the same origin |
+| `VITE_TELEMETRY_INGEST_KEY` | Same value as the server's `TELEMETRY_INGEST_KEY`, if set, so the SDK Playground and the dashboard's own crash reports are accepted |
+| `VITE_SELF_REPORT` | `false` stops the dashboard reporting its own crashes (on by default in production builds); `true` enables it in development |
 
 ---
 
