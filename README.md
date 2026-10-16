@@ -27,6 +27,10 @@ docker compose up --build
 docker compose exec server npm run seed
 ```
 
+The server log opens with a `WARNING` that `JWT_SECRET` is a published example
+value. That is expected for this local demo; set a real secret before exposing
+the stack anywhere ([details](#2a-run-with-docker-fastest)).
+
 Then open **http://localhost:5173** and sign in with:
 
 | Role | Email | Password |
