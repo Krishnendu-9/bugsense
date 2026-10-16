@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, AlertOctagon, Terminal, ShoppingBag, ArrowRight, Zap, RefreshCw, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Play, AlertOctagon, Terminal, ShoppingBag, ArrowRight, Zap, CheckCircle2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSocketEvent } from '../../hooks/useSocket.js';
 import { timeAgo, getApiOrigin } from '../../utils/helpers.js';
@@ -18,6 +18,11 @@ export default function SDKPlayground() {
     script.src = `${getApiOrigin()}/sdk/bugsense.js`;
     script.setAttribute('data-api-url', getApiOrigin());
     script.setAttribute('data-project', 'Storefront Demo');
+    // Must match the server's TELEMETRY_INGEST_KEY when one is set. Like any
+    // SDK key it is visible in the page; TELEMETRY_ALLOWED_ORIGINS is what
+    // actually restricts who can report.
+    const ingestKey = import.meta.env.VITE_TELEMETRY_INGEST_KEY;
+    if (ingestKey) script.setAttribute('data-key', ingestKey);
     script.onload = () => setSdkReady(Boolean(window.BugSense));
     script.onerror = () => toast.error('Could not load the BugSense SDK script');
     document.body.appendChild(script);
@@ -221,7 +226,7 @@ export default function SDKPlayground() {
           <div className="glass-card p-5 border border-white/10 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-white/5">
               <h3 className="text-xs font-semibold text-text-base uppercase tracking-wider text-muted flex items-center gap-1.5">
-                <RefreshCw size={12} className="text-secondary animate-spin" /> Live Ingestion Feed
+                <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" aria-hidden="true" /> Live Ingestion Feed
               </h3>
               <span className="text-[10px] text-muted font-mono">WebSocket Sync</span>
             </div>
