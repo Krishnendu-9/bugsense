@@ -1,0 +1,19 @@
+# Store and check out text files with LF on every OS, so Windows checkouts
+# match CI, Docker and the committed history, and diffs never show line-ending
+# noise.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets: never normalise or diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
