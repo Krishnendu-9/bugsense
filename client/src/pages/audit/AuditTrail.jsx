@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Clock, RefreshCw, AlertTriangle, Bug, Terminal, Github, CheckCircle2, Trash2 } from 'lucide-react';
+import {
+  Shield, Clock, RefreshCw, AlertTriangle, Bug, Terminal, Github, CheckCircle2, Trash2,
+  UserPlus, UserCog, KeyRound, LogIn, MessageSquare, MessageSquareX,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/axios.js';
 import { timeAgo } from '../../utils/helpers.js';
@@ -12,7 +15,24 @@ const ACTION_ICONS = {
   REGRESSION_DETECTED: { icon: AlertTriangle, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
   GITHUB_EXPORTED: { icon: Github, color: 'text-green-400 bg-green-500/15 border-green-500/30' },
   BUG_DELETED: { icon: Trash2, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
+  USER_REGISTERED: { icon: UserPlus, color: 'text-accent bg-accent/15 border-accent/30' },
+  ROLE_CHANGED: { icon: UserCog, color: 'text-secondary bg-secondary/15 border-secondary/30' },
+  PASSWORD_CHANGED: { icon: KeyRound, color: 'text-amber-400 bg-amber-500/15 border-amber-500/30' },
+  LOGIN_FAILED: { icon: LogIn, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
+  COMMENT_ADDED: { icon: MessageSquare, color: 'text-primary bg-primary/15 border-primary/30' },
+  COMMENT_DELETED: { icon: MessageSquareX, color: 'text-muted bg-white/5 border-white/10' },
 };
+
+const TABS = [
+  { id: '', label: 'All Events' },
+  { id: 'bug', label: 'Bugs & Mutations' },
+  { id: 'telemetry', label: 'SDK Telemetry' },
+  { id: 'comment', label: 'Comments' },
+  { id: 'user', label: 'Accounts' },
+];
+
+// Entries whose entityId is a bug, so they can link to it.
+const BUG_LINKED_TYPES = ['bug', 'telemetry', 'comment'];
 
 const PAGE_SIZE = 30;
 
@@ -40,28 +60,43 @@ export default function AuditTrail() {
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  // Bumped by the Refresh button to refetch the current page.
+  const [reloadCount, setReloadCount] = useState(0);
+  const manualRefresh = useRef(false);
 
-  const fetchLogs = useCallback(async (manual = false) => {
-    try {
-      setRefreshing(true);
-      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-      if (filterType) params.set('entityType', filterType);
-      const res = await api.get(`/audit?${params}`);
-      setLogs(res.data.logs || []);
-      setTotal(res.data.total || 0);
-      setPages(res.data.pages || 1);
-      if (manual) toast.success('Audit trail refreshed');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to load audit logs');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [page, filterType]);
-
+  // State is only set once the request settles; the loading and refreshing
+  // flags are raised by the handlers that trigger a fetch.
   useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+    let cancelled = false;
+    const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+    if (filterType) params.set('entityType', filterType);
+
+    api.get(`/audit?${params}`)
+      .then((res) => {
+        if (cancelled) return;
+        setLogs(res.data.logs || []);
+        setTotal(res.data.total || 0);
+        setPages(res.data.pages || 1);
+        if (manualRefresh.current) toast.success('Audit trail refreshed');
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(err.response?.data?.message || 'Failed to load audit logs');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        manualRefresh.current = false;
+        setLoading(false);
+        setRefreshing(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [page, filterType, reloadCount]);
+
+  const refresh = () => {
+    manualRefresh.current = true;
+    setRefreshing(true);
+    setReloadCount((n) => n + 1);
+  };
 
   const selectFilter = (id) => {
     setFilterType(id);
@@ -81,27 +116,23 @@ export default function AuditTrail() {
             </span>
           </div>
           <p className="text-xs text-muted">
-            Chronological record of bug changes, telemetry events and GitHub exports.
+            Chronological record of bug changes, telemetry, comments, account events and GitHub exports.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => fetchLogs(true)}
+            onClick={refresh}
             disabled={refreshing}
             className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5"
           >
-            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Refresh
+            <RefreshCw size={13} className={refreshing ? 'animate-pulse' : ''} /> {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
       </div>
 
       {/* Filter Tabs */}
       <div className="flex gap-2 border-b border-white/5 pb-3 overflow-x-auto text-xs" role="tablist">
-        {[
-          { id: '', label: 'All Events' },
-          { id: 'bug', label: 'Bugs & Mutations' },
-          { id: 'telemetry', label: 'SDK Telemetry' },
-        ].map((tab) => (
+        {TABS.map((tab) => (
           <button
             key={tab.id}
             role="tab"
@@ -133,7 +164,7 @@ export default function AuditTrail() {
           {logs.map((log) => {
             const config = ACTION_ICONS[log.action] || { icon: Shield, color: 'text-muted bg-white/5 border-white/10' };
             const Icon = config.icon;
-            const linksToBug = log.entityId && log.action !== 'BUG_DELETED' && ['bug', 'telemetry'].includes(log.entityType);
+            const linksToBug = log.entityId && log.action !== 'BUG_DELETED' && BUG_LINKED_TYPES.includes(log.entityType);
 
             return (
               <div key={log._id} className="p-4 flex items-start gap-3.5 hover:bg-white/[0.02] transition-colors">

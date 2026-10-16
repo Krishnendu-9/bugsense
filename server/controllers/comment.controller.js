@@ -3,6 +3,7 @@ import { validationResult } from 'express-validator';
 import Comment from '../models/Comment.model.js';
 import Bug from '../models/Bug.model.js';
 import { broadcast } from '../config/socket.js';
+import { logActivity } from '../services/audit.service.js';
 
 export const addComment = async (req, res, next) => {
   const errors = validationResult(req);
@@ -14,7 +15,7 @@ export const addComment = async (req, res, next) => {
 
   try {
     if (!mongoose.isValidObjectId(bugId)) return res.status(404).json({ message: 'Bug not found' });
-    const bug = await Bug.findById(bugId).select('_id');
+    const bug = await Bug.findById(bugId).select('_id title');
     if (!bug) return res.status(404).json({ message: 'Bug not found' });
 
     const comment = await Comment.create({ bug: bugId, author: req.user._id, content });
@@ -23,6 +24,16 @@ export const addComment = async (req, res, next) => {
     await comment.populate('author', 'name email avatar');
 
     broadcast('comment:added', comment, `bug:${bugId}`);
+    // entityId is the bug, so the audit trail can link straight to it.
+    logActivity({
+      action: 'COMMENT_ADDED',
+      entityType: 'comment',
+      entityId: bugId,
+      performedBy: req.user._id,
+      performedByName: req.user.name,
+      details: `Commented on "${bug.title}"`,
+      metadata: { commentId: comment._id.toString() },
+    });
 
     return res.status(201).json(comment);
   } catch (err) {
@@ -62,6 +73,15 @@ export const deleteComment = async (req, res, next) => {
     await comment.deleteOne();
 
     broadcast('comment:deleted', { _id: req.params.id, bugId }, `bug:${bugId}`);
+    logActivity({
+      action: 'COMMENT_DELETED',
+      entityType: 'comment',
+      entityId: bugId,
+      performedBy: req.user._id,
+      performedByName: req.user.name,
+      details: isAuthor ? 'Deleted their own comment' : 'Deleted a comment as admin',
+      metadata: { commentId: req.params.id },
+    });
 
     return res.json({ message: 'Comment deleted successfully' });
   } catch (err) {
