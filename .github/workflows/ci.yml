@@ -35,10 +35,11 @@ jobs:
         working-directory: server
         run: npm run lint
 
-      # API + unit tests against an in-memory MongoDB (mongodb-memory-server).
-      - name: Test
+      # API + unit tests against an in-memory MongoDB (mongodb-memory-server),
+      # with a line/branch coverage report in the job log.
+      - name: Test (with coverage)
         working-directory: server
-        run: npm test
+        run: npm run test:coverage
 
   client:
     name: Client (Node ${{ matrix.node-version }})
@@ -68,10 +69,11 @@ jobs:
         working-directory: client
         run: npm run lint
 
-      # Component and utility tests (Vitest + React Testing Library, jsdom).
-      - name: Test
+      # Component, utility and SDK tests (Vitest + React Testing Library,
+      # jsdom), with a coverage summary in the job log.
+      - name: Test (with coverage)
         working-directory: client
-        run: npm test
+        run: npm run test:coverage
 
       - name: Build
         working-directory: client
