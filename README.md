@@ -359,8 +359,9 @@ The client image is built with `VITE_API_URL=/api`, so all browser traffic goes
 through nginx, which proxies `/api`, `/uploads`, `/sdk` and `/socket.io`
 to the server container. Neither the server nor MongoDB is published on a host
 port, so a MongoDB already installed on your machine does not get in the way.
-The API waits for MongoDB's healthcheck, runs as the unprivileged `node` user,
-and has its own healthcheck.
+All three containers have healthchecks: the API waits for MongoDB to be healthy
+and the client waits for the API, so `docker compose ps` shows all three as
+`healthy` once the app is usable. The API runs as the unprivileged `node` user.
 
 To inspect the database with MongoDB Compass or `mongosh`, publish it on a spare
 loopback port with a `docker-compose.override.yml` next to `docker-compose.yml`

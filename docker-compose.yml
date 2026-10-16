@@ -77,8 +77,11 @@ services:
     restart: unless-stopped
     ports:
       - "5173:80"
+    # Start once the API answers, so the first page load never hits a 502 from
+    # nginx proxying to a server that is still connecting to MongoDB.
     depends_on:
-      - server
+      server:
+        condition: service_healthy
     networks:
       - bugsense-network
 
