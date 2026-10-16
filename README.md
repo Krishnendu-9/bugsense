@@ -31,7 +31,7 @@ The server log opens with a `WARNING` that `JWT_SECRET` is a published example
 value. That is expected for this local demo; set a real secret before exposing
 the stack anywhere ([details](#2a-run-with-docker-fastest)).
 
-Then open **http://localhost:5173** and sign in with:
+Then open **http://localhost:8080** and sign in with:
 
 | Role | Email | Password |
 |---|---|---|
@@ -357,7 +357,10 @@ cp .env.example .env    # optional: add ANTHROPIC_API_KEY and a real JWT_SECRET
 docker compose up --build
 ```
 
-- App (and API under `/api`): [http://localhost:5173](http://localhost:5173)
+- App (and API under `/api`): [http://localhost:8080](http://localhost:8080)
+
+The client is published on 8080 rather than Vite's 5173, so it can run alongside
+a Vite dev server.
 
 The client image is built with `VITE_API_URL=/api`, so all browser traffic goes
 through nginx, which proxies `/api`, `/uploads`, `/sdk` and `/socket.io`
@@ -466,7 +469,8 @@ Set `MONGO_URI_TEST` to run the tests against an existing MongoDB instead
 
 ### 6. Open in browser
 
-Navigate to [http://localhost:5173](http://localhost:5173)
+Navigate to [http://localhost:5173](http://localhost:5173), the Vite dev server.
+(The Docker stack from step 2a serves the app on 8080 instead.)
 
 ### 7. Deploying (API on Render/Railway, client on Vercel)
 
