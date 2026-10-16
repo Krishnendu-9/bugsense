@@ -10,10 +10,13 @@
 
 ---
 
-## Run it in 60 seconds
+## Run it in two commands
 
 No API keys and no config. The full stack — MongoDB, the Express API and the
-React client behind nginx — comes up with two commands:
+React client behind nginx — comes up with two commands. The first run pulls the
+MongoDB image (about 300 MB) and builds the app, which takes a few minutes: two
+in our tests on a fast connection with Docker already running, longer on a slow
+one. After that, `docker compose up` is ready in about 20 seconds.
 
 ```bash
 git clone https://github.com/krishnendu-9/bugsense.git
