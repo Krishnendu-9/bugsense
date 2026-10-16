@@ -17,6 +17,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <App />
           <Toaster
             position="top-right"
+            // Below the sticky 64px navbar (h-16), so toasts never cover the
+            // signed-in user's name, avatar or the Live indicator.
+            containerStyle={{ top: 76 }}
             toastOptions={{
               style: {
                 background: '#1E293B',

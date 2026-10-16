@@ -19,3 +19,5 @@ claude.md
 TESTING-SHEET.md
 USER-GUIDE.md
 dev_docs/
+# Personal compose tweaks (e.g. publishing MongoDB for Compass; see README)
+docker-compose.override.yml

@@ -14,7 +14,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20.x, 22.x]
+        # The exact floor in package.json engines (sanitize-html needs
+        # >=22.12, jsdom ^22.13), and the LTS the Docker images run.
+        node-version: ['22.13.0', 24.x]
 
     steps:
       - name: Checkout repository
@@ -48,7 +50,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20.x, 22.x]
+        # Same floor and LTS as the server job; vitest and jsdom set the floor
+        # here.
+        node-version: ['22.13.0', 24.x]
 
     steps:
       - name: Checkout repository

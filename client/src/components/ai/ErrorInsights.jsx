@@ -1,6 +1,32 @@
 import { Lightbulb, Wrench, Cpu, Clock, Info } from 'lucide-react';
 import { formatDate } from '../../utils/helpers.js';
 
+// The heuristic rules and the model both mark code with Markdown backticks.
+// Inline `spans` and ```fenced``` blocks render as code instead of showing the
+// backticks; everything else stays plain text, which React escapes.
+const CODE_PATTERN = /(```[\s\S]*?```|`[^`\n]+`)/;
+
+function TextWithCode({ text }) {
+  // split() with a capturing group puts the code matches at odd indexes.
+  return String(text).split(CODE_PATTERN).map((part, i) => {
+    if (i % 2 === 0) return part;
+    if (part.startsWith('```')) {
+      // Drop an optional language tag line ("```js").
+      const code = part.slice(3, -3).replace(/^[\w-]*\n/, '');
+      return (
+        <pre key={i} className="my-2 p-3 rounded-lg bg-black/40 border border-white/5 font-mono text-xs overflow-x-auto whitespace-pre">
+          {code}
+        </pre>
+      );
+    }
+    return (
+      <code key={i} className="font-mono text-[0.85em] px-1 py-0.5 rounded bg-black/40 text-text-base">
+        {part.slice(1, -1)}
+      </code>
+    );
+  });
+}
+
 export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
   if (isLoading) {
     return (
@@ -73,7 +99,9 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
             <Lightbulb size={14} className="text-amber-400 flex-shrink-0" />
             <h4 className="text-xs font-semibold text-amber-400 uppercase tracking-wide">Possible Cause</h4>
           </div>
-          <p className="text-sm text-text-base leading-relaxed">{insights.possibleCause}</p>
+          <div className="text-sm text-text-base leading-relaxed whitespace-pre-wrap">
+            <TextWithCode text={insights.possibleCause} />
+          </div>
         </div>
 
         <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
@@ -81,7 +109,10 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
             <Wrench size={14} className="text-primary flex-shrink-0" />
             <h4 className="text-xs font-semibold text-primary uppercase tracking-wide">Suggested Fix</h4>
           </div>
-          <p className="text-sm text-text-base leading-relaxed whitespace-pre-wrap">{insights.suggestedFix}</p>
+          {/* A div, not a p: fenced code renders as a <pre>, which a <p> cannot contain. */}
+          <div className="text-sm text-text-base leading-relaxed whitespace-pre-wrap">
+            <TextWithCode text={insights.suggestedFix} />
+          </div>
         </div>
       </div>
     </div>

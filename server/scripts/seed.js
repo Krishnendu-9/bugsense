@@ -28,13 +28,16 @@ const seed = async () => {
     process.exit(1);
   }
 
-  await Promise.all([
+  // Even without users there can be SDK incidents or audit entries, so clear
+  // everything, but only say so when something was actually removed.
+  const cleared = await Promise.all([
     User.deleteMany({}),
     Bug.deleteMany({}),
     Comment.deleteMany({}),
     AuditLog.deleteMany({}),
   ]);
-  console.log('Cleared existing data');
+  const removed = cleared.reduce((sum, result) => sum + result.deletedCount, 0);
+  if (removed > 0) console.log(`Cleared existing data (${removed} documents)`);
 
   const admin = await User.create({
     name: 'Admin User',

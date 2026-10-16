@@ -3,28 +3,35 @@
 [![CI Build](https://github.com/krishnendu-9/bugsense/actions/workflows/ci.yml/badge.svg)](https://github.com/krishnendu-9/bugsense/actions)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)
 ![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=black)
-![Node](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
+![Node](https://img.shields.io/badge/Node.js-22.13+-339933?logo=node.js&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-v3-38B2AC?logo=tailwind-css&logoColor=white)
 
 > A MERN-stack bug tracker that turns vague bug reports into structured, reproducible ones — with an embeddable crash-reporting SDK, real-time collaboration and AI-assisted debugging.
 
 ---
 
-## Run it in 60 seconds
+## Run it in two commands
 
 No API keys and no config. The full stack — MongoDB, the Express API and the
-React client behind nginx — comes up with two commands:
+React client behind nginx — comes up with two commands. The first run pulls the
+MongoDB image (about 300 MB) and builds the app, which takes a few minutes: two
+in our tests on a fast connection with Docker already running, longer on a slow
+one. After that, `docker compose up` is ready in about 20 seconds.
 
 ```bash
 git clone https://github.com/krishnendu-9/bugsense.git
 cd bugsense
 docker compose up --build
 
-# in a second terminal, load 3 demo users and 4 sample bugs
+# in a second terminal, load 3 demo users, 4 sample bugs and a comment
 docker compose exec server npm run seed
 ```
 
-Then open **http://localhost:5173** and sign in with:
+The server log opens with a `WARNING` that `JWT_SECRET` is a published example
+value. That is expected for this local demo; set a real secret before exposing
+the stack anywhere ([details](#2a-run-with-docker-fastest)).
+
+Then open **http://localhost:8080** and sign in with:
 
 | Role | Email | Password |
 |---|---|---|
@@ -330,7 +337,7 @@ bugsense/
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22.13+ (22 or 24 LTS; CI runs 22.13.0 and 24, the Docker images use 24)
 - MongoDB (local or Atlas)
 - Anthropic API key (optional — AI features degrade gracefully without it)
 
@@ -350,13 +357,32 @@ cp .env.example .env    # optional: add ANTHROPIC_API_KEY and a real JWT_SECRET
 docker compose up --build
 ```
 
-- App (and API under `/api`): [http://localhost:5173](http://localhost:5173)
+- App (and API under `/api`): [http://localhost:8080](http://localhost:8080)
+
+The client is published on 8080 rather than Vite's 5173, so it can run alongside
+a Vite dev server.
 
 The client image is built with `VITE_API_URL=/api`, so all browser traffic goes
 through nginx, which proxies `/api`, `/uploads`, `/sdk` and `/socket.io`
-to the server container. The server itself is not published on a host port, and
-MongoDB is bound to `127.0.0.1` only. The API waits for MongoDB's healthcheck,
-runs as the unprivileged `node` user, and has its own healthcheck.
+to the server container. Neither the server nor MongoDB is published on a host
+port, so a MongoDB already installed on your machine does not get in the way.
+All three containers have healthchecks: the API waits for MongoDB to be healthy
+and the client waits for the API, so `docker compose ps` shows all three as
+`healthy` once the app is usable. The API runs as the unprivileged `node` user.
+
+To inspect the database with MongoDB Compass or `mongosh`, publish it on a spare
+loopback port with a `docker-compose.override.yml` next to `docker-compose.yml`
+(compose picks it up automatically, and it is gitignored):
+
+```yaml
+services:
+  mongodb:
+    ports:
+      - "127.0.0.1:27018:27017"   # loopback only: the database has no auth
+```
+
+Then connect to `mongodb://localhost:27018/bugsense`. Port 27018 avoids a clash
+with a local MongoDB on 27017.
 
 The server runs with `NODE_ENV=production`. With no `JWT_SECRET` in `.env`, it
 falls back to a public demo secret and starts only because compose sets
@@ -416,7 +442,7 @@ cd server
 npm run seed
 ```
 
-Creates three demo accounts and four sample bugs. Seeding **deletes all data**, so it
+Creates three demo accounts, four sample bugs and one comment. Seeding **deletes all data**, so it
 refuses to run on a database that already has users; use `npm run seed:reset` to
 wipe and reseed deliberately.
 
@@ -443,7 +469,8 @@ Set `MONGO_URI_TEST` to run the tests against an existing MongoDB instead
 
 ### 6. Open in browser
 
-Navigate to [http://localhost:5173](http://localhost:5173)
+Navigate to [http://localhost:5173](http://localhost:5173), the Vite dev server.
+(The Docker stack from step 2a serves the app on 8080 instead.)
 
 ### 7. Deploying (API on Render/Railway, client on Vercel)
 

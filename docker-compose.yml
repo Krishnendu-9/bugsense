@@ -3,11 +3,11 @@ services:
     image: mongo:8-noble
     container_name: bugsense-mongodb
     restart: unless-stopped
-    # Bound to the host's loopback only: the database has no authentication, so
-    # it must not be reachable from the network. Containers reach it over
-    # bugsense-network regardless of this mapping.
-    ports:
-      - "127.0.0.1:27017:27017"
+    # Not published on a host port: the server reaches it over bugsense-network
+    # and the seed runs inside the server container, so nothing on the host
+    # needs it. Publishing 27017 would also clash with a locally installed
+    # MongoDB. To inspect the data with Compass, see "Run with Docker" in the
+    # README (a docker-compose.override.yml that maps it to 127.0.0.1:27018).
     volumes:
       - mongo-data:/data/db
     healthcheck:
@@ -43,7 +43,9 @@ services:
       - JWT_SECRET=${JWT_SECRET:-bugsense_local_demo_secret_change_me}
       - ALLOW_INSECURE_JWT_SECRET=${ALLOW_INSECURE_JWT_SECRET:-true}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - CLIENT_URL=${CLIENT_URL:-http://localhost:5173}
+      # Where the dashboard is served (the client container's host port);
+      # used for CORS and for links in alerts and GitHub issues.
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:8080}
       - TELEMETRY_INGEST_KEY=${TELEMETRY_INGEST_KEY:-}
       - TELEMETRY_ALLOWED_ORIGINS=${TELEMETRY_ALLOWED_ORIGINS:-}
       - TELEMETRY_AI_HOURLY_BUDGET=${TELEMETRY_AI_HOURLY_BUDGET:-20}
@@ -75,10 +77,15 @@ services:
         - VITE_TELEMETRY_INGEST_KEY=${TELEMETRY_INGEST_KEY:-}
     container_name: bugsense-client
     restart: unless-stopped
+    # 8080, not 5173: this is nginx serving a production build, and 5173 is
+    # Vite's dev-server port, likely already taken on a developer's machine.
     ports:
-      - "5173:80"
+      - "8080:80"
+    # Start once the API answers, so the first page load never hits a 502 from
+    # nginx proxying to a server that is still connecting to MongoDB.
     depends_on:
-      - server
+      server:
+        condition: service_healthy
     networks:
       - bugsense-network
 

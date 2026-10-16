@@ -1,4 +1,5 @@
-FROM node:20-alpine AS builder
+# Node 24 LTS for the build stage (supported floor: 22.13, see package.json).
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -22,5 +23,10 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
+
+# nginx serving the app shell is what "healthy" means for this container; the
+# API has its own healthcheck. busybox wget ships with nginx:alpine.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
