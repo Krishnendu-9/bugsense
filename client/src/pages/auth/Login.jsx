@@ -47,10 +47,11 @@ export default function Login() {
         <div className="glass-card p-8">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             <div>
-              <label className="label">Email</label>
+              <label className="label" htmlFor="login-email">Email</label>
               <div className="relative">
                 <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
+                  id="login-email"
                   {...register('email', {
                     required: 'Email is required',
                     pattern: { value: /^\S+@\S+\.\S+$/, message: 'Invalid email' },
@@ -65,10 +66,11 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="label">Password</label>
+              <label className="label" htmlFor="login-password">Password</label>
               <div className="relative">
                 <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
+                  id="login-password"
                   {...register('password', { required: 'Password is required' })}
                   type={showPassword ? 'text' : 'password'}
                   className="input-field pl-9 pr-10"
@@ -78,6 +80,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-base transition-colors"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -89,7 +92,7 @@ export default function Login() {
             <button type="submit" disabled={isLoading} className="btn-primary w-full py-2.5">
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
                   Signing in...
                 </span>
               ) : (
