@@ -4,12 +4,15 @@ import { generateFingerprint } from '../utils/fingerprint.util.js';
 import { clampString, toSafeText } from '../utils/sanitize.js';
 import { tryConsumeTelemetryAIBudget } from '../utils/aiBudget.js';
 import { dispatchWebhookAlert } from '../services/webhook.service.js';
-import { analyzeError } from '../services/ai.service.js';
+import { queueAutoAnalysis } from '../services/autoAnalysis.service.js';
 import { logActivity } from '../services/audit.service.js';
 import { emitBugCreated, emitBugUpdated } from '../services/bugEvents.service.js';
 
-const PRIORITIES = ['low', 'medium', 'high', 'critical'];
-const SEVERITIES = ['minor', 'major', 'blocker'];
+// The endpoint is public, so reports cannot claim the top levels: 'critical'
+// and 'blocker' page every alert channel. An SDK report tops out at high/major
+// and staff escalate it after triage.
+const SDK_PRIORITIES = ['low', 'medium', 'high'];
+const SDK_SEVERITIES = ['minor', 'major'];
 const BREADCRUMB_CATEGORIES = ['click', 'navigation', 'xhr', 'console', 'error'];
 
 const LIMITS = {
@@ -82,8 +85,8 @@ const normalizeReport = (body = {}) => {
     errorLog,
     breadcrumbs: normalizeBreadcrumbs(body.breadcrumbs),
     project: clampString(body.project || 'Web Client', LIMITS.project),
-    priority: pickEnum(body.priority, PRIORITIES, 'high'),
-    severity: pickEnum(body.severity, SEVERITIES, 'major'),
+    priority: pickEnum(body.priority, SDK_PRIORITIES, 'high'),
+    severity: pickEnum(body.severity, SDK_SEVERITIES, 'major'),
     browserInfo: {
       browser: clampString(browserInfo.browser, LIMITS.browserField),
       version: clampString(browserInfo.version, LIMITS.browserField),
@@ -145,21 +148,6 @@ const respondWithRepeat = async (res, { bug, isRegression }) => {
   });
 };
 
-const startBackgroundAnalysis = (bug) => {
-  if (!bug.errorLog || !tryConsumeTelemetryAIBudget()) return;
-
-  analyzeError(bug.errorLog, bug.description)
-    .then(async (insights) => {
-      const updated = await Bug.findByIdAndUpdate(
-        bug._id,
-        { aiInsights: { ...insights, analyzedAt: new Date() } },
-        { new: true }
-      );
-      if (updated) await emitBugUpdated(updated);
-    })
-    .catch((err) => console.warn('Background telemetry AI analysis error:', err.message));
-};
-
 /**
  * Controller: Public telemetry ingestion endpoint for the client SDK (`bugsense.js`)
  */
@@ -208,7 +196,7 @@ export const reportTelemetry = async (req, res, next) => {
       details: `Client SDK reported runtime incident: "${newBug.title}" (${newBug.severity})`,
     });
 
-    startBackgroundAnalysis(newBug);
+    queueAutoAnalysis(newBug, tryConsumeTelemetryAIBudget);
 
     return res.status(201).json({
       success: true,

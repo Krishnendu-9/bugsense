@@ -1,5 +1,6 @@
 import User from '../models/User.model.js';
 import { isAllowedWebhookUrl } from '../utils/webhookUrl.js';
+import { getPrimaryClientUrl } from '../utils/clientOrigins.js';
 
 const PRIORITY_COLORS = {
   critical: 0x7c3aed, // Purple
@@ -11,7 +12,7 @@ const PRIORITY_COLORS = {
 const buildDiscordPayload = (bug, eventType, bugUrl) => {
   const titlePrefix = eventType === 'regression' ? '🚨 [REGRESSION]' : '🐛 [NEW BUG]';
   return {
-    username: 'BugSense Observability',
+    username: 'BugSense',
     embeds: [
       {
         title: `${titlePrefix} ${bug.title}`.slice(0, 256),
@@ -47,6 +48,8 @@ const post = async (type, url, payload) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      // The URL was allowlisted, the redirect target would not be.
+      redirect: 'error',
       signal: AbortSignal.timeout(5000),
     });
   } catch (err) {
@@ -54,32 +57,34 @@ const post = async (type, url, payload) => {
   }
 };
 
-// Per-user preferences from the Profile page: "critical" alerts cover newly
-// reported incidents with critical priority or blocker severity, "regression"
-// alerts cover resolved incidents that re-occur.
-const userWantsAlert = (webhooks, bug, eventType) => {
-  if (eventType === 'regression') return webhooks.alertOnRegression !== false;
-  if (eventType === 'created') {
-    return webhooks.alertOnCritical !== false && (bug.priority === 'critical' || bug.severity === 'blocker');
-  }
+// What pages anyone at all: a new incident with critical priority or blocker
+// severity, or a resolved incident that re-occurs. Everything else is left to
+// the dashboard, or a busy project would flood every channel.
+export const isAlertWorthy = (bug, eventType) => {
+  if (eventType === 'regression') return true;
+  if (eventType === 'created') return bug.priority === 'critical' || bug.severity === 'blocker';
   return false;
 };
+
+// Per-user preferences from the Profile page, applied on top of isAlertWorthy.
+const userWantsAlert = (webhooks, eventType) =>
+  eventType === 'regression' ? webhooks.alertOnRegression !== false : webhooks.alertOnCritical !== false;
 
 /**
  * Sends incident alerts for new and regressed bugs. Plain repeat occurrences do
  * not alert — a crash loop would otherwise flood every channel.
  */
 export const dispatchWebhookAlert = async (bug, eventType = 'created') => {
-  if (eventType !== 'created' && eventType !== 'regression') return;
+  if (!isAlertWorthy(bug, eventType)) return;
 
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  const clientUrl = getPrimaryClientUrl();
   const bugUrl = `${clientUrl}/bugs/${bug._id}`;
   const discordPayload = buildDiscordPayload(bug, eventType, bugUrl);
   const slackPayload = buildSlackPayload(bug, eventType, bugUrl);
 
   const targets = [];
 
-  // Workspace-wide channels configured by the operator receive every alert.
+  // Workspace-wide channels configured by the operator.
   if (process.env.DISCORD_WEBHOOK_URL) targets.push(['discord', process.env.DISCORD_WEBHOOK_URL]);
   if (process.env.SLACK_WEBHOOK_URL) targets.push(['slack', process.env.SLACK_WEBHOOK_URL]);
 
@@ -89,7 +94,7 @@ export const dispatchWebhookAlert = async (bug, eventType = 'created') => {
     }).select('webhooks');
 
     for (const { webhooks } of users) {
-      if (!webhooks || !userWantsAlert(webhooks, bug, eventType)) continue;
+      if (!webhooks || !userWantsAlert(webhooks, eventType)) continue;
       if (webhooks.discordUrl) targets.push(['discord', webhooks.discordUrl]);
       if (webhooks.slackUrl) targets.push(['slack', webhooks.slackUrl]);
     }
