@@ -68,6 +68,7 @@ export const createGitPatch = async (req, res, next) => {
     if (bug && patch.source === 'claude') {
       bug.gitPatch = { diff: patch.diff, explanation: patch.explanation, generatedAt: patch.generatedAt };
       await bug.save();
+      await emitBugUpdated(bug);
     }
 
     return res.json(patch);
