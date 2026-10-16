@@ -22,9 +22,20 @@ const QUILL_MODULES = {
   ],
 };
 
-export default function BugForm({ onSubmit, defaultValues = {}, isLoading = false }) {
+// Fields the edit form sends. Screenshots, browser details and triage fields
+// (status, priority, assignee) are changed elsewhere, so editing never
+// overwrites them.
+const EDITABLE_FIELDS = ['title', 'description', 'severity', 'project', 'errorLog'];
+
+/**
+ * mode="create": the full report form. mode="edit": the bug's content only,
+ * pre-filled from `defaultValues`, with `onCancel` closing it.
+ */
+export default function BugForm({ onSubmit, defaultValues = {}, isLoading = false, mode = 'create', onCancel }) {
   const { user } = useAuth();
-  const staff = isStaff(user);
+  const isEdit = mode === 'edit';
+  // Status is set at creation by staff only; after that it is triage.
+  const staff = isStaff(user) && !isEdit;
   const fileInputRef = useRef(null);
   const [steps, setSteps] = useState(defaultValues.steps || []);
   const [screenshotFile, setScreenshotFile] = useState(null);
@@ -97,7 +108,14 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
   };
 
   const onFormSubmit = (data) => {
-    const payload = { ...data, steps: steps.map((s) => s.trim()).filter(Boolean), tags, browserInfo };
+    const cleanSteps = steps.map((s) => s.trim()).filter(Boolean);
+    if (isEdit) {
+      const content = Object.fromEntries(EDITABLE_FIELDS.map((field) => [field, data[field]]));
+      onSubmit({ ...content, steps: cleanSteps, tags });
+      return;
+    }
+
+    const payload = { ...data, steps: cleanSteps, tags, browserInfo };
     // Triage fields are the team's call; the API ignores them from reporters.
     if (!staff) delete payload.status;
     onSubmit({ ...payload, screenshotFile });
@@ -145,15 +163,17 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
         {errors.description && <p className="text-priority-high text-xs mt-1">{errors.description.message}</p>}
       </div>
 
-      <div className={`grid grid-cols-1 gap-4 ${staff ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-        <div>
-          <label className="label" htmlFor="bug-priority">Priority</label>
-          <select id="bug-priority" {...register('priority')} className="input-field">
-            {PRIORITY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
+      <div className={`grid grid-cols-1 gap-4 ${isEdit ? 'sm:grid-cols-1' : staff ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+        {!isEdit && (
+          <div>
+            <label className="label" htmlFor="bug-priority">Priority</label>
+            <select id="bug-priority" {...register('priority')} className="input-field">
+              {PRIORITY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {staff && (
           <div>
             <label className="label" htmlFor="bug-status">Status</label>
@@ -206,18 +226,20 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
         />
       </div>
 
-      <div>
-        <p className="label flex items-center gap-2">
-          <Monitor size={14} />
-          Browser Info
-          <span className="text-xs text-muted normal-case tracking-normal font-normal">(auto-captured)</span>
-        </p>
-        <div className="p-3 rounded-lg bg-white/5 border border-border text-xs text-muted font-mono space-y-1">
-          <p>Browser: {browserInfo.browser} {browserInfo.version}</p>
-          <p>OS: {browserInfo.os}</p>
-          <p>Screen: {browserInfo.screenSize}</p>
+      {!isEdit && (
+        <div>
+          <p className="label flex items-center gap-2">
+            <Monitor size={14} />
+            Browser Info
+            <span className="text-xs text-muted normal-case tracking-normal font-normal">(auto-captured)</span>
+          </p>
+          <div className="p-3 rounded-lg bg-white/5 border border-border text-xs text-muted font-mono space-y-1">
+            <p>Browser: {browserInfo.browser} {browserInfo.version}</p>
+            <p>OS: {browserInfo.os}</p>
+            <p>Screen: {browserInfo.screenSize}</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <label className="label" htmlFor="bug-tag">Tags</label>
@@ -252,59 +274,61 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
         </div>
       </div>
 
-      <div>
-        <p className="label">Screenshot</p>
-        {screenshotPreview ? (
-          <div className="relative rounded-xl overflow-hidden border border-border">
-            <img src={screenshotPreview} alt="Screenshot preview" className="w-full max-h-48 object-cover" />
-            <button
-              type="button"
-              onClick={removeScreenshot}
-              aria-label="Remove screenshot"
-              className="absolute top-2 right-2 p-1.5 rounded-lg bg-priority-high/80 text-white hover:bg-priority-high transition-colors"
+      {!isEdit && (
+        <div>
+          <p className="label">Screenshot</p>
+          {screenshotPreview ? (
+            <div className="relative rounded-xl overflow-hidden border border-border">
+              <img src={screenshotPreview} alt="Screenshot preview" className="w-full max-h-48 object-cover" />
+              <button
+                type="button"
+                onClick={removeScreenshot}
+                aria-label="Remove screenshot"
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-priority-high/80 text-white hover:bg-priority-high transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Upload a screenshot"
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors duration-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-white/[0.03]'
+              }`}
             >
-              <X size={14} />
-            </button>
-          </div>
-        ) : (
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label="Upload a screenshot"
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-            className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors duration-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-white/[0.03]'
-            }`}
-          >
-            <Upload size={24} className="mx-auto text-muted mb-2" />
-            <p className="text-sm text-muted">Drag & drop screenshot or <span className="text-primary">browse</span></p>
-            <p className="text-xs text-muted mt-1">PNG, JPG, GIF or WebP up to 5MB</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ALLOWED_IMAGE_TYPES.join(',')}
-              className="hidden"
-              onChange={handleFileChange}
-            />
-          </div>
-        )}
-      </div>
+              <Upload size={24} className="mx-auto text-muted mb-2" />
+              <p className="text-sm text-muted">Drag & drop screenshot or <span className="text-primary">browse</span></p>
+              <p className="text-xs text-muted mt-1">PNG, JPG, GIF or WebP up to 5MB</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ALLOWED_IMAGE_TYPES.join(',')}
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end gap-3 pt-2 border-t border-border">
-        <button type="button" onClick={() => window.history.back()} className="btn-secondary">
+        <button type="button" onClick={onCancel || (() => window.history.back())} className="btn-secondary">
           Cancel
         </button>
         <button type="submit" disabled={isLoading} className="btn-primary min-w-[120px] disabled:opacity-70">
-          {isLoading ? 'Submitting...' : 'Submit Bug'}
+          {isEdit ? (isLoading ? 'Saving...' : 'Save Changes') : isLoading ? 'Submitting...' : 'Submit Bug'}
         </button>
       </div>
     </form>

@@ -85,3 +85,50 @@ describe('BugForm', () => {
     expect(screen.queryByAltText('Screenshot preview')).not.toBeInTheDocument();
   });
 });
+
+describe('BugForm edit mode', () => {
+  const existing = {
+    title: 'Old title',
+    description: '<p>Old</p>',
+    severity: 'major',
+    project: 'Web',
+    errorLog: 'TypeError',
+    steps: ['One'],
+    tags: ['ui'],
+  };
+
+  it('pre-fills the content and sends only content fields', async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<BugForm mode="edit" defaultValues={existing} onSubmit={onSubmit} />, { user: USERS.developer });
+
+    expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument();
+    expect(screen.queryByText('Screenshot')).not.toBeInTheDocument();
+    expect(screen.queryByText(/auto-captured/)).not.toBeInTheDocument();
+
+    const title = screen.getByLabelText(/Title/);
+    await user.clear(title);
+    await user.type(title, 'New title');
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      title: 'New title',
+      description: '<p>Old</p>',
+      severity: 'major',
+      project: 'Web',
+      errorLog: 'TypeError',
+      steps: ['One'],
+      tags: ['ui'],
+    });
+  });
+
+  it('calls onCancel instead of navigating back', async () => {
+    const onCancel = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<BugForm mode="edit" defaultValues={existing} onSubmit={vi.fn()} onCancel={onCancel} />);
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+});
