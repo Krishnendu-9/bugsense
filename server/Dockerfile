@@ -1,4 +1,6 @@
-FROM node:20-alpine
+# Node 24 LTS. The supported floor is 22.13 (package.json engines); CI tests
+# both that exact version and 24.
+FROM node:24-alpine
 
 WORKDIR /app
 

@@ -1,4 +1,5 @@
-FROM node:20-alpine AS builder
+# Node 24 LTS for the build stage (supported floor: 22.13, see package.json).
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 

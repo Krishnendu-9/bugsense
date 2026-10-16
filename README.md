@@ -3,7 +3,7 @@
 [![CI Build](https://github.com/krishnendu-9/bugsense/actions/workflows/ci.yml/badge.svg)](https://github.com/krishnendu-9/bugsense/actions)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)
 ![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=black)
-![Node](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
+![Node](https://img.shields.io/badge/Node.js-22.13+-339933?logo=node.js&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-v3-38B2AC?logo=tailwind-css&logoColor=white)
 
 > A MERN-stack bug tracker that turns vague bug reports into structured, reproducible ones — with an embeddable crash-reporting SDK, real-time collaboration and AI-assisted debugging.
@@ -330,7 +330,7 @@ bugsense/
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22.13+ (22 or 24 LTS; CI runs 22.13.0 and 24, the Docker images use 24)
 - MongoDB (local or Atlas)
 - Anthropic API key (optional — AI features degrade gracefully without it)
 
