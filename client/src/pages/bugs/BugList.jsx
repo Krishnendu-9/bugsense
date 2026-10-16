@@ -37,12 +37,17 @@ export default function BugList() {
   // Typing in the search/project boxes should not fire a request per keystroke.
   const debouncedFilters = useDebouncedValue(filters, 300);
 
-  // Sync state when URL params change (e.g. clicking dashboard cards or the navbar search)
-  useEffect(() => {
+  // Sync state when URL params change (e.g. clicking dashboard cards or the
+  // navbar search). Adjusting state during render, rather than in an effect,
+  // avoids a wasted render with the stale filters.
+  const paramsKey = searchParams.toString();
+  const [syncedParamsKey, setSyncedParamsKey] = useState(paramsKey);
+  if (paramsKey !== syncedParamsKey) {
+    setSyncedParamsKey(paramsKey);
     const next = filtersFromParams(searchParams);
     setFilters((prev) => (sameFilters(prev, next) ? prev : next));
     setPage(1);
-  }, [searchParams]);
+  }
 
   useEffect(() => {
     fetchBugs({ ...activeOnly(debouncedFilters), page });
