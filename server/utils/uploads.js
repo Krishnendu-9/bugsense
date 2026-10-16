@@ -3,7 +3,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const UPLOADS_DIR = path.join(__dirname, '../uploads');
+// UPLOADS_DIR overrides the location (the test suite points it at a
+// throwaway temp directory so runs never leave files in server/uploads).
+export const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '../uploads'));
 
 // Deletes a file previously stored by Multer, given the public URL saved on a
 // document (e.g. "/uploads/123.png"). Anything that does not resolve inside the

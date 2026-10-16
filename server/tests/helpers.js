@@ -1,14 +1,23 @@
+import fs from 'fs';
 import http from 'http';
+import os from 'os';
+import path from 'path';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
 // Must be set before app.js (and the rate limiters it imports) is loaded.
 process.env.NODE_ENV = 'test';
+// Uploads made by the tests go to a temp directory removed after the run.
+const testUploadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bugsense-test-uploads-'));
+process.env.UPLOADS_DIR = testUploadsDir;
 process.env.JWT_SECRET = 'test-secret';
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.TELEMETRY_INGEST_KEY;
 delete process.env.DISCORD_WEBHOOK_URL;
 delete process.env.SLACK_WEBHOOK_URL;
+delete process.env.CLOUDINARY_URL;
+delete process.env.GITHUB_TOKEN;
+delete process.env.ALLOW_DEVELOPER_SIGNUP;
 
 const [{ createApp }, { initSocket }, { default: User }, { default: Bug }] = await Promise.all([
   import('../app.js'),
@@ -47,6 +56,7 @@ export const stopTestServer = async (server) => {
   await mongoose.connection.db.dropDatabase();
   await mongoose.disconnect();
   if (mongo) await mongo.stop();
+  fs.rmSync(testUploadsDir, { recursive: true, force: true });
 };
 
 export const createUser = async (request, overrides = {}) => {
