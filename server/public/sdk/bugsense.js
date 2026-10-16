@@ -1,5 +1,5 @@
 /**
- * BugSense Client SDK & Observability Telemetry Agent (v1.1.0)
+ * BugSense Client SDK (v1.2.0): crash reporting, breadcrumbs and a feedback widget
  * Embed in any website:
  * <script src="https://your-bugsense-host/sdk/bugsense.js"
  *         data-api-url="https://your-bugsense-host"
@@ -148,19 +148,27 @@
     true
   );
 
-  // 2. History navigation
-  const originalPushState = window.history.pushState;
-  if (originalPushState) {
-    window.history.pushState = function () {
-      const result = originalPushState.apply(this, arguments);
-      const newUrl = redactUrl(arguments[2] || window.location.href);
-      addBreadcrumb('navigation', 'Navigated to ' + newUrl, { url: newUrl });
+  // 2. History navigation (pushState for new entries, replaceState for
+  // redirects and URL rewrites that single-page routers do in place)
+  function wrapHistory(methodName, verb) {
+    const original = window.history[methodName];
+    if (!original) return;
+    window.history[methodName] = function () {
+      const result = original.apply(this, arguments);
+      try {
+        const newUrl = redactUrl(arguments[2] || window.location.href);
+        addBreadcrumb('navigation', verb + ' ' + newUrl, { url: newUrl });
+      } catch (err) {
+        // Recording must never break the host's navigation.
+      }
       return result;
     };
     cleanups.push(function () {
-      window.history.pushState = originalPushState;
+      window.history[methodName] = original;
     });
   }
+  wrapHistory('pushState', 'Navigated to');
+  wrapHistory('replaceState', 'Replaced URL with');
   listen(window, 'popstate', function () {
     const url = redactUrl(window.location.href);
     addBreadcrumb('navigation', 'Browser back/forward to ' + url, { url });
@@ -195,6 +203,50 @@
     };
     cleanups.push(function () {
       window.fetch = originalFetch;
+    });
+  }
+
+  // 3b. XMLHttpRequest calls. axios and many older libraries use XHR rather
+  // than fetch, so without this their requests would be invisible. Request
+  // details live in a WeakMap instead of on the host's XHR objects.
+  const XHR = window.XMLHttpRequest;
+  if (XHR && XHR.prototype) {
+    const xhrInfo = new WeakMap();
+    const originalOpen = XHR.prototype.open;
+    const originalSend = XHR.prototype.send;
+
+    XHR.prototype.open = function (method, url) {
+      try {
+        xhrInfo.set(this, { method: String(method || 'GET').toUpperCase(), url: redactUrl(url) });
+      } catch (err) {
+        // Recording is best-effort.
+      }
+      return originalOpen.apply(this, arguments);
+    };
+
+    XHR.prototype.send = function () {
+      const info = xhrInfo.get(this);
+      if (info) {
+        const xhr = this;
+        xhr.addEventListener('loadend', function () {
+          try {
+            const outcome = xhr.status ? '(HTTP ' + xhr.status + ')' : '(FAILED)';
+            addBreadcrumb('xhr', 'API [' + info.method + '] ' + info.url + ' ' + outcome, {
+              method: info.method,
+              status: xhr.status,
+              url: info.url,
+            });
+          } catch (err) {
+            // Recording is best-effort.
+          }
+        });
+      }
+      return originalSend.apply(this, arguments);
+    };
+
+    cleanups.push(function () {
+      XHR.prototype.open = originalOpen;
+      XHR.prototype.send = originalSend;
     });
   }
 
@@ -400,7 +452,6 @@
           <select id="bugsense-severity-input" style="width:100%;box-sizing:border-box;background:#1E293B;border:1px solid #475569;border-radius:8px;padding:7px 8px;font-size:12px;color:#F8FAFC;outline:none;">
             <option value="minor">Minor glitch</option>
             <option value="major" selected>Major defect</option>
-            <option value="blocker">Blocker / Crash</option>
           </select>
         </div>
         <div style="flex:1;">
@@ -409,7 +460,6 @@
             <option value="low">Low</option>
             <option value="medium" selected>Medium</option>
             <option value="high">High</option>
-            <option value="critical">Critical</option>
           </select>
         </div>
       </div>
