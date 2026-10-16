@@ -11,6 +11,7 @@ import {
   uploadAnnotation,
   getDashboardStats,
   exportToGitHub,
+  getGitHubConfig,
 } from '../controllers/bug.controller.js';
 import { protect, adminOnly, authorize } from '../middleware/auth.middleware.js';
 import upload from '../middleware/upload.middleware.js';
@@ -24,6 +25,8 @@ router.param('id', (req, res, next, id) => {
 });
 
 router.get('/stats', protect, getDashboardStats);
+
+router.get('/github-config', protect, authorize('developer', 'admin'), getGitHubConfig);
 
 router.get('/', protect, getBugs);
 

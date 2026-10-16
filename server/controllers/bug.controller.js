@@ -5,12 +5,17 @@ import Comment from '../models/Comment.model.js';
 import User from '../models/User.model.js';
 import { generateFingerprint } from '../utils/fingerprint.util.js';
 import { sanitizeRichText } from '../utils/sanitize.js';
-import { canModifyBug, isStaff } from '../utils/permissions.js';
+import { canModifyBug, canSetStatus, isStaff } from '../utils/permissions.js';
 import { removeUpload } from '../utils/uploads.js';
+import { removeStoredFile, storeUpload } from '../services/storage.service.js';
+import { getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { dispatchWebhookAlert } from '../services/webhook.service.js';
+import { queueAutoAnalysis } from '../services/autoAnalysis.service.js';
+import { tryConsumeReportAIBudget } from '../utils/aiBudget.js';
 import { logActivity } from '../services/audit.service.js';
 import {
   BUG_POPULATE,
+  LIST_EXCLUDED_FIELDS,
   emitBugCreated,
   emitBugDeleted,
   emitBugUpdated,
@@ -19,10 +24,11 @@ import {
 const STATUSES = ['open', 'in-progress', 'resolved', 'closed'];
 const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 const MAX_PAGE_SIZE = 100;
+const LIST_QUERY_TIME_LIMIT_MS = 5000;
 
-// Heavy per-bug fields the list views never render. Leaving them out keeps
-// list responses small as incidents accumulate telemetry.
-const LIST_EXCLUDED_FIELDS = '-breadcrumbs -gitPatch -statusHistory -aiInsights -errorLog -browserInfo';
+// Leaving heavy fields out keeps list responses small as incidents accumulate
+// telemetry; the same list is applied to broadcast socket events.
+const LIST_PROJECTION = LIST_EXCLUDED_FIELDS.map((field) => `-${field}`).join(' ');
 
 // Escapes user input before it is used inside a RegExp filter.
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -46,16 +52,68 @@ const WRITABLE_BUG_FIELDS = [
   'browserInfo',
 ];
 
+const LIMITS = {
+  steps: 50,
+  stepLength: 500,
+  tags: 20,
+  tagLength: 40,
+  errorLog: 20000,
+  project: 100,
+  browserField: 500,
+};
+
+// Turns a submitted list into trimmed, non-empty strings, or null when the
+// value is not a list at all.
+const toStringList = (value, maxItems, maxLength) => {
+  if (!Array.isArray(value)) return null;
+  return value
+    .filter((item) => typeof item === 'string' || typeof item === 'number')
+    .map((item) => String(item).trim().slice(0, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+};
+
+/**
+ * Copies the client-writable fields from a request body and normalises them.
+ * Returns { payload } or { error } with a message for a 400.
+ */
 const pickWritableFields = (body) => {
   const payload = {};
   for (const field of WRITABLE_BUG_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(body, field)) continue;
     payload[field] = body[field];
   }
+
+  for (const field of ['title', 'priority', 'status', 'severity', 'project', 'errorLog']) {
+    if (field in payload && typeof payload[field] !== 'string') return { error: `${field} must be a string` };
+  }
+  if ('title' in payload) payload.title = payload.title.trim();
+  if ('project' in payload) payload.project = payload.project.trim().slice(0, LIMITS.project);
+  if ('errorLog' in payload) payload.errorLog = payload.errorLog.slice(0, LIMITS.errorLog);
   if ('description' in payload) payload.description = sanitizeRichText(payload.description);
+
+  if ('steps' in payload) {
+    payload.steps = toStringList(payload.steps, LIMITS.steps, LIMITS.stepLength);
+    if (!payload.steps) return { error: 'steps must be a list' };
+  }
+  if ('tags' in payload) {
+    const tags = toStringList(payload.tags, LIMITS.tags, LIMITS.tagLength);
+    if (!tags) return { error: 'tags must be a list' };
+    payload.tags = [...new Set(tags.map((tag) => tag.toLowerCase()))];
+  }
+  if ('browserInfo' in payload) {
+    const info = payload.browserInfo && typeof payload.browserInfo === 'object' ? payload.browserInfo : {};
+    payload.browserInfo = Object.fromEntries(
+      ['browser', 'version', 'os', 'screenSize', 'userAgent'].map((key) => [
+        key,
+        typeof info[key] === 'string' ? info[key].slice(0, LIMITS.browserField) : '',
+      ])
+    );
+  }
+
   // An unassigned <select> submits '', which Mongoose cannot cast to ObjectId.
   if ('assignedTo' in payload && !payload.assignedTo) payload.assignedTo = null;
-  return payload;
+  return { payload };
 };
 
 // Only developers and admins can be assignees.
@@ -99,15 +157,20 @@ export const getBugs = async (req, res, next) => {
       }
     }
 
+    // Substring search is a case-insensitive regex, which scans rather than
+    // using an index. That keeps as-you-type matching ("saf" finds "Safari")
+    // and is fine at this scale; the time cap stops one expensive search from
+    // tying up the database as the collection grows.
     const [bugs, total] = await Promise.all([
       Bug.find(filter)
-        .select(LIST_EXCLUDED_FIELDS)
+        .select(LIST_PROJECTION)
         .populate('reporter', 'name email avatar')
         .populate('assignedTo', 'name email avatar')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
-        .limit(limit),
-      Bug.countDocuments(filter),
+        .limit(limit)
+        .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
+      Bug.countDocuments(filter).maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
     ]);
 
     return res.json({ bugs, total, page, pages: Math.max(1, Math.ceil(total / limit)), limit });
@@ -123,7 +186,8 @@ export const createBug = async (req, res, next) => {
   }
 
   try {
-    const payload = pickWritableFields(req.body);
+    const { payload, error } = pickWritableFields(req.body);
+    if (error) return badRequest(res, error);
 
     // Reporters file bugs; triage (status, assignment) belongs to the team.
     if (!isStaff(req.user)) {
@@ -165,7 +229,12 @@ export const createBug = async (req, res, next) => {
       details: `Reported incident: "${bug.title}" (${bug.severity} / ${bug.priority})`,
     });
 
+    // Analysis runs after the response, so filing a bug never waits on the
+    // model; the result reaches the bug page over the socket.
+    const analysisQueued = queueAutoAnalysis(bug, tryConsumeReportAIBudget);
+
     const body = bug.toObject();
+    body.analysisQueued = analysisQueued;
     if (similar) body.possibleDuplicateOf = { _id: similar._id, title: similar.title };
     return res.status(201).json(body);
   } catch (err) {
@@ -198,7 +267,15 @@ export const updateBug = async (req, res, next) => {
       return res.status(403).json({ message: 'Not authorized to update this bug' });
     }
 
-    const payload = pickWritableFields(req.body);
+    const { payload, error } = pickWritableFields(req.body);
+    if (error) return badRequest(res, error);
+
+    if (payload.status && !canSetStatus(req.user, bug, payload.status)) {
+      return res.status(403).json({ message: 'Reporters can only close their own bug or reopen it' });
+    }
+    if (payload.priority && payload.priority !== bug.priority && !isStaff(req.user)) {
+      return res.status(403).json({ message: 'Only developers and admins can change priority' });
+    }
 
     if ('assignedTo' in payload) {
       const current = bug.assignedTo?.toString() || null;
@@ -247,7 +324,7 @@ export const deleteBug = async (req, res, next) => {
 
     await Comment.deleteMany({ bug: bug._id });
     await bug.deleteOne();
-    await Promise.all([removeUpload(bug.screenshot), removeUpload(bug.annotatedScreenshot)]);
+    await Promise.all([removeStoredFile(bug.screenshot), removeStoredFile(bug.annotatedScreenshot)]);
 
     emitBugDeleted(bug._id);
     logActivity({
@@ -279,9 +356,9 @@ const replaceBugImage = (field) => async (req, res, next) => {
     }
 
     const previous = bug[field];
-    bug[field] = `/uploads/${req.file.filename}`;
+    bug[field] = await storeUpload(req.file);
     await bug.save();
-    await removeUpload(previous);
+    await removeStoredFile(previous);
     await emitBugUpdated(bug);
 
     return res.json({ [field]: bug[field] });
@@ -316,6 +393,19 @@ export const getDashboardStats = async (req, res, next) => {
 const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 
+// Repositories the server's own GITHUB_TOKEN may file issues in, as
+// "owner/repo" pairs. Without this list the shared token could be pointed at
+// any repository it can reach, by any staff member.
+const serverTokenRepos = () =>
+  (process.env.GITHUB_ALLOWED_REPOS || '')
+    .split(',')
+    .map((repo) => repo.trim())
+    .filter(Boolean);
+
+export const getGitHubConfig = (_req, res) => {
+  res.json({ repos: process.env.GITHUB_TOKEN ? serverTokenRepos() : [] });
+};
+
 export const exportToGitHub = async (req, res, next) => {
   const { repoOwner, repoName, githubToken } = req.body;
 
@@ -326,16 +416,23 @@ export const exportToGitHub = async (req, res, next) => {
     return badRequest(res, 'Repository owner or name contains invalid characters');
   }
 
-  const token = typeof githubToken === 'string' && githubToken ? githubToken : process.env.GITHUB_TOKEN;
+  let token = typeof githubToken === 'string' && githubToken ? githubToken : null;
   if (!token) {
-    return badRequest(res, 'A GitHub token is required (none is configured on the server)');
+    if (!process.env.GITHUB_TOKEN) {
+      return badRequest(res, 'A GitHub token is required (none is configured on the server)');
+    }
+    const repo = `${repoOwner}/${repoName}`.toLowerCase();
+    if (!serverTokenRepos().some((allowed) => allowed.toLowerCase() === repo)) {
+      return badRequest(res, `The server's GitHub token is not enabled for ${repoOwner}/${repoName}. Use your own token, or ask the operator to add it to GITHUB_ALLOWED_REPOS.`);
+    }
+    token = process.env.GITHUB_TOKEN;
   }
 
   try {
     const bug = await Bug.findById(req.params.id);
     if (!bug) return res.status(404).json({ message: 'Bug not found' });
 
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const clientUrl = getPrimaryClientUrl();
     const issueBody = `## Bug Report: ${bug.title}
 
 ${bug.description?.replace(/<[^>]*>?/gm, '') || ''}
@@ -358,7 +455,7 @@ ${bug.aiInsights?.possibleCause ? `### ${bug.aiInsights.source === 'heuristic' ?
         headers: {
           Accept: 'application/vnd.github+json',
           'Content-Type': 'application/json',
-          'User-Agent': 'BugSense-Observability',
+          'User-Agent': 'BugSense',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({

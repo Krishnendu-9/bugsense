@@ -21,6 +21,10 @@ const classify = (err) => {
     const first = Object.values(err.errors)[0];
     return { status: 400, message: first?.message || 'Validation failed' };
   }
+  // MaxTimeMSExpired: a query hit its time cap (see getBugs).
+  if (err?.code === 50) {
+    return { status: 503, message: 'That search took too long. Try a more specific term or add a filter.' };
+  }
   if (err?.code === 11000) {
     const field = Object.keys(err.keyValue || {})[0];
     return { status: 409, message: field === 'email' ? 'Email already in use' : 'Duplicate record' };

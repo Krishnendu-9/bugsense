@@ -49,12 +49,15 @@ const bugSchema = new mongoose.Schema(
     errorLog: {
       type: String,
       default: '',
+      maxlength: [20000, 'Error log cannot exceed 20,000 characters'],
     },
     aiInsights: {
       possibleCause: { type: String, default: '' },
       suggestedFix: { type: String, default: '' },
       // 'claude' for a model response, 'heuristic' for the offline fallback.
-      source: { type: String, enum: ['claude', 'heuristic'], default: 'claude' },
+      // Unset until an analysis runs, so an unanalysed bug never claims to
+      // carry model output.
+      source: { type: String, enum: ['claude', 'heuristic'] },
       analyzedAt: { type: Date },
     },
     reporter: {
@@ -71,6 +74,7 @@ const bugSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: '',
+      maxlength: [100, 'Project cannot exceed 100 characters'],
     },
     tags: {
       type: [String],
