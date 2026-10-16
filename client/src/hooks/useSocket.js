@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef } from 'react';
-import { SocketContext } from '../context/SocketContext.jsx';
+import { SocketContext } from '../context/contexts.js';
 
 export default function useSocket() {
   const context = useContext(SocketContext);

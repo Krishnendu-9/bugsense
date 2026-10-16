@@ -1,7 +1,6 @@
-import { createContext, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { AuthContext } from './contexts.js';
 import api from '../api/axios.js';
-
-export const AuthContext = createContext(null);
 
 const TOKEN_KEY = 'bugsense_token';
 const USER_KEY = 'bugsense_user';

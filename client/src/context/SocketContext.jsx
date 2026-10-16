@@ -1,9 +1,8 @@
-import { createContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import useAuth from '../hooks/useAuth.js';
 import { getApiOrigin } from '../utils/helpers.js';
-
-export const SocketContext = createContext(null);
+import { SocketContext } from './contexts.js';
 
 export function SocketProvider({ children }) {
   const { token } = useAuth();
@@ -24,11 +23,14 @@ export function SocketProvider({ children }) {
       reconnectionDelayMax: 10000,
     });
 
-    s.on('connect', () => setConnected(true));
+    // Consumers receive the socket once it has connected; nothing can be
+    // received before that, and joining rooms needs a live connection anyway.
+    s.on('connect', () => {
+      setSocket(s);
+      setConnected(true);
+    });
     s.on('disconnect', () => setConnected(false));
     s.on('connect_error', () => setConnected(false));
-
-    setSocket(s);
 
     return () => {
       s.disconnect();
