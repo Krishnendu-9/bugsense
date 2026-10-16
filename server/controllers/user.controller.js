@@ -1,7 +1,10 @@
+import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import User from '../models/User.model.js';
 import generateToken from '../services/token.service.js';
+import { logActivity } from '../services/audit.service.js';
 import { removeUpload } from '../utils/uploads.js';
+import { removeStoredFile, storeUpload } from '../services/storage.service.js';
 import { isAllowedWebhookUrl, WEBHOOK_URL_HINT } from '../utils/webhookUrl.js';
 
 const toPublicUser = (user) => ({
@@ -32,6 +35,55 @@ export const listAssignableUsers = async (_req, res, next) => {
       .select('name email avatar role')
       .sort({ name: 1 });
     return res.json(users);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const ROLES = ['reporter', 'developer', 'admin'];
+
+// Admin view of every account, for the Team page.
+export const listUsers = async (_req, res, next) => {
+  try {
+    const users = await User.find()
+      .select('name email avatar role createdAt')
+      .sort({ createdAt: 1 });
+    return res.json(users);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// Roles take effect on the user's next request: protect() reads the role from
+// the database every time, so no token needs to be reissued.
+export const updateUserRole = async (req, res, next) => {
+  const { role } = req.body;
+  if (!ROLES.includes(role)) return res.status(400).json({ message: 'Role must be reporter, developer or admin' });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'User not found' });
+  // An admin demoting themselves could leave the workspace with no admin.
+  if (req.params.id === req.user._id.toString()) {
+    return res.status(400).json({ message: 'You cannot change your own role' });
+  }
+
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const previous = user.role;
+    if (previous !== role) {
+      user.role = role;
+      await user.save();
+      logActivity({
+        action: 'ROLE_CHANGED',
+        entityType: 'user',
+        entityId: user._id,
+        performedBy: req.user._id,
+        performedByName: req.user.name,
+        details: `Changed ${user.name}'s role from ${previous} to ${role}`,
+      });
+    }
+
+    return res.json({ _id: user._id, name: user.name, email: user.email, avatar: user.avatar, role: user.role, createdAt: user.createdAt });
   } catch (err) {
     return next(err);
   }
@@ -71,7 +123,17 @@ export const updateUserProfile = async (req, res, next) => {
     const body = toPublicUser(updatedUser);
     // A password change invalidates every existing token, including the one
     // that made this request, so the caller receives a fresh one.
-    if (newPassword) body.token = generateToken(updatedUser);
+    if (newPassword) {
+      body.token = generateToken(updatedUser);
+      logActivity({
+        action: 'PASSWORD_CHANGED',
+        entityType: 'user',
+        entityId: updatedUser._id,
+        performedBy: updatedUser._id,
+        performedByName: updatedUser.name,
+        details: `${updatedUser.name} changed their password; other sessions were signed out`,
+      });
+    }
 
     return res.json(body);
   } catch (err) {
@@ -86,12 +148,15 @@ export const uploadAvatar = async (req, res, next) => {
     }
 
     const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) {
+      await removeUpload(`/uploads/${req.file.filename}`);
+      return res.status(404).json({ message: 'User not found' });
+    }
 
     const previous = user.avatar;
-    user.avatar = `/uploads/${req.file.filename}`;
+    user.avatar = await storeUpload(req.file);
     await user.save();
-    await removeUpload(previous);
+    await removeStoredFile(previous);
 
     return res.json({
       message: 'Avatar uploaded successfully',
@@ -119,6 +184,7 @@ export const updateWebhooks = async (req, res, next) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
+    // Kept out of the audit log on purpose: webhook URLs are credentials.
     user.webhooks = {
       discordUrl: discordUrl ? discordUrl.trim() : '',
       slackUrl: slackUrl ? slackUrl.trim() : '',
@@ -148,7 +214,7 @@ export const testWebhook = async (req, res, next) => {
   const payload =
     type === 'discord'
       ? {
-          username: 'BugSense Observability',
+          username: 'BugSense',
           embeds: [
             {
               title: '🔔 BugSense Webhook Test Alert',

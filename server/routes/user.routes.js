@@ -7,13 +7,19 @@ import {
   updateWebhooks,
   testWebhook,
   listAssignableUsers,
+  listUsers,
+  updateUserRole,
 } from '../controllers/user.controller.js';
-import { protect, authorize } from '../middleware/auth.middleware.js';
+import { protect, authorize, adminOnly } from '../middleware/auth.middleware.js';
 import upload from '../middleware/upload.middleware.js';
 
 const router = Router();
 
+router.get('/', protect, adminOnly, listUsers);
+
 router.get('/assignable', protect, authorize('developer', 'admin'), listAssignableUsers);
+
+router.put('/:id/role', protect, adminOnly, updateUserRole);
 
 router.get('/profile', protect, getUserProfile);
 
