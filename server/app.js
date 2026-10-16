@@ -17,6 +17,8 @@ import { protect, authorize } from './middleware/auth.middleware.js';
 import { globalLimiter } from './middleware/rateLimit.middleware.js';
 import { errorHandler, notFound } from './middleware/error.middleware.js';
 import { UPLOADS_DIR } from './utils/uploads.js';
+import { getClientOrigins } from './utils/clientOrigins.js';
+import { parseTrustProxy } from './utils/trustProxy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,7 +28,10 @@ export const createApp = () => {
   // Render/Railway/nginx all sit in front of this process. Without this, every
   // request looks like it came from the proxy and the rate limiters collapse
   // into a single shared bucket. nginx.conf forwards X-Forwarded-For for this.
-  app.set('trust proxy', 1);
+  // Trusting more hops than really exist would let clients spoof their IP via
+  // X-Forwarded-For, so set TRUST_PROXY to match the deployment (0 when the
+  // server is reached directly).
+  app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 
   app.use(
     helmet({
@@ -45,7 +50,7 @@ export const createApp = () => {
   app.use('/api/telemetry', telemetryRoutes);
 
   app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: getClientOrigins(),
     credentials: true,
   }));
   app.use(express.json({ limit: '1mb' }));

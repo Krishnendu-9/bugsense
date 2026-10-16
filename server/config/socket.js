@@ -1,13 +1,14 @@
 import mongoose from 'mongoose';
 import { Server } from 'socket.io';
 import { resolveUserFromToken } from '../middleware/auth.middleware.js';
+import { getClientOrigins } from '../utils/clientOrigins.js';
 
 let io;
 
 export const initSocket = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:5173',
+      origin: getClientOrigins(),
       methods: ['GET', 'POST'],
     },
   });
