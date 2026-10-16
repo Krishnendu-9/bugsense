@@ -21,6 +21,28 @@ describe('ErrorInsights labelling', () => {
     expect(screen.getByText(/not a model diagnosis/)).toBeInTheDocument();
   });
 
+  it('renders backtick-marked code as code, without the backticks', () => {
+    const { container } = render(
+      <ErrorInsights
+        insights={{
+          source: 'heuristic',
+          possibleCause: 'Accessing `user.id` before load',
+          suggestedFix: '1. Use optional chaining (e.g., `data?.property`).\n```js\nconst total = cart?.total ?? 0;\n```',
+        }}
+      />
+    );
+
+    expect(screen.getByText('user.id').tagName).toBe('CODE');
+    expect(screen.getByText('data?.property').tagName).toBe('CODE');
+    expect(container.querySelector('pre')).toHaveTextContent('const total = cart?.total ?? 0;');
+    expect(container.textContent).not.toContain('`');
+  });
+
+  it('leaves a lone backtick as plain text', () => {
+    render(<ErrorInsights insights={{ source: 'claude', possibleCause: 'Stray ` in a log line', suggestedFix: 'x' }} />);
+    expect(screen.getByText('Stray ` in a log line')).toBeInTheDocument();
+  });
+
   it('shows a skeleton while loading and nothing without insights', () => {
     const { container, rerender } = render(<ErrorInsights isLoading />);
     expect(container.querySelectorAll('.skeleton').length).toBeGreaterThan(0);
