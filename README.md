@@ -354,9 +354,24 @@ docker compose up --build
 
 The client image is built with `VITE_API_URL=/api`, so all browser traffic goes
 through nginx, which proxies `/api`, `/uploads`, `/sdk` and `/socket.io`
-to the server container. The server itself is not published on a host port, and
-MongoDB is bound to `127.0.0.1` only. The API waits for MongoDB's healthcheck,
-runs as the unprivileged `node` user, and has its own healthcheck.
+to the server container. Neither the server nor MongoDB is published on a host
+port, so a MongoDB already installed on your machine does not get in the way.
+The API waits for MongoDB's healthcheck, runs as the unprivileged `node` user,
+and has its own healthcheck.
+
+To inspect the database with MongoDB Compass or `mongosh`, publish it on a spare
+loopback port with a `docker-compose.override.yml` next to `docker-compose.yml`
+(compose picks it up automatically, and it is gitignored):
+
+```yaml
+services:
+  mongodb:
+    ports:
+      - "127.0.0.1:27018:27017"   # loopback only: the database has no auth
+```
+
+Then connect to `mongodb://localhost:27018/bugsense`. Port 27018 avoids a clash
+with a local MongoDB on 27017.
 
 The server runs with `NODE_ENV=production`. With no `JWT_SECRET` in `.env`, it
 falls back to a public demo secret and starts only because compose sets

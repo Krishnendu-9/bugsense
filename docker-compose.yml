@@ -3,11 +3,11 @@ services:
     image: mongo:8-noble
     container_name: bugsense-mongodb
     restart: unless-stopped
-    # Bound to the host's loopback only: the database has no authentication, so
-    # it must not be reachable from the network. Containers reach it over
-    # bugsense-network regardless of this mapping.
-    ports:
-      - "127.0.0.1:27017:27017"
+    # Not published on a host port: the server reaches it over bugsense-network
+    # and the seed runs inside the server container, so nothing on the host
+    # needs it. Publishing 27017 would also clash with a locally installed
+    # MongoDB. To inspect the data with Compass, see "Run with Docker" in the
+    # README (a docker-compose.override.yml that maps it to 127.0.0.1:27018).
     volumes:
       - mongo-data:/data/db
     healthcheck:
