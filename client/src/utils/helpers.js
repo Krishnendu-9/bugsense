@@ -117,6 +117,25 @@ export const downloadFile = (content, filename, type) => {
 
 export const isStaff = (user) => user?.role === 'admin' || user?.role === 'developer';
 
+export const isBugReporter = (user, bug) => {
+  const reporterId = bug?.reporter?._id ?? bug?.reporter;
+  return Boolean(user?._id) && Boolean(reporterId) && String(reporterId) === String(user._id);
+};
+
+const ALL_STATUSES = ['open', 'in-progress', 'resolved', 'closed'];
+
+// Statuses `user` may move `bug` to, the current one included; mirrors
+// canSetStatus on the server. Staff: any. The reporter: close it, or reopen it
+// once resolved or closed. Anyone else: none.
+export const statusOptionsFor = (user, bug) => {
+  if (!bug) return [];
+  if (isStaff(user)) return ALL_STATUSES;
+  if (!isBugReporter(user, bug)) return [];
+  const allowed = new Set([bug.status, 'closed']);
+  if (bug.status === 'resolved' || bug.status === 'closed') allowed.add('open');
+  return ALL_STATUSES.filter((status) => allowed.has(status));
+};
+
 // Converts a canvas data URL into a File so it can be uploaded as multipart.
 export const dataUrlToFile = async (dataUrl, filename) => {
   const blob = await (await fetch(dataUrl)).blob();

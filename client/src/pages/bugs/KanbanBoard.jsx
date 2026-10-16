@@ -6,7 +6,7 @@ import useBugs from '../../hooks/useBugs.js';
 import { useSocketEvent } from '../../hooks/useSocket.js';
 import useAuth from '../../hooks/useAuth.js';
 import { PriorityBadge, SeverityBadge } from '../../components/common/Badge.jsx';
-import { timeAgo, truncate, stripHtml, isStaff } from '../../utils/helpers.js';
+import { timeAgo, truncate, stripHtml, isStaff, statusOptionsFor } from '../../utils/helpers.js';
 import api from '../../api/axios.js';
 
 // The board shows at most one API page; beyond that it links to the list view.
@@ -30,8 +30,10 @@ export default function KanbanBoard() {
     fetchBugs({ limit: BOARD_LIMIT }).finally(() => setInitialized(true));
   }, [fetchBugs]);
 
-  // Reporters can only move bugs they filed; the API enforces the same rule.
-  const canMove = (bug) => isStaff(user) || (bug.reporter?._id ?? bug.reporter) === user?._id;
+  // Staff move any bug anywhere; a reporter may only close their own bug or
+  // reopen it. The API enforces the same rule.
+  const canMoveTo = (bug, status) => statusOptionsFor(user, bug).includes(status);
+  const canMove = (bug) => statusOptionsFor(user, bug).some((status) => status !== bug.status);
 
   // Real-time socket sync
   useSocketEvent('bug:updated', (updatedBug) => {
@@ -49,8 +51,12 @@ export default function KanbanBoard() {
   const handleStatusChange = async (bugId, newStatus) => {
     const targetBug = (allBugs || []).find((b) => b._id === bugId);
     if (!targetBug || targetBug.status === newStatus) return;
-    if (!canMove(targetBug)) {
-      toast.error('Only developers, admins or the reporter can move this bug');
+    if (!canMoveTo(targetBug, newStatus)) {
+      toast.error(
+        isStaff(user) || !canMove(targetBug)
+          ? 'Only developers, admins or the reporter can move this bug'
+          : 'Reporters can only close their bug or reopen it'
+      );
       return;
     }
 
@@ -155,9 +161,11 @@ export default function KanbanBoard() {
         </div>
       ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start select-none">
-        {COLUMNS.map((col) => {
+        {COLUMNS.map((col, colIndex) => {
           const colBugs = (allBugs || []).filter((b) => b.status === col.id);
           const isDropTarget = dragOverColId === col.id;
+          const prevColumn = COLUMNS[colIndex - 1];
+          const nextColumn = COLUMNS[colIndex + 1];
 
           return (
             <div
@@ -254,12 +262,11 @@ export default function KanbanBoard() {
 
                         {/* Quick Shift Status Controls (Accessible fallback) */}
                         <div className="flex items-center gap-1">
-                          {movable && col.id !== 'open' && (
+                          {prevColumn && canMoveTo(bug, prevColumn.id) && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const prevIdx = COLUMNS.findIndex((c) => c.id === col.id) - 1;
-                                if (prevIdx >= 0) handleStatusChange(bug._id, COLUMNS[prevIdx].id);
+                                handleStatusChange(bug._id, prevColumn.id);
                               }}
                               title="Move back"
                               aria-label={`Move "${bug.title}" back`}
@@ -268,12 +275,11 @@ export default function KanbanBoard() {
                               <ArrowLeft size={11} />
                             </button>
                           )}
-                          {movable && col.id !== 'closed' && (
+                          {nextColumn && canMoveTo(bug, nextColumn.id) && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const nextIdx = COLUMNS.findIndex((c) => c.id === col.id) + 1;
-                                if (nextIdx < COLUMNS.length) handleStatusChange(bug._id, COLUMNS[nextIdx].id);
+                                handleStatusChange(bug._id, nextColumn.id);
                               }}
                               title="Advance status"
                               aria-label={`Advance "${bug.title}"`}

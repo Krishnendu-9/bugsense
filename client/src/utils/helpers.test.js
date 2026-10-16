@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getApiOrigin, getImageUrl, sanitizeHtml, stripHtml, toCsvCell } from './helpers.js';
+import { getApiOrigin, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
 
 describe('sanitizeHtml', () => {
   it('removes scripts, event handlers and javascript: links', () => {
@@ -75,5 +75,31 @@ describe('getApiOrigin / getImageUrl', () => {
     expect(getImageUrl('/uploads/a.png')).toBe('https://api.example.com/uploads/a.png');
     expect(getImageUrl('https://cdn.example.com/b.png')).toBe('https://cdn.example.com/b.png');
     expect(getImageUrl('')).toBe('');
+  });
+});
+
+describe('statusOptionsFor', () => {
+  const reporter = { _id: 'u1', role: 'reporter' };
+  const other = { _id: 'u2', role: 'reporter' };
+  const dev = { _id: 'u3', role: 'developer' };
+  const bug = (status) => ({ status, reporter: { _id: 'u1' } });
+
+  it('gives staff every status', () => {
+    expect(statusOptionsFor(dev, bug('open'))).toEqual(['open', 'in-progress', 'resolved', 'closed']);
+  });
+
+  it('lets the reporter close an active bug but not move it along', () => {
+    expect(statusOptionsFor(reporter, bug('open'))).toEqual(['open', 'closed']);
+    expect(statusOptionsFor(reporter, bug('in-progress'))).toEqual(['in-progress', 'closed']);
+  });
+
+  it('lets the reporter reopen a resolved or closed bug', () => {
+    expect(statusOptionsFor(reporter, bug('resolved'))).toEqual(['open', 'resolved', 'closed']);
+    expect(statusOptionsFor(reporter, bug('closed'))).toEqual(['open', 'closed']);
+  });
+
+  it('gives other reporters nothing', () => {
+    expect(statusOptionsFor(other, bug('open'))).toEqual([]);
+    expect(statusOptionsFor(reporter, { status: 'open', reporter: null })).toEqual([]);
   });
 });
