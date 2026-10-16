@@ -14,29 +14,43 @@ export default function SystemMetrics() {
   // The background poll reports failures once (inline), not with a toast every 10s.
   const failedRef = useRef(false);
 
-  const fetchMetrics = useCallback(async (manual = false) => {
-    try {
-      setRefreshing(true);
-      const res = await api.get('/health/metrics');
-      setMetrics(res.data);
-      setError(null);
-      failedRef.current = false;
-      if (manual) toast.success('Metrics refreshed');
-    } catch (err) {
-      const message = err.response?.data?.message || 'Failed to load system metrics';
-      setError(message);
-      if (manual || !failedRef.current) toast.error(message);
-      failedRef.current = true;
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  // Returns the request; state is only set in its callbacks, once it settles,
+  // so starting a poll never triggers a synchronous re-render.
+  const fetchMetrics = useCallback((manual = false) =>
+    api.get('/health/metrics')
+      .then((res) => {
+        setMetrics(res.data);
+        setError(null);
+        failedRef.current = false;
+        if (manual) toast.success('Metrics refreshed');
+      })
+      .catch((err) => {
+        const message = err.response?.data?.message || 'Failed to load system metrics';
+        setError(message);
+        if (manual || !failedRef.current) toast.error(message);
+        failedRef.current = true;
+      })
+      .finally(() => setLoading(false)), []);
+
+  const refreshNow = async () => {
+    setRefreshing(true);
+    await fetchMetrics(true);
+    setRefreshing(false);
+  };
 
   useEffect(() => {
-    fetchMetrics();
-    const timer = setInterval(() => fetchMetrics(), 10000);
-    return () => clearInterval(timer);
+    // Polling a hidden tab only generates load; refresh when it is shown again.
+    const poll = () => {
+      if (!document.hidden) fetchMetrics();
+    };
+    const first = setTimeout(poll, 0);
+    const timer = setInterval(poll, 10000);
+    document.addEventListener('visibilitychange', poll);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', poll);
+    };
   }, [fetchMetrics]);
 
   const formatUptime = (seconds = 0) => {
@@ -88,11 +102,11 @@ export default function SystemMetrics() {
           </p>
         </div>
         <button
-          onClick={() => fetchMetrics(true)}
+          onClick={refreshNow}
           disabled={refreshing}
           className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5"
         >
-          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Refresh Now
+          <RefreshCw size={13} className={refreshing ? 'animate-pulse' : ''} /> {refreshing ? 'Refreshing...' : 'Refresh Now'}
         </button>
       </div>
 
