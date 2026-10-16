@@ -1,16 +1,38 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bug } from 'lucide-react';
+import { ArrowLeft, Bug, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import BugForm from '../../components/bugs/BugForm.jsx';
 import useBugs from '../../hooks/useBugs.js';
-import useAI from '../../hooks/useAI.js';
 
 export default function ReportBug() {
   const navigate = useNavigate();
   const { createBug, uploadScreenshot } = useBugs();
-  const { analyze } = useAI();
   const [isLoading, setIsLoading] = useState(false);
+
+  const showPossibleDuplicate = ({ _id, title }) => {
+    toast(
+      (t) => (
+        <span className="flex items-center gap-2 text-sm">
+          <Copy size={14} className="flex-shrink-0 text-secondary" />
+          <span>
+            Looks similar to &ldquo;{title}&rdquo;.{' '}
+            <button
+              type="button"
+              onClick={() => {
+                toast.dismiss(t.id);
+                navigate(`/bugs/${_id}`);
+              }}
+              className="text-primary hover:underline font-medium"
+            >
+              View it
+            </button>
+          </span>
+        </span>
+      ),
+      { duration: 8000 }
+    );
+  };
 
   const handleSubmit = async (formData) => {
     setIsLoading(true);
@@ -25,36 +47,26 @@ export default function ReportBug() {
       return;
     }
 
-    const problems = [];
-
+    let screenshotError = null;
     if (screenshotFile) {
       try {
         await uploadScreenshot(bug._id, screenshotFile);
       } catch (err) {
-        problems.push(err.response?.data?.message || 'screenshot upload failed');
+        screenshotError = err.response?.data?.message || 'screenshot upload failed';
       }
     }
 
-    let analysis = null;
-    if (bugData.errorLog?.trim()) {
-      // analyze() shows its own error toast and resolves to null on failure.
-      analysis = await analyze(bugData.errorLog, bugData.description, bug._id);
-    }
-
-    if (problems.length) {
-      toast.error(`Bug saved, but ${problems.join('; ')}`);
-    } else if (analysis?.source === 'claude') {
-      toast.success('Bug reported with AI analysis!');
+    if (screenshotError) {
+      toast.error(`Bug saved, but ${screenshotError}`);
     } else {
-      toast.success('Bug reported successfully!');
+      toast.success(bug.analysisQueued ? 'Bug reported. Analyzing the error log…' : 'Bug reported successfully!');
     }
-
-    if (bug.possibleDuplicateOf) {
-      toast(`Looks similar to an existing report: "${bug.possibleDuplicateOf.title}"`, { icon: '🔁', duration: 6000 });
-    }
+    if (bug.possibleDuplicateOf) showPossibleDuplicate(bug.possibleDuplicateOf);
 
     setIsLoading(false);
-    navigate(`/bugs/${bug._id}`);
+    // The server analyses the error log in the background; the bug page shows
+    // a pending state until the result arrives over the socket.
+    navigate(`/bugs/${bug._id}`, { state: { analysisPending: Boolean(bug.analysisQueued) } });
   };
 
   return (
