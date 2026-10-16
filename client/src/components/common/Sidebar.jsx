@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Bug, PlusCircle, Cpu, ShieldCheck,
-  ChevronLeft, ChevronRight, User, LayoutGrid, Terminal, Activity, Shield, X,
+  ChevronLeft, ChevronRight, User, LayoutGrid, Terminal, Activity, Shield, X, Users,
 } from 'lucide-react';
 import useAuth from '../../hooks/useAuth.js';
 import { getInitials, getImageUrl } from '../../utils/helpers.js';
@@ -32,6 +32,7 @@ const navSections = [
     category: 'SETTINGS',
     items: [
       { to: '/profile', icon: User, label: 'Profile & Alerts' },
+      { to: '/team', icon: Users, label: 'Team', roles: ['admin'] },
     ],
   },
 ];

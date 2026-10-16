@@ -28,6 +28,16 @@ describe('Sidebar', () => {
     expect(within(nav).getByRole('link', { name: /System Vitals/ })).toBeInTheDocument();
   });
 
+  it('hides the Team page from developers', () => {
+    renderSidebar(USERS.developer);
+    expect(screen.queryByRole('link', { name: /Team/ })).not.toBeInTheDocument();
+  });
+
+  it('shows the Team page to admins', () => {
+    renderSidebar(USERS.admin);
+    expect(screen.getByRole('link', { name: /Team/ })).toBeInTheDocument();
+  });
+
   it('shows the signed-in user', () => {
     renderSidebar(USERS.admin);
     expect(screen.getByText('admin@bugsense.dev')).toBeInTheDocument();

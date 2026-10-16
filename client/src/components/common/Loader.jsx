@@ -56,6 +56,24 @@ export function BugDetailSkeleton() {
   );
 }
 
+// Shown while a lazily loaded page's code downloads.
+export function PageSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Loading page">
+      <div className="space-y-2">
+        <div className="skeleton h-7 w-56 rounded" />
+        <div className="skeleton h-4 w-80 max-w-full rounded" />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="skeleton h-32 rounded-xl" />
+        ))}
+      </div>
+      <div className="skeleton h-64 w-full rounded-xl" />
+    </div>
+  );
+}
+
 // Generic page-level placeholder; per the design system, loading states use
 // skeletons rather than spinners.
 export default function Loader({ text = 'Loading...', lines = 4 }) {

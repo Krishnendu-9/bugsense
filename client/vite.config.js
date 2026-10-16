@@ -3,12 +3,14 @@ import react from '@vitejs/plugin-react';
 
 const API_TARGET = 'http://localhost:5000';
 
-// Split the heavy, rarely-changing libraries out of the app bundle so they
-// cache independently of application code.
+// React itself changes rarely, so it gets its own long-cached chunk. Heavy
+// page-specific libraries (Recharts, Quill, Fabric) are deliberately not
+// forced into named chunks: routes are lazy-loaded, so they already land in
+// chunks fetched only by the pages that use them. Grouping them manually made
+// the entry chunk import small shared modules from those groups, which pulled
+// the whole chart and editor bundles into the first page load.
 const VENDOR_CHUNKS = [
   ['react', /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/],
-  ['charts', /[\\/]node_modules[\\/](recharts|d3-[^\\/]+|victory-vendor)[\\/]/],
-  ['editor', /[\\/]node_modules[\\/](react-quill-new|quill|parchment)[\\/]/],
 ];
 
 export default defineConfig({
@@ -18,6 +20,12 @@ export default defineConfig({
     setupFiles: './src/test/setup.js',
     include: ['src/**/*.test.{js,jsx}'],
     css: false,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/**/*.test.{js,jsx}', 'src/test/**', 'src/main.jsx'],
+      reporter: ['text-summary', 'text'],
+    },
   },
   build: {
     rollupOptions: {

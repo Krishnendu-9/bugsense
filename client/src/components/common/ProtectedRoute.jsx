@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth.js';
 import Sidebar from './Sidebar.jsx';
 import Navbar from './Navbar.jsx';
+import ErrorBoundary from './ErrorBoundary.jsx';
+import { PageSkeleton } from './Loader.jsx';
 
 function AppShellSkeleton() {
   return (
@@ -34,12 +36,10 @@ export default function ProtectedRoute() {
   const { user, loading } = useAuth();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Close the mobile drawer after navigating.
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [location.pathname]);
+  // The mobile drawer belongs to the page it was opened on: navigating away
+  // closes it without an extra effect-driven render.
+  const [drawerPath, setDrawerPath] = useState(null);
+  const mobileOpen = drawerPath === location.pathname;
 
   if (loading) return <AppShellSkeleton />;
 
@@ -51,16 +51,22 @@ export default function ProtectedRoute() {
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
         mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
+        onCloseMobile={() => setDrawerPath(null)}
       />
       <div
         className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-300 ease-in-out ${
           collapsed ? 'lg:ml-16' : 'lg:ml-64'
         }`}
       >
-        <Navbar onOpenMenu={() => setMobileOpen(true)} />
+        <Navbar onOpenMenu={() => setDrawerPath(location.pathname)} />
         <main className="flex-1 p-4 sm:p-6 overflow-x-hidden">
-          <Outlet />
+          {/* A crash in one page keeps the sidebar and navbar usable, and
+              navigating elsewhere clears it. */}
+          <ErrorBoundary variant="page" resetKey={location.pathname}>
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
     </div>
