@@ -87,7 +87,7 @@ Bug reports are the worst part of software development — not because bugs exis
 - **Embeddable Client SDK (`bugsense.js`)** — Zero-dependency agent any web app can install to auto-capture crashes and inject an in-app bug report pill; never records typed input, strips query strings from URLs, and can be torn down with `BugSense.destroy()`
 - **Flight Recorder Breadcrumbs** — Automatically records the user's last 15 actions (DOM clicks, page navigation including `replaceState`, `fetch` *and* `XMLHttpRequest`/axios calls, and console errors) leading up to an incident
 - **Self-Monitoring** — The dashboard reports its own render crashes to its own telemetry endpoint (project "BugSense Dashboard"), and a crash in one page leaves the rest of the app usable
-- **Error Fingerprinting & Deduplication** — Deterministic SHA-256 stack trace hashing groups recurring SDK errors with atomic, race-safe occurrence counters (e.g. `42x occurrences`) and flags regressions; manual reports are never merged, but similar existing reports are pointed out
+- **Error Fingerprinting & Deduplication** — Deterministic SHA-256 stack trace hashing groups recurring SDK errors (measured: see [docs/fingerprint-results.md](docs/fingerprint-results.md)) with atomic, race-safe occurrence counters (e.g. `42x occurrences`) and flags regressions; manual reports are never merged, but similar existing reports are pointed out
 - **AI Pull Request & Patch Generator** — Claude proposes unified Git diffs with syntax highlighting and copyable `git apply` commands (requires an API key); the patch is saved on the bug and reopened without another model call until you choose Regenerate
 - **Interactive SDK Sandbox (`/sdk-demo`)** — Built-in simulated customer storefront allowing developers to inject real-world browser exceptions, failing API calls, and async rejections to demonstrate live telemetry ingestion
 - **AI Incident Post-Mortem Generator** — Formal engineering post-mortem synthesis in GitHub-flavored Markdown covering Executive Summary, Breadcrumb Timeline, RCA, and Action Items with 1-click `.md` download
@@ -200,6 +200,14 @@ a crash that reappears after being marked resolved is automatically flagged as a
 regression. See [`fingerprint.util.js`](server/utils/fingerprint.util.js) and
 [`telemetry.controller.js`](server/controllers/telemetry.controller.js).
 
+How well it does that is measured rather than asserted:
+[`docs/fingerprint-results.md`](docs/fingerprint-results.md) reports a
+pre-registered evaluation against a 748-report corpus of real stack traces,
+built blind from three browser engines. Identical repeats group reliably — the
+crash-loop case this exists for — while grouping the same bug across minified
+production builds does not, because the chunk hashes and mangled function names
+in every frame change with each release even though line numbers are stripped.
+
 ---
 
 ## Engineering Decisions
@@ -284,6 +292,24 @@ tests run the real middleware stack against an in-memory MongoDB.
   matches whole words).
 - Single workspace: every signed-in user can see every bug.
 - No email verification or password reset flow.
+- Two different errors that share their top stack frames — for example two
+  different failing API calls, where the top frames are all inside axios — can be
+  grouped into one bug. In this evaluation 9 unrelated pairs of errors were
+  merged, plus 9 of 15 pairs that were designed to look alike.
+- The same error is often not grouped across browsers: the three engines word the
+  same `TypeError` differently, and only 27% of same-bug pairs that differ only by
+  browser were grouped.
+- In a production (minified) build, a release that shifts line numbers and chunk
+  hashes re-opens bugs that are still happening: only 20% of same-bug pairs
+  survived a release, against 91% in an unminified build.
+- An error whose message embeds a value — a product id, a parsed string — can
+  produce a separate bug per value: 12 of 20 such pairs were not grouped.
+- In Chrome, unhandled `fetch()` network failures are not reported at all, so they
+  never reach grouping.
+
+The last five come from a pre-registered measurement: see
+[docs/fingerprint-results.md](docs/fingerprint-results.md). The corpus and
+harness are at [bugsense-eval](https://github.com/Krishnendu-9/bugsense-eval).
 
 ---
 
