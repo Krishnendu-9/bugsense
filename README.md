@@ -31,6 +31,10 @@ The server log opens with a `WARNING` that `JWT_SECRET` is a published example
 value. That is expected for this local demo; set a real secret before exposing
 the stack anywhere ([details](#2a-run-with-docker-fastest)).
 
+The MongoDB container prints its own startup log too, including warnings that
+access control is not enabled and hints about XFS and memory tuning; these are
+expected for a local demo with no auth on the database.
+
 Then open **http://localhost:8080** and sign in with:
 
 | Role | Email | Password |
