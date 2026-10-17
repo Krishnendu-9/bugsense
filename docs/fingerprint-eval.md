@@ -645,5 +645,157 @@ this repository, before it writes `builder-categories.md`.
 
 ## Changes to this document
 
-None since the commit that adds it. Any later change is listed here with its
-date and reason. Thresholds in section 5 don't change after the first replay.
+Any change is listed here with its date and reason. Thresholds in section 5
+don't change after the first replay.
+
+### Amendment 1 — 2026-10-17: the arithmetic restated for the corpus that exists
+
+Written after the corpus was built and frozen, and **before any replay**. No
+result exists yet: nothing has been sent to the system under test, and no
+grouping decision has been observed. This amendment is committed before the
+replay runs.
+
+**No threshold changes.** Every number in section 5 stands exactly as
+pre-registered in commit `521f9cb`, including headline recall at 0.85. Sections
+1 and 5 are left as they were written, so the original arithmetic stays visible;
+this amendment sits beside it rather than editing it.
+
+**Why nothing moves.** The corpus turned out harder than the one the arithmetic
+was derived against (below). Re-deriving the threshold from the corpus would
+move a gate because the gate is now expected to need the room, and that is
+precisely what pre-registration exists to prevent — blind corpus or not. An
+over-strict gate costs the code some credibility; a moved gate costs the
+measurement all of it.
+
+#### What the corpus actually contains
+
+The corpus was built blind, as section 2 requires, by a builder session that
+committed its own hard-case categories before it saw this design. It added 30
+incidents of its own (`G1`–`G30`), so the headline holds 57 incidents rather
+than 27. Section 5 already says the gates apply to added incidents unchanged.
+
+Two groups of planned reports do not exist, and are excluded rather than
+re-captured:
+
+- **C4, C5 and C6 in Chromium** (both environments, both app versions, 12
+  cells). The SDK sent nothing: no report and not even a CORS preflight. This
+  was investigated before the freeze and is not a fixture or harness fault; the
+  evidence is in the evaluation repository's `diagnostics/C4-C6.md`. They are
+  measured in Firefox and WebKit only.
+- **B1, B2 and B3 in `browser-dev`** (6 cells). Each attempt produced two
+  reports, so the one-report rule in section 1 dropped them. The cause is the
+  React development build, which dispatches a window `error` event for a
+  boundary-caught render error in addition to the boundary's own
+  `captureError`; see `diagnostics/B1-B3.md`. They are measured in
+  `browser-prod`.
+
+Re-capturing either group would have required the investigation's instrumented
+harness, giving 3 of 57 incidents a different provenance from the rest, so the
+frozen corpus keeps them dropped and lists every attempt.
+
+The corpus holds 748 reports of 778 planned (3.86% missing, below section 1's
+10% limit), of which 680 are in the headline.
+
+#### The three difficulty statistics
+
+Measured from the labels and the captured payloads only, with no system output,
+by `analysis/difficulty.mjs` in the evaluation repository; the full method and
+the incident lists are in its `DIFFICULTY.md`.
+
+| Statistic | Pre-registered | Actual |
+|---|---|---|
+| Share of headline same-incident pairs in incidents whose captured messages differ by engine | ~12% (104 of 858) | **61.8%** (1,092 of 1,767), from 45 of 57 incidents |
+| Designated hard-negative pairs | 7 | **15** (the design's 7 plus the builder's 8) |
+| Same-incident rate (same-incident pairs ÷ all headline pairs) | 3.13% (858 / 27,390) | **1.53%** (1,767 / 115,341) |
+
+Supporting counts: 680 headline reports rather than 332; 115,341 pairs rather
+than 27,390; 1,767 same-incident pairs (×2.06) against 113,574 negative pairs
+(×4.28); 64.3 negative pairs per same-incident pair rather than 30.9; and 1,596
+distinct incident pairs that could merge rather than 351.
+
+#### Direction: harder, on both sides of the metric
+
+**Recall.** Section 5 derived 0.85 from a specific scenario: if every
+cross-browser pair of the engine-specific incidents split, recall would fall to
+about 0.88, so 0.85 allowed that with a small margin. The pre-registration
+counted four such incidents (A5, A6, C4, C6). In the real corpus, 45 of 57
+incidents have messages that differ by engine, because the engines word ordinary
+`TypeError`s differently — Chromium's "Cannot read properties of undefined
+(reading 'map')" against Firefox's "can't access property \"map\", … is
+undefined" against WebKit's "undefined is not an object (evaluating …)". The
+same all-split scenario now gives about **0.38**, not 0.88. Excluding the
+incidents that differ only by Chromium's `Uncaught ` prefix still leaves 39.6%
+of same-incident pairs at risk and a scenario value of about 0.60.
+
+So the scenario that 0.85 was set just above now lands far below it. The
+threshold is unchanged, but **it no longer has the margin its derivation
+described**: it rests on the bare assertion that 0.85 is the right bar, not on
+the arithmetic that originally justified it.
+
+**Precision.** Negative pairs grow with the square of the incident count while
+same-incident pairs grow linearly, so tripling the incidents halved the
+same-incident rate. Any per-pair tendency to merge unrelated reports now
+produces about twice as many false-merge pairs per true pair, across 4.5× as
+many incident pairs that could merge. The first merge gate still tolerates zero
+ordinary merges, and the hard-negative gate's bands (0 Good, 1–2 Publish, 3+
+Change) are unchanged over 15 designated pairs instead of 7, so there are twice
+as many ways to reach them.
+
+One factor pulls the other way, slightly: the dropped cells remove some of the
+hardest cross-browser pairs from the denominator. With them, the
+engine-differing share would be higher still.
+
+#### The 61.8% is structural, and what follows from that
+
+The engine-differing share is a property of the capture plan, not of the world.
+Section 1 captures every incident in exactly six cells — 3 browsers × 2 app
+versions, one report per cell — so most same-incident pairs must span engines
+however the errors are worded. The pre-registered ~12% was never reachable under
+the design's own plan. Counted from the corpus:
+
+| Pair type | Same-incident pairs | Share |
+|---|---|---|
+| same browser, same version | 26 | 1.5% |
+| same browser, different version | 353 | 20.0% |
+| different browser, same version | 694 | 39.3% |
+| different browser, different version | 694 | 39.3% |
+
+78.6% of the headline is cross-browser by construction. So **the headline is
+mostly a measure of cross-engine merging**, which is not the work deduplication
+mostly does in production: a real crash loop is one user, on one browser, on one
+build, firing the same error over and over.
+
+Two further facts about the smallest stratum, which is the one that corresponds
+to that production workload:
+
+- All 26 of its pairs are **variant** pairs (`standard` against `data` or
+  `callpath`, in Chromium/v1), because each browser × version cell holds exactly
+  one standard report. They are the same pairs section 5 already gates as the
+  isolated data-variant and call-path pairs, at "all merged".
+- Therefore **no pair in the corpus is the same error repeating identically** in
+  one browser and build. That case is exercised only by the 10 controls, which
+  are re-sent byte-identical and checked as a validity condition: any control
+  that fails to merge voids the run. It yields a pass/fail, not a recall figure.
+
+**Reporting requirement (no gate changes).** The results document reports recall
+— per-pair and per-incident, as section 5 requires — **stratified by these four
+pair types, with each stratum's pair counts**, in addition to the headline. The
+thresholds are untouched: 0.85 still applies to the headline as pre-registered,
+and no stratum acquires a gate it did not already have. Two of the four already
+have one: "same browser, different version" is section 5's version-only gate
+(≥ 0.95 per environment) and "different browser, same version" is its
+browser-only gate (≥ 0.80 pooled). "Different browser, different version", the
+largest single stratum at 694 pairs, has no gate and is reported for information.
+
+#### Consequence for reading the result
+
+Because this corpus is harder than the one 0.85 was derived against, **missing
+0.85 may reflect corpus difficulty as much as fingerprint quality.** This
+sentence goes in the body of the results document, whatever the outcome.
+
+The headline and the stratified figures **must be read together**. The headline
+is dominated by cross-engine pairs for the structural reason above, so on its
+own it answers "would this group the same bug seen in three different browsers",
+not "would this group a crash loop in one browser". A result that is poor on the
+headline but strong on the same-browser strata means something quite different
+from the reverse, and the results document states which it is.
