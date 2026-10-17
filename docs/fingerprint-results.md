@@ -330,7 +330,16 @@ evaluation repository's `diagnostics/`.
 
 C4, C5 and C6 produced **no report at all** in Chromium — not a report, not even
 a CORS preflight — in all four cells, both environments and both app versions.
-Firefox 157 and WebKit 27.2 reported all three on the first attempt, every time.
+Firefox 157.0 and WebKit 27.2 reported all three on the first attempt, every
+time.
+
+**Engine versions matter here and are recorded.** Cross-origin rejection
+handling is browser behaviour and changes between releases, so this finding is
+pinned to what it was observed in: **Chromium 156.0.8078.4**, Firefox 157.0 and
+WebKit 27.2, via the Playwright 1.64.1 browser builds (`corpus.lock` records all
+three and the Playwright version). A later Chromium may behave differently in
+either direction; re-check against the current release before concluding the
+behaviour still holds.
 48 of 48 Chromium attempts produced zero reports; 24 of 24 Firefox and WebKit
 attempts produced one.
 
@@ -380,6 +389,80 @@ the page gave it, and the SDK sent one report for several identical window
 `error` events of a single render error. **Production builds do not dispatch
 that event, so production occurrence counts are unaffected.** This belongs in
 the SDK documentation rather than in a bug tracker.
+
+## Follow-up: the Chromium finding explained from the SDK source
+
+**When this was read.** `server/public/sdk/bugsense.js` was opened only after
+everything above was already fixed and recorded: after `corpus.lock` v2
+(`a0baeba`), after both replays, after `score.mjs` produced the numbers, and
+after this document was written. The Chromium finding above was established
+black-box — the corpus builder loaded the SDK only through a `<script>` tag and
+never read it, and the mechanism was reproduced with no BugSense code on the
+page at all. Nothing in this section changed a threshold, a corpus, a number or
+a conclusion; it only explains one.
+
+The SDK replaces `window.fetch` to record a breadcrumb per request
+([`bugsense.js:180`](../server/public/sdk/bugsense.js#L180)). The rejection
+handler adds its breadcrumb and then re-throws:
+
+```js
+function (err) {
+  addBreadcrumb('xhr', 'API [' + method + '] ' + url + ' (FAILED)', { … });
+  throw err;                       // bugsense.js:200
+}
+```
+
+That `throw` is the whole mechanism. The promise the page awaits is no longer
+the browser's own; it is the one returned by `.then()` *inside bugsense.js*, and
+it rejects because a cross-origin script threw. The documented install is
+`<script src="https://your-bugsense-host/sdk/bugsense.js">` — cross-origin by
+design, with no `crossorigin` attribute — so Chromium treats the rejection as
+originating in an opaque script and, as the SDK-free reproduction showed,
+dispatches no `unhandledrejection` event at all.
+
+**The SDK is not suppressing these errors — it is blinding itself to them, and
+what blinds it is its own re-throw.** That distinction is the finding.
+
+The hypothesis going in was self-filtering: a reporter that patches globals often
+ignores errors whose stack points back into its own code, to avoid reporting
+loops, and that would produce exactly this symptom. **That hypothesis was wrong.**
+The source shows no such logic anywhere in the file — no ignore list, no
+self-frame check, no origin test, no loop guard of any kind. Its
+`unhandledrejection` listener
+([`bugsense.js:355`](../server/public/sdk/bugsense.js#L355)) is unconditional and
+would report every one of these errors if it ever ran. It never runs, because the
+browser never dispatches the event, and the browser does not dispatch it because
+the SDK re-threw the error from inside a cross-origin script. The SDK silences
+its own reporting path, as a side effect of recording a breadcrumb.
+
+This also matches the evidence that looked contradictory: passing the same
+caught error to `BugSense.captureError` produced a report every time (case c),
+because that path never depends on the event.
+
+Three notes for whoever fixes this, which this task deliberately did not:
+
+- **The likely fix is to report from where the error already is (untested).** At
+  the moment it re-throws, the wrapper holds the error in hand, as `err`. It can
+  report it from there instead of relying on an `unhandledrejection` event that
+  will never arrive. That needs no CORS change, no attribute on the script tag,
+  and works however the SDK is served. One thing to settle in the design: the
+  wrapper's handler runs for *every* failed `fetch`, including ones the
+  application catches and handles perfectly well, so reporting unconditionally
+  from there would report errors that are not bugs. It needs a way to tell
+  handled from unhandled — for instance holding the error briefly and reporting
+  only if nothing has handled the rejection by the next tick.
+- The builder's case (j) showed Chromium dispatches the event normally when the
+  wrapper script is loaded with `crossorigin="anonymous"` and the response
+  carries `Access-Control-Allow-Origin`. That route works but couples two
+  changes, and **adding the attribute alone would make things worse**, not
+  better: `/sdk/bugsense.js` is currently served with no
+  `Access-Control-Allow-Origin` header at all, so a CORS-mode request for it
+  would be blocked and the SDK would fail to load entirely. The header and the
+  attribute have to land together, or the SDK has to be served same-origin.
+- This is independent of the fingerprint work. It needs a browser test across
+  the three engines, not a new corpus, and it is the more urgent of the two: a
+  grouping defect mis-files reports that arrived, while this one means reports
+  never arrive.
 
 ## A finding about the method: the corpus is built wrong for this problem
 
