@@ -53,11 +53,24 @@ export default function ProtectedRoute() {
         mobileOpen={mobileOpen}
         onCloseMobile={() => setDrawerPath(null)}
       />
+      {/*
+        The sidebar column. The sidebar itself is position: fixed, so it only
+        ever spans the window -- which is right while scrolling, but anything
+        that renders the whole page at once (a full-page screenshot, print)
+        draws it once at window height and leaves the rest of the page with no
+        column beside it. This in-flow element stretches with the page and
+        carries the same surface and divider to the bottom of the document;
+        in the browser the fixed sidebar sits exactly on top of it. It also
+        reserves the column's width, replacing the old margin on the content.
+      */}
       <div
-        className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-300 ease-in-out ${
-          collapsed ? 'lg:ml-16' : 'lg:ml-64'
+        aria-hidden="true"
+        data-testid="sidebar-column"
+        className={`hidden lg:block flex-shrink-0 bg-surface border-r border-border transition-[width] duration-300 ease-in-out ${
+          collapsed ? 'lg:w-16' : 'lg:w-64'
         }`}
-      >
+      />
+      <div className="flex-1 flex flex-col min-w-0">
         <Navbar onOpenMenu={() => setDrawerPath(location.pathname)} />
         <main className="flex-1 p-4 sm:p-6 overflow-x-hidden">
           {/* A crash in one page keeps the sidebar and navbar usable, and

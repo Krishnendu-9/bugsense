@@ -1,4 +1,11 @@
-import animate from 'tailwindcss-animate';
+/*
+ * CommonJS on purpose. As an ES module this config is loaded through Node's
+ * native require(esm), whose cache Tailwind v3 cannot clear, so the dev server
+ * kept compiling against the config it started with: a new colour key produced
+ * no CSS rule until the server was restarted. As CommonJS, Tailwind reloads it
+ * on every edit. Measured both ways before switching -- see the step 3 notes.
+ */
+const animate = require('tailwindcss-animate');
 
 /**
  * Each colour resolves to rgb(var(--token) / <alpha-value>) so that the
@@ -9,7 +16,7 @@ import animate from 'tailwindcss-animate';
 const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
     extend: {

@@ -1,5 +1,5 @@
 /* Fonts are self-hosted from @fontsource (imported in main.jsx); there is no
-   font CDN request. Family stacks live in tailwind.config.js. */
+   font CDN request. Family stacks live in tailwind.config.cjs. */
 
 @tailwind base;
 @tailwind components;
