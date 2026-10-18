@@ -7,7 +7,7 @@ export default function BugCard({ bug }) {
   return (
     <Link
       to={`/bugs/${bug._id}`}
-      className="block glass-card glass-card-hover p-5 hover:bg-white/[0.04] relative group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="block glass-card glass-card-hover p-5 hover:bg-track relative group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <h3 className="font-semibold text-text-base group-hover:text-primary transition-colors duration-200 line-clamp-2 text-sm leading-snug flex-1">
@@ -32,7 +32,7 @@ export default function BugCard({ bug }) {
           </span>
         )}
         {bug.source === 'sdk' && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-track text-muted border border-border">
             SDK
           </span>
         )}
@@ -46,7 +46,7 @@ export default function BugCard({ bug }) {
       {bug.tags?.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
           {bug.tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="px-1.5 py-0.5 rounded text-xs bg-white/5 text-muted border border-border">
+            <span key={tag} className="px-1.5 py-0.5 rounded text-xs bg-track text-muted border border-border">
               #{tag}
             </span>
           ))}
@@ -56,11 +56,11 @@ export default function BugCard({ bug }) {
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-3 border-t border-white/5 text-xs text-muted">
+      <div className="flex items-center justify-between pt-3 border-t border-hairline text-xs text-muted">
         <div className="flex items-center gap-3">
           {bug.reporter && (
             <div className="flex items-center gap-1.5">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0 overflow-hidden">
+              <div className="w-5 h-5 rounded-full bg-accent flex items-center justify-center text-on-accent text-[9px] font-bold flex-shrink-0 overflow-hidden">
                 {bug.reporter.avatar ? (
                   <img src={getImageUrl(bug.reporter.avatar)} alt="" className="w-full h-full object-cover rounded-full" />
                 ) : (

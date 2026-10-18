@@ -11,7 +11,7 @@ export function BugCardSkeleton() {
         <div className="skeleton h-4 w-20 rounded-full" />
         <div className="skeleton h-4 w-20 rounded-full" />
       </div>
-      <div className="flex items-center justify-between pt-2 border-t border-white/10">
+      <div className="flex items-center justify-between pt-2 border-t border-border">
         <div className="skeleton h-4 w-24 rounded" />
         <div className="skeleton h-4 w-16 rounded" />
       </div>

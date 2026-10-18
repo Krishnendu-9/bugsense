@@ -9,7 +9,7 @@ import { formatDate, getImageUrl, getInitials } from '../../utils/helpers.js';
 
 function TeamSkeleton() {
   return (
-    <div className="glass-card divide-y divide-white/5 overflow-hidden" aria-busy="true" aria-label="Loading team">
+    <div className="glass-card divide-y divide-hairline overflow-hidden" aria-busy="true" aria-label="Loading team">
       {Array.from({ length: 5 }).map((_, i) => (
         <div key={i} className="p-4 flex items-center gap-3">
           <div className="skeleton w-9 h-9 rounded-full" />
@@ -72,7 +72,7 @@ export default function Team() {
       {!loading && users.length > 0 && (
         <div className="flex flex-wrap gap-2 text-xs">
           {ROLE_OPTIONS.map((opt) => (
-            <span key={opt.value} className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-muted">
+            <span key={opt.value} className="px-2.5 py-1 rounded-full bg-track border border-border text-muted">
               {opt.label}s: <span className="text-text-base font-semibold">{counts[opt.value] || 0}</span>
             </span>
           ))}
@@ -82,12 +82,12 @@ export default function Team() {
       {loading ? (
         <TeamSkeleton />
       ) : (
-        <div className="glass-card divide-y divide-white/5 overflow-hidden">
+        <div className="glass-card divide-y divide-hairline overflow-hidden">
           {users.map((member) => {
             const isMe = member._id === me?._id;
             return (
-              <div key={member._id} className="p-4 flex items-center gap-3 flex-wrap hover:bg-white/[0.02] transition-colors duration-200">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-bold flex-shrink-0 overflow-hidden">
+              <div key={member._id} className="p-4 flex items-center gap-3 flex-wrap hover:bg-track transition-colors duration-200">
+                <div className="w-9 h-9 rounded-full bg-accent flex items-center justify-center text-on-accent text-xs font-bold flex-shrink-0 overflow-hidden">
                   {member.avatar ? (
                     <img src={getImageUrl(member.avatar)} alt="" className="w-full h-full object-cover" />
                   ) : (

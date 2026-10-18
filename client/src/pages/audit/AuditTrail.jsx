@@ -11,16 +11,16 @@ import { timeAgo } from '../../utils/helpers.js';
 const ACTION_ICONS = {
   BUG_CREATED: { icon: Bug, color: 'text-primary bg-primary/15 border-primary/30' },
   BUG_UPDATED: { icon: CheckCircle2, color: 'text-secondary bg-secondary/15 border-secondary/30' },
-  SDK_TELEMETRY: { icon: Terminal, color: 'text-indigo-400 bg-indigo-500/15 border-indigo-500/30' },
+  SDK_TELEMETRY: { icon: Terminal, color: 'text-muted bg-track border-border' },
   REGRESSION_DETECTED: { icon: AlertTriangle, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
-  GITHUB_EXPORTED: { icon: Github, color: 'text-green-400 bg-green-500/15 border-green-500/30' },
+  GITHUB_EXPORTED: { icon: Github, color: 'text-status-resolved bg-status-resolved/15 border-status-resolved/30' },
   BUG_DELETED: { icon: Trash2, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
   USER_REGISTERED: { icon: UserPlus, color: 'text-accent bg-accent/15 border-accent/30' },
   ROLE_CHANGED: { icon: UserCog, color: 'text-secondary bg-secondary/15 border-secondary/30' },
-  PASSWORD_CHANGED: { icon: KeyRound, color: 'text-amber-400 bg-amber-500/15 border-amber-500/30' },
+  PASSWORD_CHANGED: { icon: KeyRound, color: 'text-status-progress bg-status-progress/15 border-status-progress/30' },
   LOGIN_FAILED: { icon: LogIn, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
   COMMENT_ADDED: { icon: MessageSquare, color: 'text-primary bg-primary/15 border-primary/30' },
-  COMMENT_DELETED: { icon: MessageSquareX, color: 'text-muted bg-white/5 border-white/10' },
+  COMMENT_DELETED: { icon: MessageSquareX, color: 'text-muted bg-track border-border' },
 };
 
 const TABS = [
@@ -38,7 +38,7 @@ const PAGE_SIZE = 30;
 
 function AuditSkeleton() {
   return (
-    <div className="glass-card divide-y divide-white/5 border border-white/10 overflow-hidden">
+    <div className="glass-card divide-y divide-hairline border border-border overflow-hidden">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="p-4 flex items-start gap-3.5">
           <div className="skeleton w-8 h-8 rounded-lg" />
@@ -111,7 +111,7 @@ export default function AuditTrail() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-xl font-bold text-text-base">Audit Trail</h1>
-            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-semibold bg-primary/15 text-primary border border-primary/30 flex items-center gap-1">
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/15 text-primary border border-primary/30 flex items-center gap-1">
               <Shield size={12} /> Staff only
             </span>
           </div>
@@ -131,7 +131,7 @@ export default function AuditTrail() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 border-b border-white/5 pb-3 overflow-x-auto text-xs" role="tablist">
+      <div className="flex gap-2 border-b border-hairline pb-3 overflow-x-auto text-xs" role="tablist">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -141,7 +141,7 @@ export default function AuditTrail() {
             className={`px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ${
               filterType === tab.id
                 ? 'bg-primary/20 text-primary border border-primary/30'
-                : 'text-muted hover:text-text-base hover:bg-white/5'
+                : 'text-muted hover:text-text-base hover:bg-track'
             }`}
           >
             {tab.label}
@@ -160,14 +160,14 @@ export default function AuditTrail() {
           <p className="text-[11px] text-muted/60">New developer actions and telemetry events will appear here.</p>
         </div>
       ) : (
-        <div className="glass-card divide-y divide-white/5 border border-white/10 overflow-hidden">
+        <div className="glass-card divide-y divide-hairline border border-border overflow-hidden">
           {logs.map((log) => {
-            const config = ACTION_ICONS[log.action] || { icon: Shield, color: 'text-muted bg-white/5 border-white/10' };
+            const config = ACTION_ICONS[log.action] || { icon: Shield, color: 'text-muted bg-track border-border' };
             const Icon = config.icon;
             const linksToBug = log.entityId && log.action !== 'BUG_DELETED' && BUG_LINKED_TYPES.includes(log.entityType);
 
             return (
-              <div key={log._id} className="p-4 flex items-start gap-3.5 hover:bg-white/[0.02] transition-colors">
+              <div key={log._id} className="p-4 flex items-start gap-3.5 hover:bg-track transition-colors">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center border flex-shrink-0 mt-0.5 ${config.color}`}>
                   <Icon size={15} />
                 </div>
@@ -187,7 +187,7 @@ export default function AuditTrail() {
                       {log.performedBy?.name || log.performedByName}
                     </span>
                     <span>•</span>
-                    <span className="font-mono text-[10px] bg-black/30 px-1.5 py-px rounded border border-white/5">
+                    <span className="font-mono text-[10px] bg-track px-1.5 py-px rounded border border-hairline">
                       {log.action}
                     </span>
                     {linksToBug && (

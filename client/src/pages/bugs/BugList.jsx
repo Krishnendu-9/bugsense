@@ -164,19 +164,19 @@ export default function BugList() {
               <Download size={15} /> {exporting ? 'Exporting...' : 'Export'} <ChevronDown size={12} />
             </button>
             {showExportMenu && (
-              <div role="menu" className="absolute right-0 mt-1.5 w-52 bg-surface border border-white/10 rounded-xl shadow-2xl p-1.5 z-30 animate-in fade-in zoom-in-95 duration-150">
+              <div role="menu" className="absolute right-0 mt-1.5 w-52 bg-surface border border-border rounded-xl shadow-2xl p-1.5 z-30 animate-in fade-in zoom-in-95 duration-150">
                 <p className="px-3 py-1.5 text-[10px] text-muted">All {pagination.total} matching bugs</p>
                 <button
                   role="menuitem"
                   onClick={() => exportAll('csv')}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-lg text-text-base hover:bg-white/5 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-lg text-text-base hover:bg-track transition-colors"
                 >
-                  <FileSpreadsheet size={14} className="text-green-400" /> Export CSV (.csv)
+                  <FileSpreadsheet size={14} className="text-muted" /> Export CSV (.csv)
                 </button>
                 <button
                   role="menuitem"
                   onClick={() => exportAll('json')}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-lg text-text-base hover:bg-white/5 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-lg text-text-base hover:bg-track transition-colors"
                 >
                   <FileCode size={14} className="text-primary" /> Export JSON (.json)
                 </button>
@@ -201,7 +201,7 @@ export default function BugList() {
         </div>
       ) : bugs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
+          <div className="w-16 h-16 rounded-full bg-track flex items-center justify-center mb-4">
             <Bug size={28} className="text-muted" />
           </div>
           <h3 className="text-lg font-semibold text-text-base mb-1">No bugs found</h3>

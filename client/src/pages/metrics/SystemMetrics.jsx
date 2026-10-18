@@ -87,13 +87,13 @@ export default function SystemMetrics() {
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-xl font-bold text-text-base">System Vitals</h1>
             <span
-              className={`px-2 py-0.5 rounded-full text-xs font-mono font-semibold border flex items-center gap-1 ${
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold border flex items-center gap-1 ${
                 operational
-                  ? 'bg-green-500/15 text-green-400 border-green-500/30'
-                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                  ? 'bg-status-resolved/15 text-status-resolved border-status-resolved/30'
+                  : 'bg-status-progress/15 text-status-progress border-status-progress/30'
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${operational ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${operational ? 'bg-status-resolved animate-pulse' : 'bg-status-progress'}`} />
               {error ? 'Unreachable' : operational ? 'Operational' : 'Degraded'}
             </span>
           </div>
@@ -111,7 +111,7 @@ export default function SystemMetrics() {
       </div>
 
       {error && (
-        <div className="glass-card p-4 border border-amber-500/30 bg-amber-500/5 flex items-center gap-2 text-sm text-amber-300">
+        <div className="glass-card p-4 border border-status-progress/30 bg-status-progress/5 flex items-center gap-2 text-sm text-status-progress">
           <AlertTriangle size={16} /> {error}{metrics ? ' — showing the last successful reading.' : ''}
         </div>
       )}
@@ -119,54 +119,58 @@ export default function SystemMetrics() {
       {/* Grid of 4 Vitals Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Database Health */}
-        <div className="glass-card p-5 border border-white/10 space-y-3">
+        <div className="glass-card p-5 border border-border space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted font-medium">Database Layer</span>
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dbConnected ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dbConnected ? 'bg-status-resolved/15 text-status-resolved' : 'bg-status-progress/15 text-status-progress'}`}>
               <Database size={15} />
             </div>
           </div>
           <div>
-            <div className="text-xl font-bold text-text-base font-mono capitalize">
+            <div className="text-xl font-bold text-text-base capitalize">
               {metrics?.database?.status || 'Unknown'}
             </div>
             <p className="text-[11px] text-muted font-mono mt-0.5 truncate">
               {metrics?.database?.name} @ {metrics?.database?.host}
             </p>
           </div>
-          <div className={`pt-2 border-t border-white/5 flex items-center gap-1 text-[11px] ${dbConnected ? 'text-green-400' : 'text-amber-400'}`}>
+          <div className={`pt-2 border-t border-hairline flex items-center gap-1 text-[11px] ${dbConnected ? 'text-status-resolved' : 'text-status-progress'}`}>
             {dbConnected ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
             {dbConnected ? 'Accepting reads and writes' : 'Database not connected'}
           </div>
         </div>
 
         {/* Card 2: Deduplication Efficiency */}
-        <div className="glass-card p-5 border border-white/10 space-y-3">
+        <div className="glass-card p-5 border border-border space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted font-medium">Storage Efficiency</span>
+            <span className="text-xs text-muted font-medium">SDK Deduplication</span>
             <div className="w-7 h-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center">
               <Zap size={15} />
             </div>
           </div>
           <div>
             <div className="text-xl font-bold text-text-base font-mono">
-              {metrics?.telemetry?.savingsPercentage || '0%'}
+              {/* null means no SDK crash has been received yet, which is not
+                  the same claim as a 0% rate. */}
+              {metrics?.telemetry?.dedupRate == null ? '—' : `${metrics.telemetry.dedupRate}%`}
             </div>
             <p className="text-[11px] text-muted mt-0.5">
-              DB savings via auto-deduplication
+              {metrics?.telemetry?.dedupRate == null
+                ? 'No SDK crashes received yet'
+                : 'of SDK crashes merged into an existing incident'}
             </p>
           </div>
-          <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-muted font-mono">
-            <span>Filtered: {metrics?.telemetry?.deduplicatedEvents || 0}</span>
-            <span>Raw: {metrics?.telemetry?.totalRawIncidents || 0}</span>
+          <div className="pt-2 border-t border-hairline flex items-center justify-between text-[11px] text-muted font-mono">
+            <span>Merged: {metrics?.telemetry?.duplicatesMerged || 0}</span>
+            <span>Received: {metrics?.telemetry?.sdkCrashesReceived || 0}</span>
           </div>
         </div>
 
         {/* Card 3: Memory Usage */}
-        <div className="glass-card p-5 border border-white/10 space-y-3">
+        <div className="glass-card p-5 border border-border space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted font-medium">Node.js Heap</span>
-            <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-track text-muted flex items-center justify-center">
               <Cpu size={15} />
             </div>
           </div>
@@ -178,19 +182,19 @@ export default function SystemMetrics() {
               of {metrics?.memory?.heapTotalMb} MB allocated ({memPercent}%)
             </p>
           </div>
-          <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+          <div className="w-full bg-track rounded-full h-1.5 overflow-hidden">
             <div
-              className="bg-purple-500 h-full rounded-full transition-all duration-500"
+              className="bg-accent h-full rounded-full transition-all duration-500"
               style={{ width: `${memPercent}%` }}
             />
           </div>
         </div>
 
         {/* Card 4: Process Uptime */}
-        <div className="glass-card p-5 border border-white/10 space-y-3">
+        <div className="glass-card p-5 border border-border space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted font-medium">Server Uptime</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-track text-muted flex items-center justify-center">
               <Activity size={15} />
             </div>
           </div>
@@ -198,42 +202,42 @@ export default function SystemMetrics() {
             <div className="text-xl font-bold text-text-base font-mono">
               {formatUptime(metrics?.uptimeSeconds)}
             </div>
-            <p className="text-[11px] text-muted mt-0.5 font-mono">
+            <p className="text-[11px] text-muted mt-0.5">
               Runtime: Node.js {metrics?.nodeVersion}
             </p>
           </div>
-          <div className={`pt-2 border-t border-white/5 flex items-center gap-1 text-[11px] ${connected ? 'text-green-400' : 'text-muted'}`}>
+          <div className={`pt-2 border-t border-hairline flex items-center gap-1 text-[11px] ${connected ? 'text-status-resolved' : 'text-muted'}`}>
             <ShieldCheck size={12} /> {connected ? 'Your live connection is active' : 'Live connection offline'}
           </div>
         </div>
       </div>
 
       {/* Detailed Telemetry Breakdown Card */}
-      <div className="glass-card p-6 border border-white/10 space-y-4">
+      <div className="glass-card p-6 border border-border space-y-4">
         <h3 className="text-sm font-semibold text-text-base flex items-center gap-2">
           <HardDrive size={16} className="text-primary" /> Incident Telemetry Pipeline Analytics
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-          <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-1">
-            <span className="text-xs text-muted">Total Unique Bug Records</span>
+          <div className="p-4 rounded-xl bg-track border border-hairline space-y-1">
+            <span className="text-xs text-muted">SDK Crashes Received</span>
             <div className="text-2xl font-bold text-text-base font-mono">
-              {metrics?.telemetry?.totalUniqueBugs || 0}
+              {metrics?.telemetry?.sdkCrashesReceived || 0}
             </div>
-            <p className="text-[11px] text-muted">Persisted in MongoDB</p>
+            <p className="text-[11px] text-muted">Every report sent by <code>bugsense.js</code></p>
           </div>
-          <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-1">
-            <span className="text-xs text-muted">Total Raw Telemetry Ingested</span>
-            <div className="text-2xl font-bold text-secondary font-mono">
-              {metrics?.telemetry?.totalRawIncidents || 0}
+          <div className="p-4 rounded-xl bg-track border border-hairline space-y-1">
+            <span className="text-xs text-muted">Incidents After Grouping</span>
+            <div className="text-2xl font-bold text-accent font-mono">
+              {metrics?.telemetry?.sdkIncidents || 0}
             </div>
-            <p className="text-[11px] text-muted">Events processed through pipeline</p>
+            <p className="text-[11px] text-muted">One per distinct fingerprint</p>
           </div>
-          <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-1">
-            <span className="text-xs text-muted">SDK Ingested Incidents</span>
-            <div className="text-2xl font-bold text-indigo-400 font-mono">
-              {metrics?.telemetry?.sdkReportedBugs || 0}
+          <div className="p-4 rounded-xl bg-track border border-hairline space-y-1">
+            <span className="text-xs text-muted">Duplicates Merged</span>
+            <div className="text-2xl font-bold text-text-base font-mono">
+              {metrics?.telemetry?.duplicatesMerged || 0}
             </div>
-            <p className="text-[11px] text-muted">Reported via <code>bugsense.js</code></p>
+            <p className="text-[11px] text-muted">Received minus incidents</p>
           </div>
         </div>
       </div>

@@ -39,7 +39,7 @@ const navSections = [
 
 function UserAvatar({ user, className }) {
   return (
-    <div className={`rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold flex-shrink-0 overflow-hidden ${className}`}>
+    <div className={`rounded-full bg-accent flex items-center justify-center text-on-accent font-bold flex-shrink-0 overflow-hidden ${className}`}>
       {user?.avatar ? (
         <img src={getImageUrl(user.avatar)} alt="" className="w-full h-full object-cover" />
       ) : (
@@ -76,38 +76,41 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
 
       <aside
         aria-label="Main navigation"
-        className={`fixed left-0 top-0 h-full bg-[#0B0F19]/95 backdrop-blur-2xl border-r border-white/[0.08] flex flex-col z-40 transition-all duration-300 ease-in-out w-64 ${
+        className={`fixed inset-y-0 left-0 bg-surface border-r border-border flex flex-col z-40 transition-[width,transform] duration-300 ease-in-out w-64 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0 ${collapsed ? 'lg:w-16' : 'lg:w-64'}`}
       >
         {/* Brand Logo */}
-        <div className={`h-16 flex items-center border-b border-white/[0.08] flex-shrink-0 ${iconOnly ? 'lg:justify-center lg:px-0 gap-3 px-5' : 'gap-3 px-5'}`}>
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center flex-shrink-0 shadow-glow-primary">
-            <ShieldCheck size={20} className="text-white" />
+        <div className={`h-16 flex items-center border-b border-border flex-shrink-0 ${iconOnly ? 'lg:justify-center lg:px-0 gap-3 px-5' : 'gap-3 px-5'}`}>
+          <div className="w-9 h-9 rounded-lg bg-accent-dim border border-border flex items-center justify-center flex-shrink-0">
+            <ShieldCheck size={20} className="text-accent" />
           </div>
           {!iconOnly && (
             <div className="flex flex-col flex-1">
               <span className="text-base font-bold text-text-base tracking-tight whitespace-nowrap">
                 Bug<span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Sense</span>
               </span>
-              <span className="text-[10px] font-mono text-muted/70 tracking-widest uppercase">Bug Tracker</span>
+              <span className="text-[10px] text-muted/70 tracking-widest uppercase">Bug Tracker</span>
             </div>
           )}
           <button
             onClick={onCloseMobile}
             aria-label="Close menu"
-            className="lg:hidden p-1.5 rounded-lg text-muted hover:text-text-base hover:bg-white/5"
+            className="lg:hidden p-1.5 rounded-lg text-muted hover:text-text-base hover:bg-track"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Grouped Nav Items */}
-        <nav className={`flex-1 py-4 overflow-y-auto space-y-6 ${iconOnly ? 'px-2' : 'px-3'}`}>
+        {/* Full-height column: header and footer fixed, the nav between them scrolls
+            on its own when the window is too short, with shadows at whichever
+            edge has more to show. */}
+        <nav className={`flex-1 min-h-0 py-3 overflow-y-auto overscroll-contain space-y-4 scroll-fade ${iconOnly ? 'px-2' : 'px-3'}`}>
           {sections.map((section) => (
             <div key={section.category} className="space-y-1">
               {!iconOnly && (
-                <p className="px-3 text-[10px] font-mono font-semibold text-muted/50 uppercase tracking-widest mb-1.5">
+                <p className="px-3 text-[10px] font-semibold text-muted/50 uppercase tracking-widest mb-1.5">
                   {section.category}
                 </p>
               )}
@@ -119,18 +122,18 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
                   aria-label={iconOnly ? label : undefined}
                   className={({ isActive }) =>
                     `flex items-center rounded-xl text-xs font-medium transition-all duration-200 relative group ${
-                      iconOnly ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'
+                      iconOnly ? 'justify-center p-2' : 'gap-3 px-3 py-2'
                     } ${
                       isActive
-                        ? 'bg-gradient-to-r from-primary/20 via-primary/10 to-transparent text-white border border-primary/30 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]'
-                        : 'text-muted hover:text-text-base hover:bg-white/[0.04] border border-transparent'
+                        ? 'bg-accent-dim text-fg border border-accent/30'
+                        : 'text-muted hover:text-text-base hover:bg-track border border-transparent'
                     }`
                   }
                 >
                   {({ isActive }) => (
                     <>
                       {isActive && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-primary shadow-glow-primary" />
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-accent" />
                       )}
                       <Icon size={17} className={`flex-shrink-0 transition-colors ${isActive ? 'text-primary' : 'group-hover:text-text-base'}`} />
                       {!iconOnly && <span className="flex-1 truncate">{label}</span>}
@@ -146,7 +149,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
           <div className="px-3 pb-3 border-t border-border pt-3">
             <NavLink
               to="/profile"
-              className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 flex items-center gap-2 min-w-0 transition-all duration-200 group"
+              className="px-3 py-2 rounded-lg bg-track hover:bg-track border border-transparent hover:border-border flex items-center gap-2 min-w-0 transition-all duration-200 group"
             >
               <UserAvatar user={user} className="w-7 h-7 text-[10px]" />
               <div className="min-w-0 flex-1">

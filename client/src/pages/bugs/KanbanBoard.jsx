@@ -13,10 +13,10 @@ import api from '../../api/axios.js';
 const BOARD_LIMIT = 100;
 
 const COLUMNS = [
-  { id: 'open', label: 'Open', color: 'border-blue-500/30 bg-blue-500/5', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  { id: 'in-progress', label: 'In Progress', color: 'border-amber-500/30 bg-amber-500/5', badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  { id: 'resolved', label: 'Resolved', color: 'border-green-500/30 bg-green-500/5', badge: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  { id: 'closed', label: 'Closed', color: 'border-slate-500/30 bg-slate-500/5', badge: 'bg-slate-500/20 text-slate-400 border-slate-500/30' },
+  { id: 'open', label: 'Open', color: 'border-status-open/30 bg-status-open/5', badge: 'bg-status-open/15 text-status-open border-status-open/30' },
+  { id: 'in-progress', label: 'In Progress', color: 'border-status-progress/30 bg-status-progress/5', badge: 'bg-status-progress/15 text-status-progress border-status-progress/30' },
+  { id: 'resolved', label: 'Resolved', color: 'border-status-resolved/30 bg-status-resolved/5', badge: 'bg-status-resolved/15 text-status-resolved border-status-resolved/30' },
+  { id: 'closed', label: 'Closed', color: 'border-border bg-track', badge: 'bg-track text-muted border-border' },
 ];
 
 export default function KanbanBoard() {
@@ -119,7 +119,7 @@ export default function KanbanBoard() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-xl font-bold text-text-base">Issue Workflow Board</h1>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-primary/15 text-primary border border-primary/30">
+            <span className="px-2 py-0.5 rounded-full text-[11px] bg-primary/15 text-primary border border-primary/30">
               Drag & Drop Enabled
             </span>
           </div>
@@ -176,12 +176,12 @@ export default function KanbanBoard() {
               onDrop={(e) => handleDrop(e, col.id)}
               className={`glass-card p-3.5 flex flex-col min-h-[550px] max-h-[82vh] border transition-all duration-200 rounded-2xl ${
                 isDropTarget
-                  ? 'border-primary bg-primary/[0.08] shadow-[0_0_30px_rgba(99,102,241,0.25),inset_0_0_20px_rgba(99,102,241,0.12)] ring-2 ring-primary/50'
-                  : 'border-white/[0.08]'
+                  ? 'border-accent bg-accent-dim ring-2 ring-accent/40'
+                  : 'border-border'
               }`}
             >
               {/* Column Header */}
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-hairline">
                 <div className="flex items-center gap-2">
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${col.badge}`}>
                     {col.label}
@@ -191,7 +191,7 @@ export default function KanbanBoard() {
                   </span>
                 </div>
                 {isDropTarget && (
-                  <span className="text-[10px] font-mono text-primary font-semibold animate-pulse">
+                  <span className="text-[10px] text-primary font-semibold animate-pulse">
                     Drop to update
                   </span>
                 )}
@@ -216,10 +216,10 @@ export default function KanbanBoard() {
                       draggable={movable}
                       onDragStart={(e) => handleDragStart(e, bug._id)}
                       onDragEnd={handleDragEnd}
-                      className={`p-3.5 rounded-xl bg-[#0B0F19]/90 border transition-all space-y-2.5 group ${movable ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                      className={`p-3.5 rounded-xl bg-surface border transition-all space-y-2.5 group ${movable ? 'cursor-grab active:cursor-grabbing' : ''} ${
                         isBeingDragged
                           ? 'opacity-40 scale-95 border-dashed border-primary/80 shadow-none'
-                          : 'border-white/[0.08] hover:border-primary/50 hover:bg-white/[0.04] hover:-translate-y-0.5 hover:shadow-lg'
+                          : 'border-border hover:border-primary/50 hover:bg-track hover:-translate-y-0.5 hover:shadow-lg'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -245,14 +245,14 @@ export default function KanbanBoard() {
                           </span>
                         )}
                         {bug.source === 'sdk' && (
-                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-track text-muted border border-border">
                             SDK
                           </span>
                         )}
                       </div>
 
                       {/* Card Footer & Quick Move Controls */}
-                      <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-muted">
+                      <div className="flex items-center justify-between pt-2 border-t border-hairline text-[11px] text-muted">
                         <div className="flex items-center gap-2">
                           <span className="flex items-center gap-1">
                             <MessageSquare size={11} /> {bug.comments?.length || 0}
@@ -270,7 +270,7 @@ export default function KanbanBoard() {
                               }}
                               title="Move back"
                               aria-label={`Move "${bug.title}" back`}
-                              className="p-1 rounded hover:bg-white/10 text-muted hover:text-text-base transition-colors"
+                              className="p-1 rounded hover:bg-track text-muted hover:text-text-base transition-colors"
                             >
                               <ArrowLeft size={11} />
                             </button>
@@ -283,7 +283,7 @@ export default function KanbanBoard() {
                               }}
                               title="Advance status"
                               aria-label={`Advance "${bug.title}"`}
-                              className="p-1 rounded hover:bg-white/10 text-muted hover:text-text-base transition-colors"
+                              className="p-1 rounded hover:bg-track text-muted hover:text-text-base transition-colors"
                             >
                               <ArrowRight size={11} />
                             </button>
@@ -295,8 +295,8 @@ export default function KanbanBoard() {
                 })}
 
                 {colBugs.length === 0 && !isDropTarget && (
-                  <div className="text-center py-16 text-xs text-muted/40 font-mono flex flex-col items-center justify-center gap-2">
-                    <span className="w-8 h-8 rounded-full border border-dashed border-white/10 flex items-center justify-center text-muted/30">
+                  <div className="text-center py-16 text-xs text-muted/40 flex flex-col items-center justify-center gap-2">
+                    <span className="w-8 h-8 rounded-full border border-dashed border-border flex items-center justify-center text-muted/30">
                       +
                     </span>
                     <span>No tickets in this stage</span>

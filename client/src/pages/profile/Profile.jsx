@@ -204,8 +204,8 @@ export default function Profile() {
 
             {/* Avatar with upload trigger */}
             <div className="relative group mb-4">
-              <div className="w-24 h-24 rounded-full p-1 bg-gradient-to-tr from-primary to-secondary shadow-lg">
-                <div className="w-full h-full rounded-full bg-surface overflow-hidden flex items-center justify-center text-white text-2xl font-bold">
+              <div className="w-24 h-24 rounded-full p-1 bg-accent">
+                <div className="w-full h-full rounded-full bg-surface overflow-hidden flex items-center justify-center text-fg text-2xl font-bold">
                   {user?.avatar ? (
                     <img
                       src={getImageUrl(user.avatar)}
@@ -252,7 +252,7 @@ export default function Profile() {
               <RoleBadge role={user?.role} />
             </div>
 
-            <div className="w-full pt-4 border-t border-white/5 space-y-2.5 text-left text-xs text-muted">
+            <div className="w-full pt-4 border-t border-hairline space-y-2.5 text-left text-xs text-muted">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Mail size={13} className="text-muted" /> Email
@@ -279,7 +279,7 @@ export default function Profile() {
         <div className="lg:col-span-2 space-y-6">
           {/* Card 1: Account Details */}
           <div className="glass-card p-6">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-white/5">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-hairline">
               <UserIcon size={18} className="text-primary" />
               <h3 className="text-base font-semibold text-text-base">Account Details</h3>
             </div>
@@ -305,7 +305,7 @@ export default function Profile() {
                     type="email"
                     disabled
                     value={user?.email || ''}
-                    className="input-field text-sm opacity-60 cursor-not-allowed bg-black/20"
+                    className="input-field text-sm opacity-60 cursor-not-allowed bg-track"
                   />
                   <p className="text-[11px] text-muted/80 mt-1">Email cannot be modified.</p>
                 </div>
@@ -316,7 +316,7 @@ export default function Profile() {
                     type="text"
                     disabled
                     value={user?.role ? user.role.toUpperCase() : ''}
-                    className="input-field text-sm opacity-60 cursor-not-allowed bg-black/20"
+                    className="input-field text-sm opacity-60 cursor-not-allowed bg-track"
                   />
                   <p className="text-[11px] text-muted/80 mt-1">Managed by organization admins.</p>
                 </div>
@@ -330,7 +330,7 @@ export default function Profile() {
                 >
                   {profileSaving ? (
                     <>
-                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
+                      <span className="w-2 h-2 rounded-full bg-primary-fg animate-pulse" aria-hidden="true" />
                       Saving...
                     </>
                   ) : (
@@ -345,7 +345,7 @@ export default function Profile() {
 
           {/* Card 2: Password & Security */}
           <div className="glass-card p-6">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-white/5">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-hairline">
               <KeyRound size={18} className="text-secondary" />
               <h3 className="text-base font-semibold text-text-base">Change Password</h3>
             </div>
@@ -445,7 +445,7 @@ export default function Profile() {
                 >
                   {passwordSaving ? (
                     <>
-                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
+                      <span className="w-2 h-2 rounded-full bg-primary-fg animate-pulse" aria-hidden="true" />
                       Updating Password...
                     </>
                   ) : (
@@ -459,9 +459,9 @@ export default function Profile() {
           </div>
 
           {/* Card 3: Real-Time Webhooks & Alert Integrations */}
-          <div className="glass-card p-6 border border-white/10 space-y-5">
+          <div className="glass-card p-6 border border-border space-y-5">
             <div className="flex items-center gap-2 pb-4 border-b border-border">
-              <div className="w-8 h-8 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <div className="w-8 h-8 rounded-lg bg-track border border-border flex items-center justify-center text-muted">
                 <Bell size={16} />
               </div>
               <div>
@@ -502,7 +502,7 @@ export default function Profile() {
                   <input
                     type="checkbox"
                     {...regWebhook('alertOnCritical')}
-                    className="rounded border-border bg-black/40 text-primary"
+                    className="rounded border-border bg-track text-primary"
                   />
                   Alert on Critical & Blocker incidents
                 </label>
@@ -510,7 +510,7 @@ export default function Profile() {
                   <input
                     type="checkbox"
                     {...regWebhook('alertOnRegression')}
-                    className="rounded border-border bg-black/40 text-primary"
+                    className="rounded border-border bg-track text-primary"
                   />
                   Alert on Telemetry Regressions
                 </label>

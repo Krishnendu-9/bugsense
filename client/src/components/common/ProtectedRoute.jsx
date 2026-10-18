@@ -9,14 +9,14 @@ import { PageSkeleton } from './Loader.jsx';
 function AppShellSkeleton() {
   return (
     <div className="flex min-h-screen bg-background" aria-busy="true" aria-label="Loading">
-      <div className="hidden lg:block w-64 border-r border-white/[0.08] p-4 space-y-4">
+      <div className="hidden lg:block w-64 border-r border-border p-4 space-y-4">
         <div className="skeleton h-9 w-36 rounded-xl" />
         {Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="skeleton h-8 w-full rounded-xl" />
         ))}
       </div>
       <div className="flex-1 flex flex-col">
-        <div className="h-16 border-b border-white/[0.08] px-6 flex items-center">
+        <div className="h-16 border-b border-border px-6 flex items-center">
           <div className="skeleton h-8 w-72 rounded-xl" />
         </div>
         <div className="p-6 space-y-4">

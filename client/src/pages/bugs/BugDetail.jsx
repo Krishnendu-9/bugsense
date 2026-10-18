@@ -29,7 +29,7 @@ import api from '../../api/axios.js';
 
 function Avatar({ person, size = 'w-8 h-8', text = 'text-xs' }) {
   return (
-    <div className={`${size} rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white ${text} font-bold flex-shrink-0 overflow-hidden`}>
+    <div className={`${size} rounded-full bg-accent flex items-center justify-center text-on-accent ${text} font-bold flex-shrink-0 overflow-hidden`}>
       {person?.avatar ? (
         <img src={getImageUrl(person.avatar)} alt="" className="w-full h-full object-cover" />
       ) : (
@@ -356,7 +356,7 @@ function BugDetailView() {
           <button
             onClick={() => navigate(-1)}
             aria-label="Go back"
-            className="p-2 rounded-lg hover:bg-white/5 text-muted hover:text-text-base transition-colors duration-200 flex-shrink-0"
+            className="p-2 rounded-lg hover:bg-track text-muted hover:text-text-base transition-colors duration-200 flex-shrink-0"
           >
             <ArrowLeft size={20} />
           </button>
@@ -386,7 +386,7 @@ function BugDetailView() {
               href={bug.githubIssue.url}
               target="_blank"
               rel="noreferrer"
-              className="btn-secondary flex items-center gap-1.5 text-sm text-green-400 border-green-500/30 hover:bg-green-500/10"
+              className="btn-secondary flex items-center gap-1.5 text-sm text-status-resolved border-status-resolved/30 hover:bg-status-resolved/10"
             >
               <Github size={14} /> Issue #{bug.githubIssue.issueNumber} <ExternalLink size={12} />
             </a>
@@ -458,7 +458,7 @@ function BugDetailView() {
                   {bug.occurrences}x occurrences
                 </span>
                 {bug.source === 'sdk' && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-track text-muted border border-border">
                     Client SDK Ingested
                   </span>
                 )}
@@ -567,9 +567,9 @@ function BugDetailView() {
               dangerouslySetInnerHTML={{ __html: safeDescription }}
             />
             {bug.tags?.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-white/5">
+              <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-hairline">
                 {bug.tags.map((tag) => (
-                  <span key={tag} className="px-2 py-0.5 rounded text-xs bg-white/5 text-muted border border-border">
+                  <span key={tag} className="px-2 py-0.5 rounded text-xs bg-track text-muted border border-border">
                     #{tag}
                   </span>
                 ))}
@@ -598,10 +598,10 @@ function BugDetailView() {
           {bug.errorLog && (
             <div className="glass-card p-6">
               <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={15} className="text-amber-400" />
+                <AlertTriangle size={15} className="text-muted" />
                 <h3 className="text-sm font-semibold text-text-base">Error Log</h3>
               </div>
-              <pre className="text-xs text-muted font-mono bg-black/20 p-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words max-h-96">
+              <pre className="text-xs text-muted font-mono bg-track p-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words max-h-96">
                 {bug.errorLog}
               </pre>
             </div>

@@ -51,7 +51,7 @@ export default function PostMortemModal({ markdown, source, bugTitle, onClose })
       }
     >
       {isTemplate && (
-        <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-white/5 border border-white/10 text-xs text-muted">
+        <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-track border border-border text-xs text-muted">
           <Info size={14} className="flex-shrink-0 mt-0.5" />
           <span>
             Template filled in from this incident&apos;s data — not written by AI. Sections marked
@@ -59,7 +59,7 @@ export default function PostMortemModal({ markdown, source, bugTitle, onClose })
           </span>
         </div>
       )}
-      <pre className="whitespace-pre-wrap font-sans text-sm text-text-base leading-relaxed bg-[#0B0F19] rounded-xl p-5 border border-white/5 selection:bg-primary/30">
+      <pre className="whitespace-pre-wrap font-sans text-sm text-text-base leading-relaxed bg-canvas rounded-xl p-5 border border-hairline selection:bg-primary/30">
         {markdown}
       </pre>
     </Modal>

@@ -13,7 +13,7 @@ export default function RoleRoute({ roles, children }) {
 
   return (
     <div className="max-w-md mx-auto text-center py-20 space-y-3">
-      <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-muted">
+      <div className="w-14 h-14 rounded-2xl bg-track border border-border flex items-center justify-center mx-auto text-muted">
         <ShieldOff size={26} />
       </div>
       <h1 className="text-lg font-semibold text-text-base">{adminOnly ? 'Admins only' : 'Staff only'}</h1>

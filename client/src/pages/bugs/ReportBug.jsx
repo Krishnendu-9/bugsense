@@ -75,7 +75,7 @@ export default function ReportBug() {
         <button
           onClick={() => navigate(-1)}
           aria-label="Go back"
-          className="p-2 rounded-lg hover:bg-white/5 text-muted hover:text-text-base transition-colors duration-200"
+          className="p-2 rounded-lg hover:bg-track text-muted hover:text-text-base transition-colors duration-200"
         >
           <ArrowLeft size={20} />
         </button>

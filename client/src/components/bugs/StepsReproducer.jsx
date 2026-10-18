@@ -57,7 +57,7 @@ export default function StepsReproducer({ value = [], onChange }) {
 
       <div className="flex items-center gap-2">
         <div className="flex-shrink-0 w-4" />
-        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-white/5 text-muted text-xs flex items-center justify-center font-medium border border-dashed border-border">
+        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-track text-muted text-xs flex items-center justify-center font-medium border border-dashed border-border">
           {value.length + 1}
         </div>
         <input

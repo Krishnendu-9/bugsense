@@ -60,8 +60,8 @@ export default function AIAnalyzer() {
     <div className="max-w-4xl space-y-6">
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/25">
-            <Cpu size={20} className="text-white" />
+          <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center">
+            <Cpu size={20} className="text-on-accent" />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-text-base">AI Debug Analyzer</h1>
@@ -81,7 +81,7 @@ export default function AIAnalyzer() {
               key={ex.label}
               type="button"
               onClick={() => loadExample(ex.value)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-border text-muted hover:text-text-base hover:border-primary/40 transition-all duration-200"
+              className="text-xs px-3 py-1.5 rounded-lg bg-track border border-border text-muted hover:text-text-base hover:border-primary/40 transition-all duration-200"
             >
               {ex.label}
             </button>
