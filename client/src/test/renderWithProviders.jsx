@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { AuthContext, SocketContext } from '../context/contexts.js';
+import { AuthContext, SocketContext, ThemeContext } from '../context/contexts.js';
 
 export const USERS = {
   reporter: { _id: 'u-reporter', name: 'Reporter User', email: 'reporter@bugsense.dev', role: 'reporter' },
@@ -31,7 +31,12 @@ export function createFakeSocket() {
 
 // Renders `ui` as the given user, inside a router, without touching the API.
 // `path` mounts it on a route pattern so useParams works (e.g. '/bugs/:id').
-export function renderWithProviders(ui, { user = USERS.developer, route = '/', path, socket = null } = {}) {
+// `theme` is reported to useTheme() consumers; jsdom loads no stylesheet, so
+// readToken() still resolves to nothing and colour values are not under test.
+export function renderWithProviders(
+  ui,
+  { user = USERS.developer, route = '/', path, socket = null, theme = 'dark' } = {}
+) {
   const auth = {
     user,
     token: user ? 'test-token' : null,
@@ -44,19 +49,21 @@ export function renderWithProviders(ui, { user = USERS.developer, route = '/', p
   };
 
   return render(
-    <AuthContext.Provider value={auth}>
-      <SocketContext.Provider value={{ socket, connected: Boolean(socket) }}>
-        <MemoryRouter initialEntries={[route]}>
-          {path ? (
-            <Routes>
-              <Route path={path} element={ui} />
-              <Route path="*" element={<p>Navigated away</p>} />
-            </Routes>
-          ) : (
-            ui
-          )}
-        </MemoryRouter>
-      </SocketContext.Provider>
-    </AuthContext.Provider>
+    <ThemeContext.Provider value={{ theme, setTheme: () => {}, toggleTheme: () => {} }}>
+      <AuthContext.Provider value={auth}>
+        <SocketContext.Provider value={{ socket, connected: Boolean(socket) }}>
+          <MemoryRouter initialEntries={[route]}>
+            {path ? (
+              <Routes>
+                <Route path={path} element={ui} />
+                <Route path="*" element={<p>Navigated away</p>} />
+              </Routes>
+            ) : (
+              ui
+            )}
+          </MemoryRouter>
+        </SocketContext.Provider>
+      </AuthContext.Provider>
+    </ThemeContext.Provider>
   );
 }

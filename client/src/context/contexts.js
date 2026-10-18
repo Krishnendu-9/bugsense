@@ -5,3 +5,4 @@ import { createContext } from 'react';
 // them without a full page reload.
 export const AuthContext = createContext(null);
 export const SocketContext = createContext(null);
+export const ThemeContext = createContext(null);
