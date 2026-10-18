@@ -12,6 +12,13 @@ export const STATUS_OPTIONS = [
   { value: 'closed', label: 'Closed' },
 ];
 
+// Who reported a bug. Values are the API's `source` enum; a manual report is
+// one a person typed in. ('api' exists in the model but nothing creates it.)
+export const SOURCE_OPTIONS = [
+  { value: 'manual', label: 'Reported by a person' },
+  { value: 'sdk', label: 'Captured by the SDK' },
+];
+
 export const SEVERITY_OPTIONS = [
   { value: 'minor', label: 'Minor' },
   { value: 'major', label: 'Major' },

@@ -14,21 +14,24 @@ export default function useBugs() {
   const [bugs, setBugs] = useState([]);
   const [bug, setBug] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
+  const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1, limit: 20 });
 
   // Only the latest request may update state; a slow earlier response (e.g.
   // from the previous filter or bug) must not overwrite a newer one.
   const listRequestId = useRef(0);
   const detailRequestId = useRef(0);
 
-  const fetchBugs = useCallback(async (filters = {}) => {
+  // `quiet` refreshes keep the current rows on screen instead of showing the
+  // loading state -- for live re-sorting, where a skeleton flash would be noise.
+  const fetchBugs = useCallback(async (filters = {}, { quiet = false } = {}) => {
     const requestId = ++listRequestId.current;
-    setLoading(true);
+    if (!quiet) setLoading(true);
     try {
       const { data } = await api.get(`/bugs?${toParams(filters)}`);
       if (requestId !== listRequestId.current) return null;
       setBugs(data.bugs);
-      setPagination({ total: data.total, page: data.page, pages: data.pages });
+      // limit is kept so a list can show the range on screen ("21-40 of 47").
+      setPagination({ total: data.total, page: data.page, pages: data.pages, limit: data.limit });
       return data;
     } catch (err) {
       if (requestId === listRequestId.current) {
@@ -36,6 +39,8 @@ export default function useBugs() {
       }
       return null;
     } finally {
+      // Cleared even after a quiet request: if it superseded a normal one that
+      // was still loading, nothing else would ever clear the flag.
       if (requestId === listRequestId.current) setLoading(false);
     }
   }, []);
