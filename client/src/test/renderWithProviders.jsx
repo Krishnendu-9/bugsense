@@ -35,7 +35,7 @@ export function createFakeSocket() {
 // readToken() still resolves to nothing and colour values are not under test.
 export function renderWithProviders(
   ui,
-  { user = USERS.developer, route = '/', path, socket = null, theme = 'dark' } = {}
+  { user = USERS.developer, route = '/', path, socket = null, theme = 'dark', auth: authOverrides = {} } = {}
 ) {
   const auth = {
     user,
@@ -46,6 +46,8 @@ export function renderWithProviders(
     logout: () => {},
     updateUser: () => {},
     replaceToken: () => {},
+    // e.g. { logout: vi.fn() } to assert a component signs out.
+    ...authOverrides,
   };
 
   return render(
