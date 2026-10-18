@@ -16,7 +16,7 @@ in the `Authorization` header; *Staff* means the `developer` or `admin` role.
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/` | List bugs (filter: `status`, `priority`, `assignedTo`, `reporter`, `project`, `search`, `page`, `limit`) | Bearer |
+| GET | `/` | List bugs, most recently updated first (filter: `status`, `priority`, `assignedTo`, `reporter`, `project`, `source` (`manual` or `sdk`), `search`, `page`, `limit`). Rows omit the error log; SDK rows carry `topFrame`, the first stack frame, by the same rule the fingerprint uses | Bearer |
 | POST | `/` | Create bug; returns `analysisQueued` when the error log is being analysed in the background | Bearer |
 | GET | `/stats` | Dashboard snapshot: status counts, `byPriority`, `projects` (distinct named projects), `oldestOpenAt` (creation time of the oldest open bug, `null` when none), `recent` (the 5 most recently updated bugs) | Bearer |
 | GET | `/stats/trends` | Replayed from `statusHistory`. `openByDay`: bugs in `status: open` at the end of each of the last 7 UTC days, oldest first, today measured now. `timeToResolve`: `{ medianMs, sampleSize }` from `createdAt` to the first `resolved` entry; `closed` is not a resolution; `medianMs` is `null` when nothing has been resolved. `resolvedInWindow`: `{ since, count }`, bugs resolved at least once in the same 7 days | Bearer |

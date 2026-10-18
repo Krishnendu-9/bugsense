@@ -615,6 +615,22 @@ describe('dashboard statistics', () => {
     // both ends and cancel out. Compare the absolute figure as well.
     const named = (await Bug.distinct('project')).filter((name) => name !== '' && name !== null);
     assert.equal(end.projects, named.length);
+
+    // The names come too, sorted, with the empty default left out.
+    assert.ok(end.projectNames.includes(project));
+    assert.equal(end.projectNames.length, end.projects);
+    assert.ok(!end.projectNames.includes(''));
+    assert.deepEqual(end.projectNames, [...end.projectNames].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it('lists project names alphabetically, not in byte order', async () => {
+    // MongoDB's distinct returns byte order, which puts every capitalised name
+    // before every lower-case one; a person scanning a dropdown expects A-Z.
+    const tag = Date.now();
+    await createBug(reporter, { project: `Zebra ${tag}` });
+    await createBug(reporter, { project: `apple ${tag}` });
+    const names = (await stats()).projectNames;
+    assert.ok(names.indexOf(`apple ${tag}`) < names.indexOf(`Zebra ${tag}`), names.join(' | '));
   });
 
   it('reports when the longest-waiting open bug was created', async () => {
@@ -645,6 +661,56 @@ describe('dashboard statistics', () => {
     assert.equal(row.source, 'manual');
     assert.equal(row.occurrences, 1);
     assert.ok(row.updatedAt);
+  });
+});
+
+describe('bug list', () => {
+  const sdkReport = (body) => request.post('/api/telemetry/report').send(body);
+  const list = async (query) => (await request.get(`/api/bugs?${query}`).set(auth(reporter))).body;
+
+  it('filters by source: a person or the SDK', async () => {
+    const tag = `src${Date.now()}`;
+    assert.equal((await createBug(reporter, { title: `Typed by a person ${tag}` })).status, 201);
+    assert.equal((await sdkReport({ title: `Thrown in a browser ${tag}`, errorLog: `Error: ${tag}\n    at boom (x.js:1:1)` })).status, 201);
+
+    const sdk = await list(`source=sdk&search=${tag}`);
+    const manual = await list(`source=manual&search=${tag}`);
+    assert.deepEqual(sdk.bugs.map((b) => b.source), ['sdk']);
+    assert.deepEqual(manual.bugs.map((b) => b.source), ['manual']);
+    assert.equal((await list(`search=${tag}`)).total, 2);
+
+    const bad = await request.get('/api/bugs?source=robot').set(auth(reporter));
+    assert.equal(bad.status, 400);
+  });
+
+  it('orders the list by last activity, so the Updated column reads in order', async () => {
+    const tag = `order${Date.now()}`;
+    const older = (await createBug(reporter, { title: `Older ${tag}` })).body._id;
+    const newer = (await createBug(reporter, { title: `Newer ${tag}` })).body._id;
+    // Activity on the older bug moves it above the newer one.
+    assert.equal((await request.put(`/api/bugs/${older}`).set(auth(developer)).send({ priority: 'high' })).status, 200);
+
+    const { bugs } = await list(`search=${tag}`);
+    assert.deepEqual(bugs.map((b) => b._id), [older, newer]);
+
+    const page = (await list('limit=50')).bugs.map((b) => new Date(b.updatedAt).getTime());
+    assert.deepEqual(page, [...page].sort((a, b) => b - a));
+  });
+
+  it('gives SDK rows their top frame and never sends an error log to a list', async () => {
+    const tag = `frame${Date.now()}`;
+    await sdkReport({
+      title: `Frame fixture ${tag}`,
+      errorLog: `TypeError: ${tag}\n    at handleClick (app.js:10:5)\n    at dispatch (react.js:2:2)`,
+    });
+    await createBug(reporter, { title: `Manual frame fixture ${tag}`, errorLog: 'Error: pasted\n    at somewhere (z.js:1:1)' });
+
+    const { bugs } = await list(`search=${tag}`);
+    const sdkRow = bugs.find((b) => b.source === 'sdk');
+    const manualRow = bugs.find((b) => b.source === 'manual');
+    assert.equal(sdkRow.topFrame, 'at handleClick (app.js:10:5)');
+    assert.equal(manualRow.topFrame, null);
+    for (const row of bugs) assert.equal('errorLog' in row, false, 'a list row carried its error log');
   });
 });
 

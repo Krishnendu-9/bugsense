@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isAllowedWebhookUrl } from '../utils/webhookUrl.js';
-import { generateFingerprint } from '../utils/fingerprint.util.js';
+import { generateFingerprint, topFrameOf } from '../utils/fingerprint.util.js';
 import { sanitizeRichText } from '../utils/sanitize.js';
 import { checkJwtSecret } from '../services/token.service.js';
 import { cloudinaryPublicId } from '../services/storage.service.js';
@@ -272,5 +272,25 @@ describe('bug history statistics', () => {
     const stats = resolutionStats([resolvedAfter(2), resolvedAfter(10), resolvedAfter(4), dismissed, fresh]);
     assert.deepEqual(stats, { medianMs: hours(4), sampleSize: 3 });
     assert.deepEqual(resolutionStats([dismissed, fresh]), { medianMs: null, sampleSize: 0 });
+  });
+});
+
+describe('topFrameOf', () => {
+  it('takes the first "at" line, the same frame the fingerprint starts from', () => {
+    const log = 'TypeError: x is undefined\n    at render (App.jsx:12:3)\n    at commit (react.js:1:1)';
+    assert.equal(topFrameOf(log), 'at render (App.jsx:12:3)');
+    // Changing anything below the top frame, or its line numbers, must not
+    // change the frame shown -- consistent with what the fingerprint keys on.
+    assert.equal(generateFingerprint(log, '', 'p'), generateFingerprint(log.replace(':12:3', ':99:9'), '', 'p'));
+  });
+
+  it('returns null when there is no V8-style frame to show', () => {
+    assert.equal(topFrameOf(''), null);
+    assert.equal(topFrameOf(undefined), null);
+    assert.equal(topFrameOf('render@App.jsx:12:3'), null);
+  });
+
+  it('caps a very long frame', () => {
+    assert.equal(topFrameOf(`Error\n at ${'x'.repeat(500)}`).length, 160);
   });
 });

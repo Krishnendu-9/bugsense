@@ -1,4 +1,5 @@
 import { broadcast } from '../config/socket.js';
+import { topFrameOf } from '../utils/fingerprint.util.js';
 
 // The shape every client receives for a bug on its detail page, whether from
 // GET /bugs/:id or a socket event. Sending the same fully-populated document
@@ -18,8 +19,13 @@ export const LIST_EXCLUDED_FIELDS = ['breadcrumbs', 'gitPatch', 'statusHistory',
 
 export const populateBug = (bug) => bug.populate(BUG_POPULATE);
 
+// The one list-row shape, used by GET /bugs and by broadcast events alike, so a
+// row updated over the socket looks the same as one fetched with the page.
+// SDK rows carry their top stack frame (a single line) in place of the error
+// log it was cut from.
 export const toListPayload = (bug) => {
   const payload = typeof bug.toObject === 'function' ? bug.toObject() : { ...bug };
+  payload.topFrame = payload.source === 'sdk' ? topFrameOf(payload.errorLog) : null;
   for (const field of LIST_EXCLUDED_FIELDS) delete payload[field];
   return payload;
 };

@@ -20,16 +20,22 @@ import {
   emitBugCreated,
   emitBugDeleted,
   emitBugUpdated,
+  toListPayload,
 } from '../services/bugEvents.service.js';
 
 const STATUSES = ['open', 'in-progress', 'resolved', 'closed'];
 const PRIORITIES = ['low', 'medium', 'high', 'critical'];
+const SOURCES = ['manual', 'sdk', 'api'];
 const MAX_PAGE_SIZE = 100;
 const LIST_QUERY_TIME_LIMIT_MS = 5000;
 
-// Leaving heavy fields out keeps list responses small as incidents accumulate
-// telemetry; the same list is applied to broadcast socket events.
-const LIST_PROJECTION = LIST_EXCLUDED_FIELDS.map((field) => `-${field}`).join(' ');
+// Leaving heavy fields out keeps list responses small as bugs accumulate
+// telemetry; the same list is applied to broadcast socket events. The error
+// log is read so toListPayload can cut each SDK row's top frame from it, and
+// is then dropped before the response is sent.
+const LIST_PROJECTION = LIST_EXCLUDED_FIELDS.filter((field) => field !== 'errorLog')
+  .map((field) => `-${field}`)
+  .join(' ');
 
 // Escapes user input before it is used inside a RegExp filter.
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -126,7 +132,7 @@ const assertAssignable = async (assignedTo) => {
 
 export const getBugs = async (req, res, next) => {
   try {
-    const { status, priority, assignedTo, reporter, project, search } = req.query;
+    const { status, priority, assignedTo, reporter, project, source, search } = req.query;
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
 
@@ -150,6 +156,11 @@ export const getBugs = async (req, res, next) => {
       if (typeof project !== 'string') return badRequest(res, 'Invalid project filter');
       filter.project = project;
     }
+    // Who reported it: a person (manual) or the SDK. Same enum as the model.
+    if (source) {
+      if (!SOURCES.includes(source)) return badRequest(res, 'Invalid source filter');
+      filter.source = source;
+    }
     if (search) {
       if (typeof search !== 'string') return badRequest(res, 'Invalid search filter');
       if (search.trim()) {
@@ -167,14 +178,18 @@ export const getBugs = async (req, res, next) => {
         .select(LIST_PROJECTION)
         .populate('reporter', 'name email avatar')
         .populate('assignedTo', 'name email avatar')
-        .sort({ createdAt: -1 })
+        // Most recently active first, matching the Updated column and the
+        // Overview's Recent list. _id breaks ties so pages never overlap.
+        .sort({ updatedAt: -1, _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
       Bug.countDocuments(filter).maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
     ]);
 
-    return res.json({ bugs, total, page, pages: Math.max(1, Math.ceil(total / limit)), limit });
+    // Every row goes through toListPayload: it cuts the top frame from the
+    // error log and drops the log itself, which must never reach a list.
+    return res.json({ bugs: bugs.map(toListPayload), total, page, pages: Math.max(1, Math.ceil(total / limit)), limit });
   } catch (err) {
     return next(err);
   }
@@ -401,6 +416,8 @@ export const getDashboardStats = async (req, res, next) => {
       closed,
       byPriority,
       projects: projectNames.length,
+      // The names themselves, for the Bugs list's project filter.
+      projectNames: [...projectNames].sort((a, b) => a.localeCompare(b)),
       // When the longest-waiting open bug was reported; null when none is open.
       oldestOpenAt: oldestOpen?.createdAt ?? null,
       recent,
