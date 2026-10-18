@@ -28,37 +28,47 @@ export const ROLE_OPTIONS = [
 // only — the API rejects it here regardless, so offering it would just lie.
 export const SIGNUP_ROLE_OPTIONS = ROLE_OPTIONS.filter((r) => r.value !== 'admin');
 
+// Only high and critical priority carry a colour of their own; low and medium
+// render in muted, so a list of bugs does not read as a wall of traffic lights.
 export const PRIORITY_COLORS = {
-  low: 'text-priority-low bg-priority-low/10 border-priority-low/30',
-  medium: 'text-priority-medium bg-priority-medium/10 border-priority-medium/30',
+  low: 'text-muted bg-track border-border',
+  medium: 'text-muted bg-track border-border',
   high: 'text-priority-high bg-priority-high/10 border-priority-high/30',
   critical: 'text-priority-critical bg-priority-critical/10 border-priority-critical/30',
 };
 
+// Closed is deliberately colourless: it is an end state, not a signal.
 export const STATUS_COLORS = {
   open: 'text-status-open bg-status-open/10 border-status-open/30',
-  'in-progress': 'text-status-in-progress bg-status-in-progress/10 border-status-in-progress/30',
+  'in-progress': 'text-status-progress bg-status-progress/10 border-status-progress/30',
   resolved: 'text-status-resolved bg-status-resolved/10 border-status-resolved/30',
-  closed: 'text-status-closed bg-status-closed/10 border-status-closed/30',
+  closed: 'text-muted bg-track border-border',
 };
 
+// Severity has no tokens of its own; it borrows the priority scale, which runs
+// in the same direction.
 export const SEVERITY_COLORS = {
-  minor: 'text-blue-400 bg-blue-400/10 border-blue-400/30',
-  major: 'text-orange-400 bg-orange-400/10 border-orange-400/30',
-  blocker: 'text-red-500 bg-red-500/10 border-red-500/30',
+  minor: 'text-muted bg-track border-border',
+  major: 'text-priority-high bg-priority-high/10 border-priority-high/30',
+  blocker: 'text-priority-critical bg-priority-critical/10 border-priority-critical/30',
 };
 
-// Design-system priority colors, in severity order (drives chart ordering).
-export const PRIORITY_CHART_COLORS = {
-  low: '#22C55E',
-  medium: '#F59E0B',
-  high: '#EF4444',
-  critical: '#7C3AED',
+/*
+ * Status donut colours, by status value.
+ *
+ * These are token *names*, not colours: Recharts takes colours as props rather
+ * than classes, so the chart components resolve them at render time through
+ * useThemeTokens() and pick up the right palette for the active theme.
+ */
+export const STATUS_CHART_TOKENS = {
+  open: 'status-open',
+  // Segments are graphics, so in-progress takes the graphics amber.
+  'in-progress': 'status-progress-mark',
+  resolved: 'status-resolved',
+  closed: 'subtle',
 };
 
-export const STATUS_CHART_COLORS = {
-  open: '#3B82F6',
-  'in-progress': '#F59E0B',
-  resolved: '#22C55E',
-  closed: '#6B7280',
-};
+// Shown in place of a number the API could not supply. Never a zero: zero is a
+// claim about the data, this is the absence of one. Wherever it appears, a
+// caption beside it says why the number is missing.
+export const NO_VALUE = '—';

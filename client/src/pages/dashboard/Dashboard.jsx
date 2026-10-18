@@ -1,165 +1,147 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Bug, CheckCircle2, Clock, AlertCircle, Activity, Sparkles, Terminal, LayoutGrid, ArrowRight, Wifi, WifiOff } from 'lucide-react';
-import toast from 'react-hot-toast';
+import api from '../../api/axios.js';
 import useBugs from '../../hooks/useBugs.js';
 import useAuth from '../../hooks/useAuth.js';
-import useSocket from '../../hooks/useSocket.js';
-import StatsCard from '../../components/dashboard/StatsCard.jsx';
-import { PriorityBarChart, StatusPieChart } from '../../components/dashboard/BugChart.jsx';
+import StatsCard, { StatsCardSkeleton } from '../../components/dashboard/StatsCard.jsx';
+import TrendStrip from '../../components/dashboard/TrendStrip.jsx';
+import { PriorityBars, StatusDonut } from '../../components/dashboard/BugChart.jsx';
+import DedupCard from '../../components/dashboard/DedupCard.jsx';
 import RecentBugs from '../../components/dashboard/RecentBugs.jsx';
-import { StatsCardSkeleton } from '../../components/common/Loader.jsx';
+import { formatDate, formatDuration, formatStatDuration, isStaff } from '../../utils/helpers.js';
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/*
+ * Every figure on this page comes from one of three endpoints, and each is
+ * loaded independently: if one fails, its cards say so and the rest still
+ * render. A missing number is shown as a dash with the reason beside it,
+ * never as a zero.
+ *
+ *   /bugs/stats          snapshot: counts, priorities, projects, recent
+ *   /bugs/stats/trends   history: open per day, time to resolve, resolved this week
+ *   /health/metrics      SDK deduplication (staff only)
+ */
 export default function Dashboard() {
-  const { fetchStats } = useBugs();
+  const { fetchStats, fetchTrends } = useBugs();
   const { user } = useAuth();
-  const { connected } = useSocket();
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const staff = isStaff(user);
+
+  // undefined = loading, null = failed, object = loaded
+  const [stats, setStats] = useState(undefined);
+  const [trends, setTrends] = useState(undefined);
+  const [telemetry, setTelemetry] = useState(undefined);
+  const [loadedAt, setLoadedAt] = useState(null);
 
   useEffect(() => {
-    fetchStats()
-      .then((data) => setStats(data))
-      .catch((err) => toast.error(err.response?.data?.message || 'Failed to load dashboard stats'))
-      .finally(() => setLoading(false));
-  }, [fetchStats]);
+    let cancelled = false;
+    Promise.allSettled([
+      fetchStats(),
+      fetchTrends(),
+      staff ? api.get('/health/metrics').then((r) => r.data.telemetry) : Promise.resolve(null),
+    ]).then(([s, t, m]) => {
+      if (cancelled) return;
+      setStats(s.status === 'fulfilled' ? s.value : null);
+      setTrends(t.status === 'fulfilled' ? t.value : null);
+      setTelemetry(m.status === 'fulfilled' ? m.value : null);
+      setLoadedAt(new Date());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchStats, fetchTrends, staff]);
 
-  const statusData = stats
-    ? { open: stats.open, 'in-progress': stats.inProgress, resolved: stats.resolved, closed: stats.closed }
-    : {};
+  const statsLoading = stats === undefined;
+  const trendsLoading = trends === undefined;
+
+  // Header context line.
+  let context;
+  if (statsLoading) context = null;
+  else if (!stats) context = 'Could not load statistics.';
+  else
+    context = `${plural(stats.total, 'bug')} · ${plural(stats.projects, 'project')} · updated ${formatDate(
+      loadedAt,
+      'HH:mm'
+    )}`;
+
+  // Open: age of the longest-waiting open bug.
+  let openCaption;
+  if (!stats) openCaption = 'Could not load statistics.';
+  else if (stats.oldestOpenAt) openCaption = `oldest ${formatDuration(loadedAt - new Date(stats.oldestOpenAt))}`;
+  else openCaption = 'No open bugs.';
+
+  // Median time to resolve.
+  const ttr = trends?.timeToResolve;
+  let medianCaption;
+  if (!trends) medianCaption = 'Could not load bug history.';
+  else if (ttr.sampleSize === 0) medianCaption = 'No bug has been resolved yet.';
+  else medianCaption = `across ${plural(ttr.sampleSize, 'resolved bug')}`;
+
+  const statusCounts = stats && {
+    open: stats.open,
+    'in-progress': stats.inProgress,
+    resolved: stats.resolved,
+    closed: stats.closed,
+  };
+
+  let dedupState;
+  if (!staff) dedupState = { kind: 'restricted' };
+  else if (telemetry === undefined) dedupState = { kind: 'loading' };
+  else if (telemetry === null) dedupState = { kind: 'error' };
+  else dedupState = { kind: 'ready', telemetry };
 
   return (
     <div className="space-y-6">
-      {/* Hero Welcome Banner */}
-      <div className="glass-card p-6 relative overflow-hidden border border-white/[0.08]">
-        <div className="absolute -top-24 -right-24 w-72 h-72 bg-gradient-to-br from-primary/20 via-secondary/15 to-transparent rounded-full blur-3xl pointer-events-none" />
-        <div className="flex items-start justify-between gap-6 flex-wrap relative z-10">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-primary/20 text-primary border border-primary/30 flex items-center gap-1.5 whitespace-nowrap">
-                <Sparkles size={12} className="text-secondary" /> Incident Tracker
-              </span>
-              {/* Reflects the real-time connection, not a fixed claim. */}
-              <span
-                className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border flex items-center gap-1 whitespace-nowrap ${
-                  connected
-                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                    : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
-                }`}
-              >
-                {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
-                {connected ? 'Live updates on' : 'Live updates offline'}
-              </span>
-            </div>
-            <h1 className="text-2xl font-bold text-text-base tracking-tight mb-1">
-              Welcome back, <span className="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">{user?.name || 'Engineer'}</span>
-            </h1>
-            <p className="text-xs text-muted max-w-2xl leading-relaxed">
-              Real-time telemetry, automated stack trace deduplication, and AI diagnostic fix generation across your applications.
-            </p>
-          </div>
-
-          {/* Quick Launch Shortcuts */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <Link
-              to="/sdk-demo"
-              className="px-3.5 py-2 rounded-xl bg-black/40 hover:bg-black/60 border border-white/10 hover:border-primary/40 text-xs font-semibold text-text-base flex items-center gap-2 transition-all group"
-            >
-              <Terminal size={14} className="text-primary group-hover:scale-110 transition-transform" />
-              <span>SDK Sandbox</span>
-            </Link>
-            <Link
-              to="/board"
-              className="px-3.5 py-2 rounded-xl bg-black/40 hover:bg-black/60 border border-white/10 hover:border-primary/40 text-xs font-semibold text-text-base flex items-center gap-2 transition-all group"
-            >
-              <LayoutGrid size={14} className="text-secondary group-hover:scale-110 transition-transform" />
-              <span>Kanban Board</span>
-            </Link>
-            <Link
-              to="/report"
-              className="btn-primary text-xs flex items-center gap-1.5 py-2 px-3.5 shadow-glow-primary"
-            >
-              <span>Report Bug</span>
-              <ArrowRight size={13} />
-            </Link>
-          </div>
-        </div>
-      </div>
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight text-fg">Overview</h1>
+        {context === null ? (
+          <div className="skeleton mt-2 h-4 w-64 rounded" />
+        ) : (
+          <p className="mt-1 text-sm text-muted">{context}</p>
+        )}
+      </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <StatsCardSkeleton key={i} />)
+        {statsLoading ? (
+          <>
+            <StatsCardSkeleton />
+            <StatsCardSkeleton />
+          </>
+        ) : (
+          <>
+            <StatsCard label="Total" value={stats?.total} caption={stats ? 'All time' : 'Could not load statistics.'} to="/bugs" />
+            <StatsCard label="Open" value={stats?.open} caption={openCaption} to="/bugs?status=open" />
+          </>
+        )}
+        {trendsLoading ? (
+          <>
+            <StatsCardSkeleton />
+            <StatsCardSkeleton />
+          </>
         ) : (
           <>
             <StatsCard
-              title="Total Bugs"
-              value={stats?.total}
-              icon={Bug}
-              color="text-primary"
-              subtitle="All time"
-              to="/bugs"
+              label="Median time to resolve"
+              value={ttr ? formatStatDuration(ttr.medianMs) : null}
+              caption={medianCaption}
             />
             <StatsCard
-              title="Open"
-              value={stats?.open}
-              icon={AlertCircle}
-              color="text-status-open"
-              subtitle="Needs attention"
-              to="/bugs?status=open"
-            />
-            <StatsCard
-              title="In Progress"
-              value={stats?.inProgress}
-              icon={Clock}
-              color="text-status-in-progress"
-              subtitle="Being worked on"
-              to="/bugs?status=in-progress"
-            />
-            <StatsCard
-              title="Resolved"
-              value={stats?.resolved}
-              icon={CheckCircle2}
-              color="text-status-resolved"
-              subtitle="Fixed"
-              to="/bugs?status=resolved"
+              label="Resolved"
+              value={trends?.resolvedInWindow.count}
+              caption={trends ? 'last 7 days' : 'Could not load bug history.'}
             />
           </>
         )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2">
-          <PriorityBarChart data={stats?.byPriority || []} />
-        </div>
-        <div>
-          <StatusPieChart data={statusData} />
-        </div>
+      <TrendStrip days={trends?.openByDay.days ?? null} loading={trendsLoading} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <PriorityBars byPriority={stats ? stats.byPriority : null} loading={statsLoading} />
+        <StatusDonut counts={statusCounts} loading={statsLoading} />
+        <DedupCard state={dedupState} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2">
-          <RecentBugs bugs={stats?.recent || []} />
-        </div>
-        <div className="glass-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Activity size={16} className="text-muted" />
-            <h3 className="text-sm font-semibold text-text-base">Quick Stats</h3>
-          </div>
-          <div className="space-y-3">
-            {[
-              { label: 'Closed bugs', value: stats?.closed ?? 0, color: 'text-status-closed' },
-              { label: 'Critical priority', value: stats?.byPriority?.find((p) => p._id === 'critical')?.count ?? 0, color: 'text-priority-critical' },
-              { label: 'High priority', value: stats?.byPriority?.find((p) => p._id === 'high')?.count ?? 0, color: 'text-priority-high' },
-              { label: 'Low priority', value: stats?.byPriority?.find((p) => p._id === 'low')?.count ?? 0, color: 'text-priority-low' },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                <span className="text-sm text-muted">{label}</span>
-                <span className={`text-sm font-semibold ${color}`}>{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <RecentBugs bugs={stats ? stats.recent : null} loading={statsLoading} />
     </div>
   );
 }

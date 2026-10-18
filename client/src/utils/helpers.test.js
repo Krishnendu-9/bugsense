@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getApiOrigin, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
+import { formatDuration, formatStatDuration, getApiOrigin, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
 
 describe('sanitizeHtml', () => {
   it('removes scripts, event handlers and javascript: links', () => {
@@ -101,5 +101,54 @@ describe('statusOptionsFor', () => {
   it('gives other reporters nothing', () => {
     expect(statusOptionsFor(other, bug('open'))).toEqual([]);
     expect(statusOptionsFor(reporter, { status: 'open', reporter: null })).toEqual([]);
+  });
+});
+
+describe('formatDuration', () => {
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+
+  it('switches to days at 24 hours, so one column never mixes 47h with 2d', () => {
+    expect(formatDuration(23 * HOUR + 59 * MIN)).toBe('23h');
+    expect(formatDuration(24 * HOUR)).toBe('1d');
+    expect(formatDuration(47 * HOUR)).toBe('1d');
+    expect(formatDuration(48 * HOUR)).toBe('2d');
+  });
+
+  it('uses minutes under an hour and never rounds a short duration to zero', () => {
+    expect(formatDuration(0)).toBe('<1m');
+    expect(formatDuration(59 * 1000)).toBe('<1m');
+    expect(formatDuration(45 * MIN)).toBe('45m');
+  });
+
+  it('returns null for a value that does not exist, so the caller shows a dash', () => {
+    expect(formatDuration(null)).toBeNull();
+    expect(formatDuration(undefined)).toBeNull();
+    expect(formatDuration(Number.NaN)).toBeNull();
+    expect(formatDuration(-1)).toBeNull();
+  });
+});
+
+describe('formatStatDuration', () => {
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+
+  it('keeps hours up to 72 so a headline median does not hide a quarter-day', () => {
+    expect(formatStatDuration(30 * HOUR)).toBe('30h');
+    expect(formatStatDuration(71 * HOUR)).toBe('71h');
+  });
+
+  it('switches to days with one decimal at 72 hours', () => {
+    expect(formatStatDuration(72 * HOUR)).toBe('3.0d');
+    expect(formatStatDuration(100 * HOUR)).toBe('4.2d');
+    // Rounds before choosing the unit: never "72h".
+    expect(formatStatDuration(71 * HOUR + 40 * MIN)).toBe('3.0d');
+  });
+
+  it('uses minutes under an hour and returns null when there is no value', () => {
+    expect(formatStatDuration(45 * MIN)).toBe('45m');
+    expect(formatStatDuration(59 * MIN + 40 * 1000)).toBe('1h');
+    expect(formatStatDuration(10 * 1000)).toBe('<1m');
+    expect(formatStatDuration(null)).toBeNull();
   });
 });

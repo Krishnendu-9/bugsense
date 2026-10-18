@@ -115,6 +115,13 @@ export default function useBugs() {
     return data;
   }, []);
 
+  // History-derived figures (open bugs per day, time to resolve). Separate
+  // from fetchStats because the server keeps them on a separate endpoint.
+  const fetchTrends = useCallback(async () => {
+    const { data } = await api.get('/bugs/stats/trends');
+    return data;
+  }, []);
+
   return {
     bugs,
     setBugs,
@@ -132,5 +139,6 @@ export default function useBugs() {
     uploadScreenshot,
     uploadAnnotation,
     fetchStats,
+    fetchTrends,
   };
 }

@@ -1,159 +1,154 @@
-import { useNavigate } from 'react-router-dom';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
-} from 'recharts';
-import { Filter } from 'lucide-react';
-import { PRIORITY_CHART_COLORS, STATUS_CHART_COLORS } from '../../utils/constants.js';
-import { capitalize } from '../../utils/helpers.js';
+import { Link, useNavigate } from 'react-router-dom';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { STATUS_CHART_TOKENS, PRIORITY_OPTIONS, STATUS_OPTIONS } from '../../utils/constants.js';
+import { useThemeTokens } from '../../hooks/useTheme.js';
 
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-[#111827]/95 border border-white/10 rounded-xl px-3.5 py-2 shadow-2xl backdrop-blur-md">
-      {label && <p className="text-xs font-semibold text-text-base mb-1">{label}</p>}
-      {payload.map((entry, i) => (
-        <div key={i}>
-          <p className="text-xs font-bold font-mono" style={{ color: entry.color || entry.fill }}>
-            {entry.name}: {entry.value}
-          </p>
-          <p className="text-[10px] text-primary font-medium mt-1 flex items-center gap-1">
-            Click to view incidents →
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-};
+const CardSkeleton = () => (
+  <div className="glass-card p-5 space-y-4">
+    <div className="skeleton h-4 w-24 rounded" />
+    <div className="skeleton h-36 w-full rounded" />
+  </div>
+);
 
-export function PriorityBarChart({ data = [] }) {
-  const navigate = useNavigate();
+// A failed load is said in words; an empty chart would read as "no bugs".
+const Unavailable = ({ title }) => (
+  <section className="glass-card p-5">
+    <h2 className="text-sm font-semibold text-fg">{title}</h2>
+    <p className="mt-5 text-sm text-subtle">Could not load statistics.</p>
+  </section>
+);
 
-  // MongoDB returns groups in no particular order, so bars are laid out low to
-  // critical and every priority is shown, including those with zero bugs.
-  const counts = Object.fromEntries(data.map((item) => [item._id, item.count]));
-  const chartData = Object.entries(PRIORITY_CHART_COLORS).map(([key, color]) => ({
-    name: capitalize(key),
-    priorityKey: key,
-    count: counts[key] || 0,
-    color,
+/**
+ * Bugs per priority as horizontal bars, all in one colour: the row labels
+ * already name the categories, so colour would only repeat them. Most severe
+ * first, every priority shown, including those with no bugs.
+ *
+ * Each bar is that priority's share of all bugs, not its size relative to the
+ * largest priority. Relative-to-largest draws equal counts as identical
+ * full-width stripes, which stops reading as a chart; a share keeps the track
+ * visible and means the same thing at any scale.
+ *
+ * `byPriority` is the API's [{ _id, count }] grouping, in no particular order,
+ * or null when /stats failed -- which must not render as a row of zeros.
+ */
+export function PriorityBars({ byPriority, loading }) {
+  if (loading) return <CardSkeleton />;
+  if (!byPriority) return <Unavailable title="By priority" />;
+
+  const counts = Object.fromEntries(byPriority.map((g) => [g._id, g.count]));
+  const rows = [...PRIORITY_OPTIONS].reverse().map(({ value, label }) => ({
+    value,
+    label,
+    count: counts[value] || 0,
   }));
-
-  const handleBarClick = (entry) => {
-    const key = entry?.priorityKey || entry?.name?.toLowerCase();
-    if (key) {
-      navigate(`/bugs?priority=${encodeURIComponent(key)}`);
-    }
-  };
+  const total = rows.reduce((sum, r) => sum + r.count, 0);
 
   return (
-    <div className="glass-card glass-card-hover p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-text-base">Bugs by Priority</h3>
-        <span className="text-[10px] font-mono text-muted/60 flex items-center gap-1">
-          <Filter size={10} /> Click bar to filter
-        </span>
-      </div>
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart
-          data={chartData}
-          margin={{ top: 0, right: 0, left: -20, bottom: 0 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
-          <XAxis dataKey="name" tick={{ fill: '#94A3B8', fontSize: 12 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: '#94A3B8', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.08)' }} />
-          <Bar
-            dataKey="count"
-            name="Bugs"
-            radius={[6, 6, 0, 0]}
-            onClick={handleBarClick}
-            className="cursor-pointer"
-          >
-            {chartData.map((entry) => (
-              <Cell
-                key={entry.priorityKey}
-                fill={entry.color}
-                className="cursor-pointer hover:opacity-80 transition-opacity"
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <section className="glass-card p-5" aria-labelledby="priority-heading">
+      <h2 id="priority-heading" className="text-sm font-semibold text-fg">
+        By priority
+      </h2>
+      <ul className="mt-5 space-y-3.5">
+        {rows.map((row) => (
+          <li key={row.value}>
+            <Link
+              to={`/bugs?priority=${row.value}`}
+              className="group grid grid-cols-[4.5rem_1fr_2.5rem] items-center gap-3 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              aria-label={`${row.label} priority: ${row.count} bugs`}
+            >
+              <span className="text-sm text-muted group-hover:text-fg transition-colors">{row.label}</span>
+              <span className="h-2 rounded-full bg-track overflow-hidden">
+                <span
+                  className="block h-full rounded-full bg-accent"
+                  style={{ width: `${total ? (row.count / total) * 100 : 0}%` }}
+                />
+              </span>
+              <span className="text-right text-sm font-mono tabular-nums text-fg">{row.count}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
-export function StatusPieChart({ data = {} }) {
+/**
+ * Bugs per status as a donut with a legend. Colours are the semantic status
+ * tokens; Recharts takes them as props, so they are resolved through
+ * useThemeTokens() and follow the theme.
+ *
+ * `counts` maps status value -> count, built from the /stats snapshot, or null
+ * when it failed.
+ */
+export function StatusDonut({ counts, loading }) {
   const navigate = useNavigate();
+  const tokens = useThemeTokens(Object.values(STATUS_CHART_TOKENS));
 
-  const chartData = Object.entries(STATUS_CHART_COLORS)
-    .map(([key, color]) => ({
-      key,
-      name: key === 'in-progress' ? 'In Progress' : capitalize(key),
-      value: data[key] || 0,
-      color,
-    }))
-    .filter((d) => d.value > 0);
+  if (loading) return <CardSkeleton />;
+  if (!counts) return <Unavailable title="By status" />;
 
-  const handlePieClick = (entry) => {
-    if (entry && entry.key) {
-      navigate(`/bugs?status=${encodeURIComponent(entry.key)}`);
-    }
-  };
-
-  if (!chartData.length) {
-    return (
-      <div className="glass-card p-6 flex items-center justify-center h-full">
-        <p className="text-muted text-sm">No data yet</p>
-      </div>
-    );
-  }
+  const rows = STATUS_OPTIONS.map(({ value, label }) => ({
+    value,
+    label,
+    count: counts[value] || 0,
+    color: tokens[STATUS_CHART_TOKENS[value]],
+  }));
+  const total = rows.reduce((sum, r) => sum + r.count, 0);
 
   return (
-    <div className="glass-card glass-card-hover p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-text-base">Bugs by Status</h3>
-        <span className="text-[10px] font-mono text-muted/60 flex items-center gap-1">
-          <Filter size={10} /> Click slice to filter
-        </span>
-      </div>
-      <ResponsiveContainer width="100%" height={200}>
-        <PieChart>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            innerRadius={50}
-            outerRadius={80}
-            paddingAngle={4}
-            dataKey="value"
-            onClick={handlePieClick}
-            className="cursor-pointer"
-          >
-            {chartData.map((entry, index) => (
-              <Cell
-                key={index}
-                fill={entry.color}
-                className="cursor-pointer hover:opacity-80 transition-opacity stroke-[#0B0F19] stroke-2"
-              />
+    <section className="glass-card p-5" aria-labelledby="status-heading">
+      <h2 id="status-heading" className="text-sm font-semibold text-fg">
+        By status
+      </h2>
+
+      {total === 0 ? (
+        <p className="mt-5 text-sm text-subtle">No bugs reported yet.</p>
+      ) : (
+        <div className="mt-4 flex items-center gap-5">
+          <div className="relative h-32 w-32 flex-shrink-0" aria-hidden="true">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={rows.filter((r) => r.count > 0)}
+                  dataKey="count"
+                  innerRadius="68%"
+                  outerRadius="100%"
+                  paddingAngle={2}
+                  stroke="none"
+                  isAnimationActive={false}
+                  onClick={(slice) => navigate(`/bugs?status=${slice.value}`)}
+                  className="cursor-pointer"
+                >
+                  {rows
+                    .filter((r) => r.count > 0)
+                    .map((r) => (
+                      <Cell key={r.value} fill={r.color} />
+                    ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-xl font-semibold font-mono tabular-nums text-fg">{total}</span>
+              <span className="text-[11px] text-subtle">bugs</span>
+            </div>
+          </div>
+
+          <ul className="flex-1 space-y-2">
+            {rows.map((r) => (
+              <li key={r.value}>
+                <Link
+                  to={`/bugs?status=${r.value}`}
+                  className="group flex items-center gap-2 rounded text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <span className="h-2.5 w-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: r.color }} />
+                  <span className="flex-1 text-muted group-hover:text-fg transition-colors">{r.label}</span>
+                  <span className="font-mono tabular-nums text-fg">{r.count}</span>
+                </Link>
+              </li>
             ))}
-          </Pie>
-          <Tooltip content={<CustomTooltip />} />
-          <Legend
-            formatter={(value, entry) => (
-              <span
-                onClick={() => handlePieClick(entry.payload)}
-                className="text-xs text-muted hover:text-text-base cursor-pointer transition-colors"
-              >
-                {value}
-              </span>
-            )}
-            iconType="circle"
-            iconSize={8}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
