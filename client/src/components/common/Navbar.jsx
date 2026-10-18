@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, Search, Command, Menu, Plus } from 'lucide-react';
-import useAuth from '../../hooks/useAuth.js';
+import { Search, Command, Menu, Plus } from 'lucide-react';
 import useSocket from '../../hooks/useSocket.js';
-import { getInitials, getImageUrl } from '../../utils/helpers.js';
-import { RoleBadge } from './Badge.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 export default function Navbar({ onOpenMenu }) {
-  const { user, logout } = useAuth();
   const { connected } = useSocket();
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef(null);
@@ -28,11 +24,6 @@ export default function Navbar({ onOpenMenu }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -70,7 +61,9 @@ export default function Navbar({ onOpenMenu }) {
         </form>
       </div>
 
-      {/* Right: Actions & User Info */}
+      {/* Right: connection, theme and the one primary action. The account
+          lives in the sidebar only (its menu holds Profile and Sign out); on
+          small screens it is reached through the menu drawer. */}
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Real-time connection status: a 6px dot and a word, nothing else.
             role="status" announces the change if the socket drops. */}
@@ -87,6 +80,8 @@ export default function Navbar({ onOpenMenu }) {
           <span className="sr-only sm:hidden">{connected ? 'Live' : 'Offline'}</span>
         </div>
 
+        <ThemeToggle />
+
         {/* The shell's one primary action, and its only way to report a bug. */}
         <Link
           to="/report"
@@ -96,43 +91,6 @@ export default function Navbar({ onOpenMenu }) {
           <Plus size={14} aria-hidden="true" />
           <span className="hidden sm:inline">New bug</span>
         </Link>
-
-        <ThemeToggle />
-
-        {/* User Identity Profile */}
-        <div className="pl-2 border-l border-border flex items-center gap-1 sm:gap-2.5">
-          <button
-            onClick={() => navigate('/profile')}
-            className="flex items-center gap-2.5 hover:opacity-90 transition-opacity text-left cursor-pointer group"
-            title="Go to Account Profile"
-            aria-label="Account profile"
-          >
-            <div className="w-8 h-8 rounded-lg border border-border p-[1.5px]">
-              <div className="w-full h-full rounded-md bg-track overflow-hidden flex items-center justify-center text-fg text-xs font-bold">
-                {user?.avatar ? (
-                  <img src={getImageUrl(user.avatar)} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  getInitials(user?.name)
-                )}
-              </div>
-            </div>
-            <div className="hidden sm:flex flex-col">
-              <span className="text-xs font-semibold text-fg leading-none mb-1 group-hover:text-accent transition-colors">
-                {user?.name}
-              </span>
-              <RoleBadge role={user?.role} />
-            </div>
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="p-2 rounded-lg text-muted hover:text-danger hover:bg-danger/10 transition-colors duration-200"
-            title="Sign out of BugSense"
-            aria-label="Sign out"
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
       </div>
     </header>
   );

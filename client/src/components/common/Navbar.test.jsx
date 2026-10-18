@@ -34,3 +34,18 @@ describe('Navbar', () => {
     expect(screen.getByText(/K$/, { selector: 'kbd' })).toBeInTheDocument();
   });
 });
+
+describe('Navbar account controls', () => {
+  it('holds no account controls: those live only in the sidebar', () => {
+    renderWithProviders(<Navbar onOpenMenu={() => {}} />);
+
+    expect(screen.queryByRole('button', { name: /sign out|account|profile/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Dev User')).not.toBeInTheDocument();
+    expect(screen.queryByText(/developer/i)).not.toBeInTheDocument();
+    // What remains: search, the connection status, the theme toggle, New bug.
+    expect(screen.getByRole('searchbox', { name: 'Search bugs' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Switch to/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'New bug' })).toBeInTheDocument();
+  });
+});
