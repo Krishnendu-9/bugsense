@@ -6,6 +6,7 @@ import User from '../models/User.model.js';
 import Bug from '../models/Bug.model.js';
 import Comment from '../models/Comment.model.js';
 import AuditLog from '../models/AuditLog.model.js';
+import { generateFingerprint } from '../utils/fingerprint.util.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,8 +69,10 @@ const seed = async () => {
    *
    * Times are fixed hours on whole days before today (UTC), never today, so
    * every timestamp is in the past whatever time the seed is run, and the
-   * week's shape is the same on every run: open bugs per day, oldest first,
-   * read 1, 2, 3, 1, 2, 2, 2.
+   * week's shape is the same on every run. With the SDK incidents below, open
+   * bugs per day, oldest first, read 2, 3, 4, 2, 4, 3, 3; the median time to
+   * resolve is 26h across 2 bugs; and the SDK pair is 50 crashes received,
+   * grouped into 3 bugs.
    */
   const todayUtc = new Date();
   todayUtc.setUTCHours(0, 0, 0, 0);
@@ -195,9 +198,177 @@ const seed = async () => {
   // timestamps: false, or this link would stamp the bug as updated just now.
   await Bug.findByIdAndUpdate(bugs[0]._id, { $push: { comments: comment._id } }, { timestamps: false });
 
+  /*
+   * SDK-CAPTURED INCIDENTS -- synthetic, like everything above.
+   *
+   * These are what the BugSense SDK would have produced had it been running:
+   * each is one bug standing for many crashes, grouped by fingerprint. They
+   * are written with the same shape the telemetry endpoint writes (source
+   * 'sdk', no reporter, occurrences, first/last seen, breadcrumbs, browser
+   * info), and the fingerprint is computed by the real generateFingerprint()
+   * from the real-looking stack trace, scoped by project as live capture
+   * does -- so the fingerprint and top frame the Bugs list shows are genuine.
+   * The repeat counts, dates and traces are invented.
+   *
+   *   41 crashes  TypeError in the storefront cart, still open
+   *    3 crashes  ReferenceError at checkout, picked up yesterday
+   *    6 crashes  RangeError in date formatting: fixed, then regressed
+   */
+  const SDK_DESCRIPTION = 'Crash reported automatically by the BugSense SDK.';
+  const REGRESSION_NOTE = 'Regression auto-detected: error re-occurred in production telemetry.';
+  const chromeWindows = {
+    browser: 'Chrome',
+    version: '130.0.0.0',
+    os: 'Windows 10/11',
+    screenSize: '1920x1080',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+  };
+  const safariMac = {
+    browser: 'Safari',
+    version: '17.6',
+    os: 'macOS',
+    screenSize: '1512x982',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
+  };
+  // The last few steps before a crash, ending in the error itself.
+  const trail = (at, steps) =>
+    steps.map(([minutesBefore, category, message, data = {}]) => ({
+      timestamp: new Date(at.getTime() - minutesBefore * 60000),
+      category,
+      message,
+      data,
+    }));
+
+  const sdkIncident = ({ errorLog, project, createdAt, lastSeenAt, updatedAt, ...rest }) => {
+    const title = errorLog.split('\n')[0];
+    return {
+      title,
+      description: SDK_DESCRIPTION,
+      errorLog,
+      project,
+      source: 'sdk',
+      reporter: null,
+      fingerprint: generateFingerprint(errorLog, title, project),
+      firstSeenAt: createdAt,
+      lastSeenAt,
+      createdAt,
+      updatedAt: updatedAt || lastSeenAt,
+      ...rest,
+    };
+  };
+
+  const cartLastSeen = daysAgo(1, 21, 40);
+  const checkoutLastSeen = daysAgo(1, 8, 30);
+  const dateLastSeen = daysAgo(1, 18);
+
+  const sdkBugs = await Bug.insertMany([
+    sdkIncident({
+      errorLog: [
+        "TypeError: Cannot read properties of undefined (reading 'total')",
+        '    at CartSummary (https://shop.example.com/assets/CartSummary-3f9a1c.js:41:18)',
+        '    at renderWithHooks (https://shop.example.com/assets/react-dom-8b2e4d.js:15486:18)',
+        '    at updateFunctionComponent (https://shop.example.com/assets/react-dom-8b2e4d.js:19617:20)',
+        '    at beginWork (https://shop.example.com/assets/react-dom-8b2e4d.js:21640:16)',
+      ].join('\n'),
+      project: 'Storefront',
+      priority: 'high',
+      severity: 'major',
+      status: 'open',
+      occurrences: 41,
+      createdAt: daysAgo(5, 16, 20),
+      lastSeenAt: cartLastSeen,
+      browserInfo: chromeWindows,
+      breadcrumbs: trail(cartLastSeen, [
+        [4, 'navigation', '/products/espresso-grinder -> /cart'],
+        [3, 'xhr', 'GET /api/cart 200', { status: 200 }],
+        [2, 'click', 'button.remove-item'],
+        [1, 'xhr', 'DELETE /api/cart/items/8812 204', { status: 204 }],
+        [0, 'error', "TypeError: Cannot read properties of undefined (reading 'total')"],
+      ]),
+    }),
+    sdkIncident({
+      errorLog: [
+        'ReferenceError: analytics is not defined',
+        '    at trackCheckoutStarted (https://shop.example.com/assets/checkout-a71c02.js:88:5)',
+        '    at HTMLButtonElement.onCheckoutClick (https://shop.example.com/assets/checkout-a71c02.js:142:9)',
+      ].join('\n'),
+      project: 'Storefront',
+      priority: 'medium',
+      severity: 'minor',
+      status: 'in-progress',
+      occurrences: 3,
+      assignedTo: developer._id,
+      createdAt: daysAgo(2, 10, 5),
+      lastSeenAt: checkoutLastSeen,
+      updatedAt: daysAgo(1, 9),
+      statusHistory: [
+        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(1, 9), note: 'Analytics script is blocked by some ad blockers; guarding the call' },
+      ],
+      browserInfo: safariMac,
+      breadcrumbs: trail(checkoutLastSeen, [
+        [2, 'navigation', '/cart -> /checkout'],
+        [1, 'console', 'Failed to load resource: analytics.js (blocked)'],
+        [0, 'click', 'button#start-checkout'],
+        [0, 'error', 'ReferenceError: analytics is not defined'],
+      ]),
+    }),
+    sdkIncident({
+      errorLog: [
+        'RangeError: Invalid time value',
+        '    at format (https://app.bugsense.dev/assets/date-fns-5c1d9e.js:2:31544)',
+        '    at TimelineEntry (https://app.bugsense.dev/assets/BugDetail-91ab3f.js:7:10422)',
+        '    at renderWithHooks (https://app.bugsense.dev/assets/react-dom-8b2e4d.js:15486:18)',
+      ].join('\n'),
+      project: 'BugSense Frontend',
+      priority: 'high',
+      severity: 'major',
+      // Resolved 22 hours after it was first captured, then it came back: the
+      // telemetry pipeline flips a resolved bug to in-progress when it recurs.
+      status: 'in-progress',
+      occurrences: 6,
+      assignedTo: developer._id,
+      createdAt: daysAgo(6, 12),
+      lastSeenAt: dateLastSeen,
+      statusHistory: [
+        { status: 'resolved', changedBy: developer._id, changedAt: daysAgo(5, 10), note: 'Guarded format() against entries with no timestamp' },
+        { status: 'in-progress', changedAt: daysAgo(1, 15, 10), note: REGRESSION_NOTE },
+      ],
+      browserInfo: chromeWindows,
+      breadcrumbs: trail(dateLastSeen, [
+        [3, 'navigation', '/bugs -> /bugs/6713f0c2'],
+        [2, 'xhr', 'GET /api/bugs/6713f0c2 200', { status: 200 }],
+        [0, 'error', 'RangeError: Invalid time value'],
+      ]),
+    }),
+  ]);
+
+  // The audit trail a real capture leaves: one SDK_TELEMETRY event per new
+  // incident, and REGRESSION_DETECTED when a resolved one recurs.
+  const [, , regressed] = sdkBugs;
+  await AuditLog.insertMany([
+    ...sdkBugs.map((bug) => ({
+      action: 'SDK_TELEMETRY',
+      entityType: 'telemetry',
+      entityId: bug._id.toString(),
+      performedByName: 'BugSense SDK',
+      details: `SDK reported a crash: "${bug.title}" (${bug.severity})`,
+      createdAt: bug.createdAt,
+      updatedAt: bug.createdAt,
+    })),
+    {
+      action: 'REGRESSION_DETECTED',
+      entityType: 'telemetry',
+      entityId: regressed._id.toString(),
+      performedByName: 'Telemetry Pipeline',
+      details: `Telemetry regression: "${regressed.title}" re-occurred (4x)`,
+      createdAt: daysAgo(1, 15, 10),
+      updatedAt: daysAgo(1, 15, 10),
+    },
+  ]);
+
   console.log('\nSeed complete:');
   console.log(`  Users:    ${await User.countDocuments()}`);
-  console.log(`  Bugs:     ${await Bug.countDocuments()}`);
+  console.log(`  Bugs:     ${await Bug.countDocuments()} (${sdkBugs.length} captured by the SDK)`);
   console.log(`  Comments: ${await Comment.countDocuments()}`);
   console.log('\nDemo accounts:');
   console.log('  admin@bugsense.dev    / password123  (admin)');
