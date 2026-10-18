@@ -82,7 +82,7 @@ export default function ReportBug() {
         <div>
           <div className="flex items-center gap-2 mb-0.5">
             <Bug size={20} className="text-primary" />
-            <h1 className="text-2xl font-bold text-text-base">Report a Bug</h1>
+            <h1 className="text-2xl font-bold text-text-base">Report a bug</h1>
           </div>
           <p className="text-muted text-sm">Fill in the details below. Any error log is analyzed automatically.</p>
         </div>

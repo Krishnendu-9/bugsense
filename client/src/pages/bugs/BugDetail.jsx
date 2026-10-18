@@ -324,7 +324,7 @@ function BugDetailView() {
     try {
       const res = await api.post('/ai/post-mortem', { bugId: id });
       setPostMortem(res.data);
-      toast.success(res.data.source === 'claude' ? 'Incident post-mortem generated' : 'Post-mortem template created');
+      toast.success(res.data.source === 'claude' ? 'Post-mortem generated' : 'Post-mortem template created');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to generate post-mortem');
     } finally {
@@ -405,7 +405,7 @@ function BugDetailView() {
             onClick={handleGeneratePostMortem}
             disabled={postMortemLoading}
             className="btn-secondary flex items-center gap-1.5 text-sm"
-            title="Generate an incident post-mortem"
+            title="Generate a post-mortem"
           >
             <FileText size={15} />
             {postMortemLoading ? 'Generating...' : 'Post-Mortem'}
@@ -452,7 +452,7 @@ function BugDetailView() {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-text-base text-sm">
-                  {bug.occurrences > 1 ? 'Recurring Telemetry Incident' : 'Telemetry Incident'}
+                  {bug.occurrences > 1 ? 'Recurring crash' : 'Single crash'}
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-priority-high/20 text-priority-high border border-priority-high/30">
                   {bug.occurrences}x occurrences

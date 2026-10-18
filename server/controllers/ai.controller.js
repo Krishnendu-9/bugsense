@@ -80,7 +80,7 @@ export const createGitPatch = async (req, res, next) => {
 export const createPostMortem = async (req, res, next) => {
   const { bugId } = req.body;
   if (!bugId) {
-    return res.status(400).json({ message: 'bugId is required to generate an incident post-mortem' });
+    return res.status(400).json({ message: 'bugId is required to generate a post-mortem' });
   }
 
   try {

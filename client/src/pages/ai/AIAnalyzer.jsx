@@ -64,7 +64,7 @@ export default function AIAnalyzer() {
             <Cpu size={20} className="text-on-accent" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-text-base">AI Debug Analyzer</h1>
+            <h1 className="text-2xl font-bold text-text-base">AI analyzer</h1>
             <p className="text-muted text-sm">Powered by Claude (keyword heuristics when no API key is configured) — paste any error and get debug insights</p>
           </div>
         </div>

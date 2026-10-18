@@ -118,13 +118,13 @@ export default function KanbanBoard() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-text-base">Issue Workflow Board</h1>
+            <h1 className="text-xl font-bold text-text-base">Board</h1>
             <span className="px-2 py-0.5 rounded-full text-[11px] bg-primary/15 text-primary border border-primary/30">
               Drag & Drop Enabled
             </span>
           </div>
           <p className="text-xs text-muted">
-            Drag incident cards across columns to advance workflow status in real time.
+            Drag bugs between columns to change their status.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -132,10 +132,10 @@ export default function KanbanBoard() {
             to="/bugs"
             className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5"
           >
-            <List size={14} /> Table View
+            <List size={14} /> List
           </Link>
           <button className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 cursor-default">
-            <LayoutGrid size={14} /> Kanban Board
+            <LayoutGrid size={14} /> Board
           </button>
         </div>
       </div>

@@ -107,19 +107,19 @@ export default function SDKPlayground() {
               </span>
             </div>
             <h1 className="text-xl font-bold text-text-base mb-1">
-              Client SDK Demo
+              SDK sandbox
             </h1>
             <p className="text-xs text-muted max-w-2xl leading-relaxed">
               This interactive playground demonstrates the BugSense Client SDK (<code>bugsense.js</code>).
               Click any fault-injection button below to trigger real browser exceptions. Watch the SDK record
-              the Flight Recorder breadcrumbs and stream incidents to your dashboard in real-time.
+              the Flight Recorder breadcrumbs and send each crash to BugSense as a bug in real time.
             </p>
           </div>
           <Link
             to="/bugs"
             className="btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5"
           >
-            Go to Bug Dashboard <ArrowRight size={13} />
+            Go to Bugs <ArrowRight size={13} />
           </Link>
         </div>
       </div>
@@ -234,7 +234,7 @@ export default function SDKPlayground() {
             {recentBugs.length === 0 ? (
               <div className="text-center py-10 space-y-2 text-muted text-xs">
                 <p>No telemetry received in this session yet.</p>
-                <p className="text-[11px] text-muted/60">Click any fault trigger on the left to fire a live incident!</p>
+                <p className="text-[11px] text-muted/60">Click any fault trigger on the left to report a live bug.</p>
               </div>
             ) : (
               <div className="space-y-3">

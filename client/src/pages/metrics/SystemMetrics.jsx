@@ -85,7 +85,7 @@ export default function SystemMetrics() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-text-base">System Vitals</h1>
+            <h1 className="text-xl font-bold text-text-base">Metrics</h1>
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-semibold border flex items-center gap-1 ${
                 operational
@@ -157,7 +157,7 @@ export default function SystemMetrics() {
             <p className="text-[11px] text-muted mt-0.5">
               {metrics?.telemetry?.dedupRate == null
                 ? 'No SDK crashes received yet'
-                : 'of SDK crashes merged into an existing incident'}
+                : 'of SDK crashes merged into an existing bug'}
             </p>
           </div>
           <div className="pt-2 border-t border-hairline flex items-center justify-between text-[11px] text-muted font-mono">
@@ -215,7 +215,7 @@ export default function SystemMetrics() {
       {/* Detailed Telemetry Breakdown Card */}
       <div className="glass-card p-6 border border-border space-y-4">
         <h3 className="text-sm font-semibold text-text-base flex items-center gap-2">
-          <HardDrive size={16} className="text-primary" /> Incident Telemetry Pipeline Analytics
+          <HardDrive size={16} className="text-primary" /> SDK telemetry
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
           <div className="p-4 rounded-xl bg-track border border-hairline space-y-1">
@@ -226,7 +226,7 @@ export default function SystemMetrics() {
             <p className="text-[11px] text-muted">Every report sent by <code>bugsense.js</code></p>
           </div>
           <div className="p-4 rounded-xl bg-track border border-hairline space-y-1">
-            <span className="text-xs text-muted">Incidents After Grouping</span>
+            <span className="text-xs text-muted">Bugs After Grouping</span>
             <div className="text-2xl font-bold text-accent font-mono">
               {metrics?.telemetry?.sdkIncidents || 0}
             </div>
@@ -237,7 +237,7 @@ export default function SystemMetrics() {
             <div className="text-2xl font-bold text-text-base font-mono">
               {metrics?.telemetry?.duplicatesMerged || 0}
             </div>
-            <p className="text-[11px] text-muted">Received minus incidents</p>
+            <p className="text-[11px] text-muted">Received minus bugs</p>
           </div>
         </div>
       </div>

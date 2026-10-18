@@ -155,7 +155,7 @@ export const generateGitPatch = async (errorLog = '', bugDescription = '', steps
     };
   } catch (err) {
     console.warn('AI patch generation failed:', err.message);
-    return unavailable('The AI service could not produce a patch for this incident. Try again later.');
+    return unavailable('The AI service could not produce a patch for this bug. Try again later.');
   }
 };
 

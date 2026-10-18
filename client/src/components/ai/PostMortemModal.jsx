@@ -29,8 +29,8 @@ export default function PostMortemModal({ markdown, source, bugTitle, onClose })
 
   return (
     <Modal
-      title="Engineering Incident Post-Mortem"
-      subtitle={bugTitle || 'Incident Report'}
+      title="Incident post-mortem"
+      subtitle={bugTitle || 'Untitled bug'}
       icon={ShieldAlert}
       onClose={onClose}
       size="xl"
@@ -54,8 +54,8 @@ export default function PostMortemModal({ markdown, source, bugTitle, onClose })
         <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-track border border-border text-xs text-muted">
           <Info size={14} className="flex-shrink-0 mt-0.5" />
           <span>
-            Template filled in from this incident&apos;s data — not written by AI. Sections marked
-            &ldquo;to be completed&rdquo; need the incident owner.
+            Template filled in from this bug&apos;s data — not written by AI. Sections marked
+            &ldquo;to be completed&rdquo; need filling in by whoever fixed it.
           </span>
         </div>
       )}

@@ -115,7 +115,7 @@ describe('Overview', () => {
     const dedup = screen.getByRole('heading', { name: 'Deduplication' }).closest('section');
     expect(within(dedup).getByText('40')).toBeInTheDocument();
     expect(within(dedup).getByText('8')).toBeInTheDocument();
-    expect(within(dedup).getByText('80% of crashes merged into an existing incident.')).toBeInTheDocument();
+    expect(within(dedup).getByText('80% of crashes merged into an existing bug.')).toBeInTheDocument();
   });
 
   it('shows a dash and the reason, never a zero, when a value does not exist', async () => {

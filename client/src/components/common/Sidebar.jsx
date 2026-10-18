@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Bug, PlusCircle, Cpu, ShieldCheck,
+  LayoutDashboard, Bug, Cpu, ShieldCheck,
   ChevronLeft, ChevronRight, User, LayoutGrid, Terminal, Activity, Shield, X, Users,
 } from 'lucide-react';
 import useAuth from '../../hooks/useAuth.js';
@@ -9,29 +9,35 @@ import { getInitials, getImageUrl } from '../../utils/helpers.js';
 const STAFF = ['developer', 'admin'];
 
 // `roles` hides an item from everyone else; the routes and API enforce it too.
+//
+// There is deliberately no "report a bug" item: the shell has exactly one
+// entry point for that, the "New bug" action in the top bar.
+//
+// Section labels are written in sentence case and uppercased by CSS, so
+// screen readers say "Monitoring", not "M-O-N-I-T-O-R-I-N-G".
 const navSections = [
   {
-    category: 'INCIDENT OPS',
+    // The product itself needs no signpost.
+    category: null,
     items: [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/bugs', icon: Bug, label: 'All Incidents' },
-      { to: '/board', icon: LayoutGrid, label: 'Kanban Board' },
-      { to: '/report', icon: PlusCircle, label: 'Report Incident' },
+      { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+      { to: '/bugs', icon: Bug, label: 'Bugs' },
+      { to: '/board', icon: LayoutGrid, label: 'Board' },
     ],
   },
   {
-    category: 'MONITORING & AI',
+    category: 'Monitoring',
     items: [
-      { to: '/metrics', icon: Activity, label: 'System Vitals', roles: STAFF },
-      { to: '/audit', icon: Shield, label: 'Audit Trail', roles: STAFF },
-      { to: '/ai', icon: Cpu, label: 'AI Diagnostics' },
-      { to: '/sdk-demo', icon: Terminal, label: 'SDK Sandbox' },
+      { to: '/metrics', icon: Activity, label: 'Metrics', roles: STAFF },
+      { to: '/audit', icon: Shield, label: 'Audit log', roles: STAFF },
+      { to: '/ai', icon: Cpu, label: 'AI analyzer' },
+      { to: '/sdk-demo', icon: Terminal, label: 'SDK sandbox' },
     ],
   },
   {
-    category: 'SETTINGS',
+    category: 'Settings',
     items: [
-      { to: '/profile', icon: User, label: 'Profile & Alerts' },
+      { to: '/profile', icon: User, label: 'Profile' },
       { to: '/team', icon: Users, label: 'Team', roles: ['admin'] },
     ],
   },
@@ -87,8 +93,8 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
           </div>
           {!iconOnly && (
             <div className="flex flex-col flex-1">
-              <span className="text-base font-bold text-text-base tracking-tight whitespace-nowrap">
-                Bug<span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Sense</span>
+              <span className="text-base font-bold text-fg tracking-tight whitespace-nowrap">
+                Bug<span className="text-accent">Sense</span>
               </span>
               <span className="text-[10px] text-muted/70 tracking-widest uppercase">Bug Tracker</span>
             </div>
@@ -108,9 +114,10 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
             edge has more to show. */}
         <nav className={`flex-1 min-h-0 py-3 overflow-y-auto overscroll-contain space-y-4 scroll-fade ${iconOnly ? 'px-2' : 'px-3'}`}>
           {sections.map((section) => (
-            <div key={section.category} className="space-y-1">
-              {!iconOnly && (
-                <p className="px-3 text-[10px] font-semibold text-muted/50 uppercase tracking-widest mb-1.5">
+            <div key={section.category ?? 'main'} className="space-y-1">
+              {/* Signposts, not headings: small, quiet, uppercase by CSS. */}
+              {!iconOnly && section.category && (
+                <p className="px-3 mb-1 text-[10px] font-medium uppercase tracking-wider text-subtle">
                   {section.category}
                 </p>
               )}
@@ -121,21 +128,19 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
                   title={iconOnly ? label : undefined}
                   aria-label={iconOnly ? label : undefined}
                   className={({ isActive }) =>
-                    `flex items-center rounded-xl text-xs font-medium transition-all duration-200 relative group ${
+                    // Active: the tinted fill alone -- no left bar, no glow.
+                    `flex items-center rounded-lg text-xs font-medium transition-colors duration-200 group ${
                       iconOnly ? 'justify-center p-2' : 'gap-3 px-3 py-2'
                     } ${
                       isActive
-                        ? 'bg-accent-dim text-fg border border-accent/30'
-                        : 'text-muted hover:text-text-base hover:bg-track border border-transparent'
+                        ? 'bg-accent-dim text-fg'
+                        : 'text-muted hover:text-fg hover:bg-track'
                     }`
                   }
                 >
                   {({ isActive }) => (
                     <>
-                      {isActive && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-accent" />
-                      )}
-                      <Icon size={17} className={`flex-shrink-0 transition-colors ${isActive ? 'text-primary' : 'group-hover:text-text-base'}`} />
+                      <Icon size={17} className={`flex-shrink-0 transition-colors ${isActive ? 'text-accent' : 'group-hover:text-fg'}`} />
                       {!iconOnly && <span className="flex-1 truncate">{label}</span>}
                     </>
                   )}

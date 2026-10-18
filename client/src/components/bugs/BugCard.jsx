@@ -25,7 +25,7 @@ export default function BugCard({ bug }) {
         <SeverityBadge severity={bug.severity} />
         {bug.occurrences > 1 && (
           <span
-            title={`Recurring issue: seen ${bug.occurrences} times`}
+            title={`Recurring bug: seen ${bug.occurrences} times`}
             className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-priority-high/15 text-priority-high border border-priority-high/30"
           >
             ⚡ {bug.occurrences}x

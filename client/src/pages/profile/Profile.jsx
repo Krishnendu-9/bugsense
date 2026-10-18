@@ -188,7 +188,7 @@ export default function Profile() {
     <div className="max-w-5xl space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-text-base">Profile & Settings</h1>
+        <h1 className="text-2xl font-bold text-text-base">Profile</h1>
         <p className="text-muted text-sm mt-0.5">
           Manage your account credentials, avatar, and workspace preferences.
         </p>
@@ -465,7 +465,7 @@ export default function Profile() {
                 <Bell size={16} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-text-base">Incident Webhooks & Alerts</h3>
+                <h3 className="text-sm font-semibold text-text-base">Webhook alerts</h3>
                 <p className="text-xs text-muted">Receive live notifications in Discord and Slack when bugs are created or regress</p>
               </div>
             </div>
@@ -504,7 +504,7 @@ export default function Profile() {
                     {...regWebhook('alertOnCritical')}
                     className="rounded border-border bg-track text-primary"
                   />
-                  Alert on Critical & Blocker incidents
+                  Alert on critical and blocker bugs
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input

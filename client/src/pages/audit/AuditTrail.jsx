@@ -110,7 +110,7 @@ export default function AuditTrail() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-text-base">Audit Trail</h1>
+            <h1 className="text-xl font-bold text-text-base">Audit log</h1>
             <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/15 text-primary border border-primary/30 flex items-center gap-1">
               <Shield size={12} /> Staff only
             </span>
@@ -194,7 +194,7 @@ export default function AuditTrail() {
                       <>
                         <span>•</span>
                         <Link to={`/bugs/${log.entityId}`} className="text-primary hover:underline">
-                          View Incident →
+                          View bug →
                         </Link>
                       </>
                     )}

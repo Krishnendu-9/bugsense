@@ -78,7 +78,7 @@ export default class ErrorBoundary extends React.Component {
               <RotateCcw size={15} /> Try Again
             </button>
             <button onClick={this.handleHome} className="btn-secondary flex items-center gap-2 text-sm px-4 py-2">
-              <Home size={15} /> Dashboard
+              <Home size={15} /> Overview
             </button>
           </div>
         </div>
@@ -108,7 +108,7 @@ export default class ErrorBoundary extends React.Component {
               <RotateCcw size={15} /> Reload Application
             </button>
             <button onClick={this.handleHome} className="btn-secondary flex items-center gap-2 text-sm px-4 py-2">
-              <Home size={15} /> Dashboard
+              <Home size={15} /> Overview
             </button>
           </div>
         </div>

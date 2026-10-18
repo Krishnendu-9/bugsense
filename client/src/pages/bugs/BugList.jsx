@@ -146,7 +146,7 @@ export default function BugList() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-text-base">Bug Reports</h1>
+          <h1 className="text-2xl font-bold text-text-base">Bugs</h1>
           <p className="text-muted text-sm mt-0.5">
             {pagination.total} bug{pagination.total !== 1 ? 's' : ''} {hasActiveFilters ? 'match these filters' : 'tracked'}
           </p>
@@ -185,10 +185,10 @@ export default function BugList() {
           </div>
 
           <Link to="/board" className="btn-secondary flex items-center gap-1.5 text-sm py-2">
-            <LayoutGrid size={15} /> Kanban Board
+            <LayoutGrid size={15} /> Board
           </Link>
           <button onClick={() => navigate('/report')} className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Report Bug
+            <Plus size={16} /> New bug
           </button>
         </div>
       </div>
@@ -209,7 +209,7 @@ export default function BugList() {
             {hasActiveFilters ? 'Try adjusting your filters' : 'Be the first to report a bug!'}
           </p>
           <button onClick={() => navigate('/report')} className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Report Bug
+            <Plus size={16} /> New bug
           </button>
         </div>
       ) : (

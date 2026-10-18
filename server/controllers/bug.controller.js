@@ -227,7 +227,7 @@ export const createBug = async (req, res, next) => {
       entityId: bug._id,
       performedBy: req.user._id,
       performedByName: req.user.name,
-      details: `Reported incident: "${bug.title}" (${bug.severity} / ${bug.priority})`,
+      details: `Reported bug: "${bug.title}" (${bug.severity} / ${bug.priority})`,
     });
 
     // Analysis runs after the response, so filing a bug never waits on the
@@ -309,7 +309,7 @@ export const updateBug = async (req, res, next) => {
       entityId: bug._id,
       performedBy: req.user._id,
       performedByName: req.user.name,
-      details: `Updated incident #${bug._id.toString().slice(-6)} (Status: ${bug.status}, Priority: ${bug.priority})`,
+      details: `Updated bug #${bug._id.toString().slice(-6)} (Status: ${bug.status}, Priority: ${bug.priority})`,
     });
 
     return res.json(bug);
@@ -334,7 +334,7 @@ export const deleteBug = async (req, res, next) => {
       entityId: bug._id,
       performedBy: req.user._id,
       performedByName: req.user.name,
-      details: `Deleted incident: "${bug.title}" (${bug.occurrences || 1} occurrence(s))`,
+      details: `Deleted bug: "${bug.title}" (${bug.occurrences || 1} occurrence(s))`,
     });
 
     return res.json({ message: 'Bug deleted successfully' });
@@ -561,7 +561,7 @@ ${bug.aiInsights?.possibleCause ? `### ${bug.aiInsights.source === 'heuristic' ?
       entityId: bug._id,
       performedBy: req.user._id,
       performedByName: req.user.name,
-      details: `Exported incident to GitHub: ${repoOwner}/${repoName} #${ghIssue.number}`,
+      details: `Exported bug to GitHub: ${repoOwner}/${repoName} #${ghIssue.number}`,
     });
 
     return res.json({

@@ -92,7 +92,7 @@ export default function GitPatchModal({ patch, onClose, onRegenerate, regenerati
       ) : !hasDiff ? (
         <div className="flex items-start gap-3 rounded-xl p-4 bg-track border border-border text-sm text-muted">
           <Info size={16} className="flex-shrink-0 mt-0.5 text-primary" />
-          <p>{patch.explanation || 'The AI service did not return a patch for this incident.'}</p>
+          <p>{patch.explanation || 'The AI service did not return a patch for this bug.'}</p>
         </div>
       ) : (
         <div className="space-y-4">

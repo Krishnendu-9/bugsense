@@ -34,7 +34,7 @@ export default function DedupCard({ state }) {
   if (state.kind === 'restricted') caption = 'Shown to developers and admins.';
   else if (state.kind === 'error') caption = 'Could not load the telemetry figures.';
   else if (rate === null) caption = 'No SDK crashes received yet, so there is no rate.';
-  else caption = `${rate}% of crashes merged into an existing incident.`;
+  else caption = `${rate}% of crashes merged into an existing bug.`;
 
   const figure = (value) => (
     <span className={`font-mono tabular-nums ${t ? 'text-fg' : 'text-subtle'}`}>{t ? value : NO_VALUE}</span>
@@ -57,7 +57,7 @@ export default function DedupCard({ state }) {
       <div
         className="mt-3 h-2 rounded-full bg-track overflow-hidden"
         role="progressbar"
-        aria-label="Share of crashes merged into an existing incident"
+        aria-label="Share of crashes merged into an existing bug"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={rate ?? undefined}
@@ -69,11 +69,11 @@ export default function DedupCard({ state }) {
 
       <div className="mt-3">
         <p className="text-2xl font-semibold">{figure(t?.sdkIncidents)}</p>
-        <p className="text-xs text-muted">incidents after grouping</p>
+        <p className="text-xs text-muted">bugs after grouping</p>
       </div>
 
       <p className="mt-auto pt-4 text-[11px] text-subtle">
-        Running totals: the SDK counts repeats per incident but does not record when each crash arrived.
+        Running totals: the SDK counts repeats per bug but does not record when each crash arrived.
       </p>
     </section>
   );

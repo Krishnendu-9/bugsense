@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, Search, Command, Menu } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { LogOut, Search, Command, Menu, Plus } from 'lucide-react';
 import useAuth from '../../hooks/useAuth.js';
 import useSocket from '../../hooks/useSocket.js';
 import { getInitials, getImageUrl } from '../../utils/helpers.js';
@@ -60,8 +60,8 @@ export default function Navbar({ onOpenMenu }) {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Search incidents"
-            placeholder="Search incidents, telemetry, stack traces..."
+            aria-label="Search bugs"
+            placeholder="Search bugs and error logs…"
             className="w-full bg-bg border border-border focus:border-accent rounded-lg pl-9 pr-14 py-1.5 text-xs text-fg placeholder:text-subtle focus:outline-none transition-colors"
           />
           <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-track border border-border text-[10px] font-mono text-muted">
@@ -72,27 +72,30 @@ export default function Navbar({ onOpenMenu }) {
 
       {/* Right: Actions & User Info */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Real-time connection status */}
+        {/* Real-time connection status: a 6px dot and a word, nothing else.
+            role="status" announces the change if the socket drops. */}
         <div
+          role="status"
           title={connected ? 'Live updates connected' : 'Live updates disconnected'}
-          className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border transition-all duration-300 select-none ${
-            connected
-              ? 'bg-accent-dim border-accent/30 text-accent'
-              : 'bg-track border-border text-muted'
-          }`}
+          className="flex items-center gap-1.5 text-xs text-muted select-none"
         >
-          <span className="relative flex h-2 w-2">
-            {connected && (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
-            )}
-            <span
-              className={`relative inline-flex rounded-full h-2 w-2 ${
-                connected ? 'bg-accent' : 'bg-subtle'
-              }`}
-            />
-          </span>
-          <span className="hidden lg:inline">{connected ? 'Live' : 'Offline'}</span>
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-accent' : 'bg-subtle'}`}
+            aria-hidden="true"
+          />
+          <span className="hidden sm:inline">{connected ? 'Live' : 'Offline'}</span>
+          <span className="sr-only sm:hidden">{connected ? 'Live' : 'Offline'}</span>
         </div>
+
+        {/* The shell's one primary action, and its only way to report a bug. */}
+        <Link
+          to="/report"
+          aria-label="New bug"
+          className="btn-primary text-xs flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3"
+        >
+          <Plus size={14} aria-hidden="true" />
+          <span className="hidden sm:inline">New bug</span>
+        </Link>
 
         <ThemeToggle />
 
