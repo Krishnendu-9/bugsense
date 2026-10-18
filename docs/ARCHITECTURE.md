@@ -160,6 +160,14 @@ tests run the real middleware stack against an in-memory MongoDB.
   matches whole words).
 - Single workspace: every signed-in user can see every bug.
 - No email verification or password reset flow.
+- No telemetry metric can be broken down by time. The SDK pipeline records how
+  many times each incident occurred (one atomic `occurrences` counter) but not
+  when each crash arrived — only the first and last. So crash rates, crashes per
+  day, or "deduplication today" cannot be derived from stored data; the Overview
+  shows the deduplication pair as all-time totals for this reason. Supporting
+  them would mean recording arrivals, e.g. a per-incident daily bucket
+  incremented alongside `occurrences`, and would only cover crashes received
+  after that change.
 - Two different errors that share their top stack frames — for example two
   different failing API calls, where the top frames are all inside axios — can be
   grouped into one bug. In this evaluation 9 unrelated pairs of errors were

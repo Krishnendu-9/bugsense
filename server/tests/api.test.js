@@ -1,5 +1,6 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import mongoose from 'mongoose';
 import supertest from 'supertest';
 import { io as ioClient } from 'socket.io-client';
 import { startTestServer, stopTestServer, createUser, Bug } from './helpers.js';
@@ -535,6 +536,118 @@ describe('staff-only endpoints', () => {
   }
 });
 
+describe('trend statistics', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const trends = async () => (await request.get('/api/bugs/stats/trends').set(auth(reporter))).body;
+
+  it("ends the open-by-day series on the dashboard's live open count", async () => {
+    const [series, stats] = await Promise.all([
+      trends(),
+      request.get('/api/bugs/stats').set(auth(reporter)).then((r) => r.body),
+    ]);
+    assert.equal(series.openByDay.timezone, 'UTC');
+    assert.equal(series.openByDay.days.length, 7);
+    assert.equal(series.openByDay.days.at(-1).open, stats.open);
+  });
+
+  it('places a backdated bug on exactly the days it was open', async () => {
+    const start = await trends();
+
+    // Created five days ago, picked up three days ago. createdAt is immutable
+    // through Mongoose, so the history is written with the raw driver.
+    const created = await createBug(reporter, { title: 'Backdated trend fixture' });
+    const now = Date.now();
+    await Bug.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(created.body._id) },
+      {
+        $set: {
+          createdAt: new Date(now - 5 * DAY),
+          status: 'in-progress',
+          statusHistory: [{ status: 'in-progress', changedAt: new Date(now - 3 * DAY), note: '' }],
+        },
+      }
+    );
+
+    const end = await trends();
+    const delta = end.openByDay.days.map((day, i) => day.open - start.openByDay.days[i].open);
+    // Oldest first: six days ago (not yet created), five and four days ago
+    // (open), then in progress from three days ago onward.
+    assert.deepEqual(delta, [0, 1, 1, 0, 0, 0, 0]);
+  });
+
+  it('counts a bug once by its first resolution, and never counts a closure', async () => {
+    const setStatus = (id, status) =>
+      request.put(`/api/bugs/${id}`).set(auth(developer)).send({ status });
+    const before = await trends();
+    const start = before.timeToResolve;
+
+    const fixed = (await createBug(reporter, { title: 'Resolved, regressed, resolved again' })).body._id;
+    for (const status of ['resolved', 'open', 'resolved']) {
+      assert.equal((await setStatus(fixed, status)).status, 200);
+    }
+    const dismissed = (await createBug(reporter, { title: 'Closed without a fix' })).body._id;
+    assert.equal((await setStatus(dismissed, 'closed')).status, 200);
+
+    const after = await trends();
+    const end = after.timeToResolve;
+    assert.equal(end.sampleSize - start.sampleSize, 1);
+    // Resolved twice this week is one bug resolved; the closure is none.
+    assert.equal(after.resolvedInWindow.count - before.resolvedInWindow.count, 1);
+    assert.equal(typeof end.medianMs, 'number');
+  });
+});
+
+describe('dashboard statistics', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const stats = async () => (await request.get('/api/bugs/stats').set(auth(reporter))).body;
+
+  it('counts named projects, not bugs and not the empty default', async () => {
+    const start = await stats();
+    const project = `Overview fixture ${Date.now()}`;
+    assert.equal((await createBug(reporter, { project })).status, 201);
+    assert.equal((await createBug(reporter, { project })).status, 201);
+    assert.equal((await createBug(reporter, {})).status, 201);
+    const end = await stats();
+    assert.equal(end.projects - start.projects, 1);
+    assert.equal(end.total - start.total, 3);
+    // The delta alone cannot see the empty default being counted: earlier
+    // tests already left project-less bugs behind, so it would be counted at
+    // both ends and cancel out. Compare the absolute figure as well.
+    const named = (await Bug.distinct('project')).filter((name) => name !== '' && name !== null);
+    assert.equal(end.projects, named.length);
+  });
+
+  it('reports when the longest-waiting open bug was created', async () => {
+    const created = await createBug(reporter, { title: 'Oldest open fixture' });
+    const longAgo = new Date(Date.now() - 40 * DAY);
+    await Bug.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(created.body._id) },
+      { $set: { createdAt: longAgo } }
+    );
+    assert.equal((await stats()).oldestOpenAt, longAgo.toISOString());
+  });
+
+  it('lists recent bugs by latest activity, with the fields the table needs', async () => {
+    const first = (await createBug(reporter, { title: 'Recent fixture A', project: 'Recent fixtures' })).body._id;
+    const second = (await createBug(reporter, { title: 'Recent fixture B' })).body._id;
+    // Touch the older bug: it must move above the newer one.
+    const touched = await request
+      .put(`/api/bugs/${first}`)
+      .set(auth(developer))
+      .send({ priority: 'high', assignedTo: developer.user._id });
+    assert.equal(touched.status, 200);
+
+    const { recent } = await stats();
+    assert.deepEqual(recent.slice(0, 2).map((bug) => bug._id), [first, second]);
+    const row = recent[0];
+    assert.equal(row.project, 'Recent fixtures');
+    assert.equal(row.assignedTo.name, developer.user.name);
+    assert.equal(row.source, 'manual');
+    assert.equal(row.occurrences, 1);
+    assert.ok(row.updatedAt);
+  });
+});
+
 describe('webhooks', () => {
   it('refuses to call arbitrary URLs (SSRF)', async () => {
     for (const url of ['http://169.254.169.254/latest/meta-data', 'https://discord.com.evil.test/api/webhooks/1', 'http://localhost:5000']) {
@@ -563,6 +676,25 @@ describe('telemetry', () => {
     const bugs = await Bug.find({ project: 'race-test' });
     assert.equal(bugs.length, 1);
     assert.equal(bugs[0].occurrences, 8);
+  });
+
+  it('measures deduplication over SDK reports only, as one population', async () => {
+    // The database is shared across this file, so this works in deltas.
+    const telemetry = async () =>
+      (await request.get('/api/health/metrics').set(auth(developer))).body.telemetry;
+
+    const start = await telemetry();
+    const payload = { title: 'Metrics pair', errorLog: 'Error: pair\n    at m (m.js:1:1)', project: 'metrics-pair' };
+    for (let i = 0; i < 3; i += 1) await report(payload);
+    // A manual report in the same window must move neither half of the pair.
+    assert.equal((await createBug(reporter, { title: 'Manual report, never grouped' })).status, 201);
+    const end = await telemetry();
+
+    assert.equal(end.sdkCrashesReceived - start.sdkCrashesReceived, 3);
+    assert.equal(end.sdkIncidents - start.sdkIncidents, 1);
+    assert.equal(end.duplicatesMerged - start.duplicatesMerged, 2);
+    assert.equal(end.duplicatesMerged, end.sdkCrashesReceived - end.sdkIncidents);
+    assert.equal(typeof end.dedupRate, 'number');
   });
 
   it('reopens a resolved incident as a regression', async () => {

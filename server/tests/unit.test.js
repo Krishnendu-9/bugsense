@@ -8,6 +8,14 @@ import { cloudinaryPublicId } from '../services/storage.service.js';
 import { getClientOrigins, getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { parseTrustProxy } from '../utils/trustProxy.js';
 import { errorHandler } from '../middleware/error.middleware.js';
+import {
+  countResolvedSince,
+  median,
+  openCountsByDay,
+  resolutionStats,
+  statusAt,
+  timeToFirstResolution,
+} from '../utils/bugStats.js';
 
 describe('isAllowedWebhookUrl', () => {
   it('accepts genuine Discord and Slack webhook URLs', () => {
@@ -157,5 +165,112 @@ describe('errorHandler', () => {
   it('maps duplicate keys to 409 and unknown errors to 500', () => {
     assert.equal(run(Object.assign(new Error('dup'), { code: 11000, keyValue: { email: 'a' } })).statusCode, 409);
     assert.equal(run(new Error('boom')).statusCode, 500);
+  });
+});
+
+describe('bug history statistics', () => {
+  const at = (iso) => new Date(iso);
+  const change = (status, iso) => ({ status, changedAt: at(iso) });
+  // Noon UTC, so the window is 12-18 October and no fixture sits on a boundary.
+  const NOW = at('2026-10-18T12:00:00Z');
+
+  // Created open on the 13th, picked up on the 15th, resolved on the 17th.
+  const worked = {
+    createdAt: at('2026-10-13T10:00:00Z'),
+    status: 'resolved',
+    statusHistory: [change('in-progress', '2026-10-15T09:00:00Z'), change('resolved', '2026-10-17T09:00:00Z')],
+  };
+  // Reported on the evening of the 16th and untouched since.
+  const fresh = { createdAt: at('2026-10-16T20:00:00Z'), status: 'open', statusHistory: [] };
+  // Resolved on the 14th, regressed back to open on the 17th.
+  const regressed = {
+    createdAt: at('2026-10-10T08:00:00Z'),
+    status: 'open',
+    statusHistory: [change('resolved', '2026-10-14T12:00:00Z'), change('open', '2026-10-17T08:00:00Z')],
+  };
+  // Closed without ever being resolved, before the window's first day ended.
+  const dismissed = {
+    createdAt: at('2026-10-01T08:00:00Z'),
+    status: 'closed',
+    statusHistory: [change('closed', '2026-10-12T05:00:00Z')],
+  };
+
+  it('replays a status at a past moment backward from the current status', () => {
+    assert.equal(statusAt(worked, at('2026-10-12T00:00:00Z')), null, 'did not exist yet');
+    assert.equal(statusAt(worked, at('2026-10-14T00:00:00Z')), 'open', 'before any change: created open');
+    assert.equal(statusAt(worked, at('2026-10-16T00:00:00Z')), 'in-progress');
+    assert.equal(statusAt(worked, NOW), 'resolved');
+    // No history at all (a gap, or a bug never touched): the current status
+    // holds for its whole life, so "now" can never disagree with the record.
+    assert.equal(statusAt({ createdAt: at('2026-10-01T00:00:00Z'), status: 'closed' }, NOW), 'closed');
+  });
+
+  it('counts open bugs per UTC day, oldest first, with today measured now', () => {
+    assert.deepEqual(openCountsByDay([worked, fresh, regressed, dismissed], NOW), [
+      { date: '2026-10-12', open: 1 }, // regressed
+      { date: '2026-10-13', open: 2 }, // regressed, worked
+      { date: '2026-10-14', open: 1 }, // worked (regressed was resolved at noon)
+      { date: '2026-10-15', open: 0 }, // worked went in-progress that morning
+      { date: '2026-10-16', open: 1 }, // fresh
+      { date: '2026-10-17', open: 2 }, // fresh, regressed reopened
+      { date: '2026-10-18', open: 2 }, // fresh, regressed
+    ]);
+  });
+
+  it('measures time to the FIRST resolution, not the last', () => {
+    const day = 24 * 60 * 60 * 1000;
+    const fixedThenRegressed = {
+      createdAt: at('2026-10-01T00:00:00Z'),
+      statusHistory: [
+        change('resolved', '2026-10-02T00:00:00Z'),
+        change('open', '2026-10-06T00:00:00Z'),
+        change('resolved', '2026-10-21T00:00:00Z'),
+      ],
+    };
+    assert.equal(timeToFirstResolution(fixedThenRegressed), day);
+  });
+
+  it('does not treat closed as resolved', () => {
+    assert.equal(timeToFirstResolution(dismissed), null);
+    const closedThenResolved = {
+      createdAt: at('2026-10-01T00:00:00Z'),
+      statusHistory: [change('closed', '2026-10-02T00:00:00Z'), change('resolved', '2026-10-04T00:00:00Z')],
+    };
+    assert.equal(timeToFirstResolution(closedThenResolved), 3 * 24 * 60 * 60 * 1000);
+  });
+
+  it('floors a resolution recorded before creation at zero', () => {
+    const seeded = { createdAt: at('2026-10-01T00:00:05Z'), statusHistory: [change('resolved', '2026-10-01T00:00:00Z')] };
+    assert.equal(timeToFirstResolution(seeded), 0);
+  });
+
+  it('counts bugs resolved since a moment, once each, never closures', () => {
+    const since = at('2026-10-12T00:00:00Z');
+    const beforeWindow = {
+      createdAt: at('2026-10-01T00:00:00Z'),
+      statusHistory: [change('resolved', '2026-10-11T23:59:59Z')],
+    };
+    const twiceInWindow = {
+      createdAt: at('2026-10-11T00:00:00Z'),
+      statusHistory: [change('resolved', '2026-10-13T00:00:00Z'), change('open', '2026-10-14T00:00:00Z'), change('resolved', '2026-10-15T00:00:00Z')],
+    };
+    // worked: resolved in the window. regressed: resolved in the window, then
+    // reopened -- still resolved this week. dismissed: closed, never resolved.
+    assert.equal(countResolvedSince([worked, regressed, dismissed, fresh, beforeWindow, twiceInWindow], since), 3);
+  });
+
+  it('takes the median over resolved bugs only', () => {
+    assert.equal(median([]), null);
+    assert.equal(median([5, 1, 3]), 3);
+    assert.equal(median([4, 1, 3, 2]), 2.5);
+
+    const hours = (n) => n * 60 * 60 * 1000;
+    const resolvedAfter = (h) => ({
+      createdAt: at('2026-10-01T00:00:00Z'),
+      statusHistory: [change('resolved', new Date(at('2026-10-01T00:00:00Z').getTime() + hours(h)).toISOString())],
+    });
+    const stats = resolutionStats([resolvedAfter(2), resolvedAfter(10), resolvedAfter(4), dismissed, fresh]);
+    assert.deepEqual(stats, { medianMs: hours(4), sampleSize: 3 });
+    assert.deepEqual(resolutionStats([dismissed, fresh]), { medianMs: null, sampleSize: 0 });
   });
 });

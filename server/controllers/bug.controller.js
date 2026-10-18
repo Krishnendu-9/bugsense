@@ -13,6 +13,7 @@ import { dispatchWebhookAlert } from '../services/webhook.service.js';
 import { queueAutoAnalysis } from '../services/autoAnalysis.service.js';
 import { tryConsumeReportAIBudget } from '../utils/aiBudget.js';
 import { logActivity } from '../services/audit.service.js';
+import { countResolvedSince, openCountsByDay, resolutionStats, windowStart } from '../utils/bugStats.js';
 import {
   BUG_POPULATE,
   LIST_EXCLUDED_FIELDS,
@@ -372,17 +373,86 @@ export const uploadAnnotation = replaceBugImage('annotatedScreenshot');
 
 export const getDashboardStats = async (req, res, next) => {
   try {
-    const [total, open, inProgress, resolved, closed, byPriority, recent] = await Promise.all([
+    const [total, open, inProgress, resolved, closed, byPriority, projectNames, oldestOpen, recent] = await Promise.all([
       Bug.countDocuments(),
       Bug.countDocuments({ status: 'open' }),
       Bug.countDocuments({ status: 'in-progress' }),
       Bug.countDocuments({ status: 'resolved' }),
       Bug.countDocuments({ status: 'closed' }),
       Bug.aggregate([{ $group: { _id: '$priority', count: { $sum: 1 } } }]),
-      Bug.find().select('title status priority createdAt reporter').sort({ createdAt: -1 }).limit(5).populate('reporter', 'name avatar'),
+      // `project` defaults to an empty string, which is "no project", not one.
+      Bug.distinct('project', { project: { $nin: ['', null] } }),
+      Bug.findOne({ status: 'open' }).sort({ createdAt: 1 }).select('createdAt').lean(),
+      // Most recently *active*, not most recently reported: the dashboard
+      // shows an Updated column, which should read in order.
+      Bug.find()
+        .select('title status priority project assignedTo source occurrences createdAt updatedAt')
+        .sort({ updatedAt: -1 })
+        .limit(5)
+        .populate('assignedTo', 'name avatar')
+        .lean(),
     ]);
 
-    return res.json({ total, open, inProgress, resolved, closed, byPriority, recent });
+    return res.json({
+      total,
+      open,
+      inProgress,
+      resolved,
+      closed,
+      byPriority,
+      projects: projectNames.length,
+      // When the longest-waiting open bug was reported; null when none is open.
+      oldestOpenAt: oldestOpen?.createdAt ?? null,
+      recent,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const TREND_DAYS = 7;
+const HISTORY_FIELDS = 'createdAt status statusHistory.status statusHistory.changedAt';
+
+/*
+ * Figures reconstructed from statusHistory, kept apart from getDashboardStats
+ * because they are a different kind of number: that endpoint is a snapshot of
+ * now, these are replays of the past with their own caveats (UTC day
+ * boundaries, sample size).
+ */
+export const getTrendStats = async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const since = new Date(windowStart(now, TREND_DAYS));
+
+    const [windowBugs, resolvedBugs] = await Promise.all([
+      // Only bugs whose status could have been 'open' at some point in the
+      // window: open now, or changed status during it. Any other bug held one
+      // non-open status for the whole window and contributes nothing.
+      Bug.find({
+        createdAt: { $lte: now },
+        $or: [{ status: 'open' }, { 'statusHistory.changedAt': { $gte: since } }],
+      })
+        .select(HISTORY_FIELDS)
+        .lean()
+        .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
+      Bug.find({ 'statusHistory.status': 'resolved' })
+        .select(HISTORY_FIELDS)
+        .lean()
+        .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
+    ]);
+
+    return res.json({
+      openByDay: {
+        timezone: 'UTC',
+        days: openCountsByDay(windowBugs, now, TREND_DAYS),
+      },
+      timeToResolve: resolutionStats(resolvedBugs),
+      // Same seven UTC days as openByDay, starting at `since`.
+      resolvedInWindow: {
+        since: since.toISOString(),
+        count: countResolvedSince(resolvedBugs, since),
+      },
+    });
   } catch (err) {
     return next(err);
   }

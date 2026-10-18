@@ -18,7 +18,8 @@ in the `Authorization` header; *Staff* means the `developer` or `admin` role.
 |--------|----------|-------------|------|
 | GET | `/` | List bugs (filter: `status`, `priority`, `assignedTo`, `reporter`, `project`, `search`, `page`, `limit`) | Bearer |
 | POST | `/` | Create bug; returns `analysisQueued` when the error log is being analysed in the background | Bearer |
-| GET | `/stats` | Dashboard statistics | Bearer |
+| GET | `/stats` | Dashboard snapshot: status counts, `byPriority`, `projects` (distinct named projects), `oldestOpenAt` (creation time of the oldest open bug, `null` when none), `recent` (the 5 most recently updated bugs) | Bearer |
+| GET | `/stats/trends` | Replayed from `statusHistory`. `openByDay`: bugs in `status: open` at the end of each of the last 7 UTC days, oldest first, today measured now. `timeToResolve`: `{ medianMs, sampleSize }` from `createdAt` to the first `resolved` entry; `closed` is not a resolution; `medianMs` is `null` when nothing has been resolved. `resolvedInWindow`: `{ since, count }`, bugs resolved at least once in the same 7 days | Bearer |
 | GET | `/github-config` | Repositories the server's GitHub token may file issues in | Staff |
 | GET | `/:id` | Single bug with comments | Bearer |
 | PUT | `/:id` | Update bug (whitelisted, validated fields). Reporters may edit their bug's content and close/reopen it; status workflow, priority and assignment are staff-only | Bug reporter / Staff |
@@ -26,6 +27,8 @@ in the `Authorization` header; *Staff* means the `developer` or `admin` role.
 | POST | `/:id/screenshot` | Upload screenshot (multipart `screenshot`) | Bug reporter / Staff |
 | POST | `/:id/annotation` | Upload annotated screenshot (multipart `annotation`) | Bug reporter / Staff |
 | POST | `/:id/github` | Export bug as a GitHub Issue (the server token only for `GITHUB_ALLOWED_REPOS`; otherwise send `githubToken`) | Staff |
+
+Deleting a bug removes it outright, so `/stats/trends` undercounts past days by any bug that was open then and has since been deleted.
 
 ## Comments `/api/comments`
 
@@ -75,6 +78,6 @@ in the `Authorization` header; *Staff* means the `developer` or `admin` role.
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/` | Liveness probe | — |
-| GET | `/metrics` | Uptime, heap, Mongo status, dedup efficiency | Staff |
+| GET | `/metrics` | Uptime, heap, Mongo status, SDK deduplication (crashes received vs incidents after grouping) | Staff |
 
 *Staff* means the `developer` or `admin` role. Sockets require the same JWT, passed as `auth.token` in the Socket.io handshake.

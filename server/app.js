@@ -77,15 +77,25 @@ export const createApp = () => {
   app.get('/api/health/metrics', protect, authorize('developer', 'admin'), async (_req, res, next) => {
     try {
       const mem = process.memoryUsage();
-      const [totalBugs, occurrencesAgg, sdkBugs] = await Promise.all([
-        Bug.countDocuments(),
-        Bug.aggregate([{ $group: { _id: null, totalOccurrences: { $sum: '$occurrences' } } }]),
-        Bug.countDocuments({ source: 'sdk' }),
+
+      // Both halves of the deduplication pair are scoped to SDK reports. Only
+      // the telemetry pipeline groups crashes by fingerprint -- manual reports
+      // never merge and always hold occurrences: 1 -- so counting them in
+      // either half dilutes the rate with bugs that could not have been
+      // deduplicated in the first place.
+      const SDK = { source: 'sdk' };
+      const [sdkIncidents, receivedAgg] = await Promise.all([
+        Bug.countDocuments(SDK),
+        Bug.aggregate([{ $match: SDK }, { $group: { _id: null, total: { $sum: '$occurrences' } } }]),
       ]);
 
-      const totalOccurrences = occurrencesAgg[0]?.totalOccurrences || totalBugs;
-      const deduplicatedEvents = Math.max(0, totalOccurrences - totalBugs);
-      const savingsPercentage = totalOccurrences > 0 ? ((deduplicatedEvents / totalOccurrences) * 100).toFixed(1) : '0.0';
+      const sdkCrashesReceived = receivedAgg[0]?.total ?? 0;
+      const duplicatesMerged = Math.max(0, sdkCrashesReceived - sdkIncidents);
+      // null rather than 0 when nothing has been received: "no data yet" and
+      // "received crashes, none were duplicates" are different statements.
+      const dedupRate = sdkCrashesReceived > 0
+        ? Number(((duplicatesMerged / sdkCrashesReceived) * 100).toFixed(1))
+        : null;
 
       res.json({
         status: mongoose.connection.readyState === 1 ? 'operational' : 'degraded',
@@ -101,12 +111,12 @@ export const createApp = () => {
           heapUsedMb: (mem.heapUsed / (1024 * 1024)).toFixed(1),
           heapTotalMb: (mem.heapTotal / (1024 * 1024)).toFixed(1),
         },
+        // SDK pipeline only; see above.
         telemetry: {
-          totalUniqueBugs: totalBugs,
-          totalRawIncidents: totalOccurrences,
-          deduplicatedEvents,
-          savingsPercentage: `${savingsPercentage}%`,
-          sdkReportedBugs: sdkBugs,
+          sdkCrashesReceived,
+          sdkIncidents,
+          duplicatesMerged,
+          dedupRate,
         },
       });
     } catch (err) {
