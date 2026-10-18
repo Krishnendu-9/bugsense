@@ -60,6 +60,22 @@ const seed = async () => {
     role: 'reporter',
   });
 
+  /*
+   * SYNTHETIC DATES. Everything below is demo data, and so are its timestamps:
+   * the bugs are backdated across the past week so the Overview has a history
+   * to show -- an open-bug trend that moves, an oldest-open age, a median time
+   * to resolve. None of these dates describe real events.
+   *
+   * Times are fixed hours on whole days before today (UTC), never today, so
+   * every timestamp is in the past whatever time the seed is run, and the
+   * week's shape is the same on every run: open bugs per day, oldest first,
+   * read 1, 2, 3, 1, 2, 2, 2.
+   */
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  const daysAgo = (days, hour, minute = 0) =>
+    new Date(todayUtc.getTime() - days * 86400000 + (hour * 60 + minute) * 60000);
+
   const bugs = await Bug.insertMany([
     {
       title: 'Login page crashes on Safari 17',
@@ -91,8 +107,11 @@ const seed = async () => {
       aiInsights: {
         possibleCause: 'The autofill event fires before the React controlled input state is initialized, causing a null reference when accessing event.target.value.',
         suggestedFix: '1. Add a null check before accessing event.target.value in the autofill handler.\n2. Use the onChange event instead of browser autofill events.\n3. Ensure the input is fully mounted before attaching event listeners.',
-        analyzedAt: new Date(),
+        analyzedAt: daysAgo(6, 9, 2),
       },
+      // Open all week: the oldest open bug. Last touched by the comment below.
+      createdAt: daysAgo(6, 9),
+      updatedAt: daysAgo(6, 15),
     },
     {
       title: 'Dashboard charts show NaN on first load',
@@ -110,9 +129,12 @@ const seed = async () => {
       tags: ['dashboard', 'charts', 'recharts'],
       reporter: developer._id,
       assignedTo: developer._id,
+      // Open for two days, then picked up.
       statusHistory: [
-        { status: 'in-progress', changedBy: developer._id, changedAt: new Date(), note: 'Picking this up today' },
+        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(3, 10), note: 'Picking this up today' },
       ],
+      createdAt: daysAgo(5, 11),
+      updatedAt: daysAgo(3, 10),
     },
     {
       title: 'AI analyze endpoint returns 502 intermittently',
@@ -133,6 +155,9 @@ const seed = async () => {
   at JSON.parse (<anonymous>)
   at analyzeError (server/services/ai.service.js:18)
   at analyzeErrorLog (server/controllers/ai.controller.js:12)`,
+      // Reported two days ago, not yet triaged.
+      createdAt: daysAgo(2, 13),
+      updatedAt: daysAgo(2, 13),
     },
     {
       title: 'File upload fails silently when image > 4.9MB',
@@ -149,10 +174,13 @@ const seed = async () => {
       project: 'BugSense Backend',
       tags: ['upload', 'multer', 'ux'],
       reporter: reporter._id,
+      // Resolved 30 hours after it was reported -- the seeded median.
       statusHistory: [
-        { status: 'in-progress', changedBy: developer._id, changedAt: new Date(Date.now() - 86400000), note: 'Adding error handler for multer limits' },
-        { status: 'resolved', changedBy: developer._id, changedAt: new Date(), note: 'Fixed — multer error now caught and returned as 413' },
+        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(3, 9), note: 'Adding error handler for multer limits' },
+        { status: 'resolved', changedBy: developer._id, changedAt: daysAgo(3, 14), note: 'Fixed — multer error now caught and returned as 413' },
       ],
+      createdAt: daysAgo(4, 8),
+      updatedAt: daysAgo(3, 14),
     },
   ]);
 
@@ -160,9 +188,12 @@ const seed = async () => {
     bug: bugs[0]._id,
     author: developer._id,
     content: 'Confirmed on Safari 17.1 as well. Looks like the autofill event fires before our React state is ready. Will investigate the event handler timing.',
+    createdAt: daysAgo(6, 15),
+    updatedAt: daysAgo(6, 15),
   });
 
-  await Bug.findByIdAndUpdate(bugs[0]._id, { $push: { comments: comment._id } });
+  // timestamps: false, or this link would stamp the bug as updated just now.
+  await Bug.findByIdAndUpdate(bugs[0]._id, { $push: { comments: comment._id } }, { timestamps: false });
 
   console.log('\nSeed complete:');
   console.log(`  Users:    ${await User.countDocuments()}`);
