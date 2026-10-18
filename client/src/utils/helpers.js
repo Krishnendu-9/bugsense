@@ -49,6 +49,32 @@ export const formatStatDuration = (ms) => {
   return `${(ms / 86400000).toFixed(1)}d`;
 };
 
+// A frame location reduced to its file name, line and column:
+// "https://shop.example.com/assets/Cart-3f9a1c.js:41:18" -> "Cart-3f9a1c.js:41:18".
+// A query or hash left on the file name is dropped. Locations with no path
+// ("<anonymous>", "native") come back unchanged.
+const shortLocation = (location) => {
+  const withoutQuery = location.replace(/[?#][^:]*/, '');
+  return withoutQuery.split(/[\\/]/).pop() || location;
+};
+
+/**
+ * A V8 stack frame shortened for a table cell: the function, then the file's
+ * base name with line and column instead of the full URL. Shows
+ * "at CartSummary (CartSummary-3f9a1c.js:41:18)" where the frame was
+ * "at CartSummary (https://shop.example.com/assets/CartSummary-3f9a1c.js:41:18)".
+ * Anything that is not a recognisable "at ..." frame is returned unchanged, so
+ * the complete frame can always go in the title attribute.
+ */
+export const shortFrame = (frame) => {
+  if (!frame) return frame;
+  const named = frame.match(/^at (.+) \(([^()]+)\)$/);
+  if (named) return `at ${named[1]} (${shortLocation(named[2])})`;
+  const anonymous = frame.match(/^at (\S+)$/);
+  if (anonymous) return `at ${shortLocation(anonymous[1])}`;
+  return frame;
+};
+
 /** Compact relative time for dense tables: "3h ago", "6d ago". */
 export const compactAgo = (date) => {
   if (!date) return null;

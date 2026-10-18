@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatDuration, formatStatDuration, getApiOrigin, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
+import { formatDuration, formatStatDuration, getApiOrigin, shortFrame, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
 
 describe('sanitizeHtml', () => {
   it('removes scripts, event handlers and javascript: links', () => {
@@ -150,5 +150,31 @@ describe('formatStatDuration', () => {
     expect(formatStatDuration(59 * MIN + 40 * 1000)).toBe('1h');
     expect(formatStatDuration(10 * 1000)).toBe('<1m');
     expect(formatStatDuration(null)).toBeNull();
+  });
+});
+
+describe('shortFrame', () => {
+  it('keeps the function and reduces the URL to file:line:col', () => {
+    expect(shortFrame('at CartSummary (https://shop.example.com/assets/CartSummary-3f9a1c.js:41:18)')).toBe(
+      'at CartSummary (CartSummary-3f9a1c.js:41:18)'
+    );
+    expect(shortFrame('at HTMLButtonElement.onCheckoutClick (https://shop.example.com/assets/checkout-a71c02.js:142:9)')).toBe(
+      'at HTMLButtonElement.onCheckoutClick (checkout-a71c02.js:142:9)'
+    );
+    expect(shortFrame('at async loadCart (http://localhost:5173/src/cart/api.js:7:11)')).toBe('at async loadCart (api.js:7:11)');
+  });
+
+  it('shortens anonymous frames, bundler URLs, Windows paths and stray query strings', () => {
+    expect(shortFrame('at https://shop.example.com/assets/index-9c2e.js:3:220')).toBe('at index-9c2e.js:3:220');
+    expect(shortFrame('at render (webpack-internal:///./src/App.jsx:12:3)')).toBe('at render (App.jsx:12:3)');
+    expect(shortFrame('at main (C:\\app\\server\\index.js:5:9)')).toBe('at main (index.js:5:9)');
+    expect(shortFrame('at boot (https://cdn.example.com/app.js?v=3:1:200)')).toBe('at boot (app.js:1:200)');
+  });
+
+  it('leaves locations with no path, and anything that is not a frame, unchanged', () => {
+    expect(shortFrame('at Array.map (<anonymous>)')).toBe('at Array.map (<anonymous>)');
+    expect(shortFrame('at CartSummary (CartSummary.jsx:41:18)')).toBe('at CartSummary (CartSummary.jsx:41:18)');
+    expect(shortFrame('render@App.jsx:12:3')).toBe('render@App.jsx:12:3');
+    expect(shortFrame(null)).toBeNull();
   });
 });
