@@ -1,22 +1,8 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
-import { NO_VALUE, STATUS_OPTIONS } from '../../utils/constants.js';
-import { capitalize, compactAgo, formatDate } from '../../utils/helpers.js';
-
-const STATUS_SQUARE = {
-  open: 'bg-status-open',
-  'in-progress': 'bg-status-progress-mark',
-  resolved: 'bg-status-resolved',
-  closed: 'bg-subtle',
-};
-
-// Plain text; only the two priorities that need attention carry colour.
-const PRIORITY_TEXT = {
-  critical: 'text-priority-critical font-medium',
-  high: 'text-priority-high',
-};
-
-const statusLabel = (status) => STATUS_OPTIONS.find((s) => s.value === status)?.label || capitalize(status);
+import { NO_VALUE } from '../../utils/constants.js';
+import { compactAgo, formatDate } from '../../utils/helpers.js';
+import { PriorityText, StatusMark } from '../common/Badge.jsx';
 
 /**
  * The most recently active bugs as a table. `bugs` is /stats.recent, already
@@ -83,13 +69,10 @@ export default function RecentBugs({ bugs, loading }) {
                     </div>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
-                    <span className="inline-flex items-center gap-2 text-fg">
-                      <span className={`h-2 w-2 rounded-[2px] ${STATUS_SQUARE[bug.status] || 'bg-subtle'}`} aria-hidden="true" />
-                      {statusLabel(bug.status)}
-                    </span>
+                    <StatusMark status={bug.status} />
                   </td>
-                  <td className={`px-3 py-2.5 whitespace-nowrap ${PRIORITY_TEXT[bug.priority] || 'text-muted'}`}>
-                    {capitalize(bug.priority)}
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <PriorityText priority={bug.priority} />
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-muted">
                     {bug.project || <span className="text-subtle" aria-label="No project">{NO_VALUE}</span>}
