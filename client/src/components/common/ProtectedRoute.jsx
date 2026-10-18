@@ -9,7 +9,7 @@ import { PageSkeleton } from './Loader.jsx';
 function AppShellSkeleton() {
   return (
     <div className="flex min-h-screen bg-background" aria-busy="true" aria-label="Loading">
-      <div className="hidden lg:block w-64 border-r border-border p-4 space-y-4">
+      <div className="hidden lg:block w-[244px] border-r border-border p-4 space-y-4">
         <div className="skeleton h-9 w-36 rounded-xl" />
         {Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="skeleton h-8 w-full rounded-xl" />
@@ -67,7 +67,7 @@ export default function ProtectedRoute() {
         aria-hidden="true"
         data-testid="sidebar-column"
         className={`hidden lg:block flex-shrink-0 bg-surface border-r border-border transition-[width] duration-300 ease-in-out ${
-          collapsed ? 'lg:w-16' : 'lg:w-64'
+          collapsed ? 'lg:w-16' : 'lg:w-[244px]'
         }`}
       />
       <div className="flex-1 flex flex-col min-w-0">
