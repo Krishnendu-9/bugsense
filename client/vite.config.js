@@ -17,6 +17,11 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
+    // The default (all logical CPUs minus one) oversubscribes: measured on an
+    // 8-core / 12-thread laptop, 11 workers spent 106s inside test bodies for
+    // the same work 6 workers did in 66s, finished no sooner, and timed tests
+    // out. Half the logical CPUs is the knee there and scales down on CI.
+    maxWorkers: '50%',
     setupFiles: './src/test/setup.js',
     include: ['src/**/*.test.{js,jsx}'],
     css: false,
