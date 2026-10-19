@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ArrowLeft, Info } from 'lucide-react';
+import { Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
 import { useSocketEvent } from '../../hooks/useSocket.js';
 import useAuth from '../../hooks/useAuth.js';
 import { OccurrenceBadge, PriorityText, StatusMark } from '../../components/common/Badge.jsx';
 import ViewSwitch from '../../components/bugs/ViewSwitch.jsx';
+import OverflowMenu from '../../components/common/OverflowMenu.jsx';
 import { compactAgo, formatDate, isStaff, statusOptionsFor } from '../../utils/helpers.js';
 import api from '../../api/axios.js';
 
@@ -166,10 +167,12 @@ export default function KanbanBoard() {
     setDraggingBugId(null);
   };
 
-  // One quiet line, said once: what dragging does for this user.
+  // One quiet line, said once: how to move a card. The Move menu works on
+  // every device; dragging is the desktop shortcut (touch browsers mostly do
+  // not start an HTML drag), so it is mentioned second.
   let hint = null;
-  if (isStaff(user)) hint = 'Drag a card to another column to change its status.';
-  else if (user) hint = 'You can drag your own bugs to Closed, or back to Open.';
+  if (isStaff(user)) hint = 'Use a card’s Move menu, or drag it, to change its status.';
+  else if (user) hint = 'You can move your own bugs to Closed, or back to Open.';
 
   const ready = initialized || !loading;
   const shown = (allBugs || []).length;
@@ -210,11 +213,9 @@ export default function KanbanBoard() {
         </div>
       ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start select-none">
-        {COLUMNS.map((col, colIndex) => {
+        {COLUMNS.map((col) => {
           const colBugs = (allBugs || []).filter((b) => b.status === col.id);
           const isDropTarget = dragOverColId === col.id;
-          const prevColumn = COLUMNS[colIndex - 1];
-          const nextColumn = COLUMNS[colIndex + 1];
 
           return (
             <section
@@ -267,37 +268,23 @@ export default function KanbanBoard() {
                           <CardContext bug={bug} />
                         </div>
 
-                        {/* Move without dragging (keyboard and touch); quiet until the card is hovered */}
-                        <div className="flex flex-shrink-0 items-center opacity-60 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200">
-                          {prevColumn && canMoveTo(bug, prevColumn.id) && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStatusChange(bug._id, prevColumn.id);
-                              }}
-                              title={`Move to ${prevColumn.label}`}
-                              aria-label={`Move "${bug.title}" to ${prevColumn.label}`}
-                              className="p-1 rounded text-subtle hover:text-fg hover:bg-track transition-colors"
-                            >
-                              <ArrowLeft size={12} aria-hidden="true" />
-                            </button>
-                          )}
-                          {nextColumn && canMoveTo(bug, nextColumn.id) && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStatusChange(bug._id, nextColumn.id);
-                              }}
-                              title={`Move to ${nextColumn.label}`}
-                              aria-label={`Move "${bug.title}" to ${nextColumn.label}`}
-                              className="p-1 rounded text-subtle hover:text-fg hover:bg-track transition-colors"
-                            >
-                              <ArrowRight size={12} aria-hidden="true" />
-                            </button>
-                          )}
-                        </div>
+                        {/* Move: one menu of the statuses this card can go to, on
+                            every width -- the way to move without dragging (touch,
+                            keyboard), with no direction to get wrong. The negative
+                            margins give it a thumb-sized target without making the
+                            card taller. */}
+                        <span className="flex-shrink-0 -my-2.5 -mr-2">
+                          <OverflowMenu
+                            label={`Move "${bug.title}"`}
+                            triggerText="Move"
+                            triggerClassName="inline-flex h-9 items-center rounded-lg px-2.5 text-xs text-muted hover:text-fg hover:bg-track transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            items={COLUMNS.filter((c) => c.id !== bug.status && canMoveTo(bug, c.id)).map((c) => ({
+                              key: c.id,
+                              label: c.label,
+                              onClick: () => handleStatusChange(bug._id, c.id),
+                            }))}
+                          />
+                        </span>
                       </div>
                     </div>
                   );
