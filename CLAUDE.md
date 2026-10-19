@@ -646,24 +646,24 @@ Tokens (Tailwind key -> CSS variable; light / dark):
   Elevation: shadow-card, shadow-popover (--shadow / --shadow-opacity, one
   step, theme-aware, no coloured glow).
 
-DEPRECATED ALIASES -- do not use in new code:
-  These keys are still in tailwind.config.cjs and still have call sites
-  (counts as of 2026-10-19), so they compile and look right. That is why
-  they're easy to copy by mistake. New or rewritten code uses the token on
-  the right; replace the alias when you touch a line that has one.
+DEPRECATED ALIASES -- all removed (2026-10-19):
+  Every call site was renamed to its token and the keys were deleted from
+  tailwind.config.cjs. They no longer compile: a class that uses one renders
+  with no colour at all, so if an old snippet is copied in, rename it.
 
-    text-base           -> fg              (~85 uses: text-text-base etc.)
-    primary             -> accent          (~75 uses)
-    secondary           -> accent          (~20 uses)
-    background          -> canvas          (6 uses)
-    primary-hover       -> accent          (1 use)
+    text-base           -> fg              (the class was `text-text-base`)
+    primary             -> accent
+    secondary           -> accent
+    primary-hover       -> accent          (there is no separate hover shade)
+    background          -> canvas
+    surface-elevated    -> surface
+    border-light        -> hairline
+    status-in-progress  -> status-progress
+    status-closed       -> muted
 
-  (surface-elevated, border-light, status-in-progress and status-closed
-  were removed from the config on 2026-10-19 -- they no longer compile.)
-
-  Careful: the colour alias text-base is the class `text-text-base`. A bare
-  `text-base` is Tailwind's font-size utility, which is fine to use.
-  primary-bg / primary-fg are real tokens, not aliases of primary.
+  Not aliases, and still valid: a bare `text-base` (Tailwind's font size),
+  the real tokens primary-bg / primary-fg, and the component classes
+  .btn-primary / .btn-secondary.
 
 How status and priority are shown (shared in components/common/Badge.jsx):
   - Status: StatusMark (small square + label) in tables and Board column

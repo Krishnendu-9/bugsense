@@ -65,24 +65,10 @@ module.exports = {
         'priority-medium': token('muted'),
         'priority-low': token('muted'),
 
-        /*
-         * Deprecated aliases, kept only so the component sweep can be a
-         * separate reviewable step instead of landing inside the token change.
-         * Each one points at its replacement, so the new palette takes effect
-         * immediately; the names go away as the components are rewritten.
-         *
-         *   text-base           -> text        (113 call sites)
-         *   background          -> canvas      (6)
-         *   primary / secondary -> accent      (98 -- these meant "the accent")
-         *
-         * surface-elevated, border-light, status-in-progress and status-closed
-         * were removed once their last call sites were gone.
-         */
-        'text-base': token('text'),
-        background: token('canvas'),
-        primary: token('accent'),
-        'primary-hover': token('accent'),
-        secondary: token('accent'),
+        // No aliases remain. The deprecated names (text-base, background,
+        // primary, primary-hover, secondary, surface-elevated, border-light,
+        // status-in-progress, status-closed) were renamed to the tokens above
+        // and removed; a class that still uses one compiles to nothing.
       },
       // IBM Plex, self-hosted from @fontsource (see main.jsx). Sans is the
       // interface; Mono is for data only -- counts, durations, timestamps,
