@@ -63,7 +63,7 @@ export default function GitHubExportModal({ bugId, onClose, onExported }) {
                   key={repo}
                   type="button"
                   onClick={() => pickRepo(repo)}
-                  className="px-2.5 py-1 rounded-lg text-xs bg-track border border-border text-muted hover:text-text-base hover:border-primary/40 transition-colors duration-200"
+                  className="px-2.5 py-1 rounded-lg text-xs bg-track border border-border text-muted hover:text-fg hover:border-accent/40 transition-colors duration-200"
                 >
                   {repo}
                 </button>

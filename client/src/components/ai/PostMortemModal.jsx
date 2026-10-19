@@ -59,7 +59,7 @@ export default function PostMortemModal({ markdown, source, bugTitle, onClose })
           </span>
         </div>
       )}
-      <pre className="whitespace-pre-wrap font-sans text-sm text-text-base leading-relaxed bg-canvas rounded-xl p-5 border border-hairline selection:bg-primary/30">
+      <pre className="whitespace-pre-wrap font-sans text-sm text-fg leading-relaxed bg-canvas rounded-xl p-5 border border-hairline selection:bg-accent/30">
         {markdown}
       </pre>
     </Modal>

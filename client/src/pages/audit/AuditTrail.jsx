@@ -9,17 +9,17 @@ import api from '../../api/axios.js';
 import { timeAgo } from '../../utils/helpers.js';
 
 const ACTION_ICONS = {
-  BUG_CREATED: { icon: Bug, color: 'text-primary bg-primary/15 border-primary/30' },
-  BUG_UPDATED: { icon: CheckCircle2, color: 'text-secondary bg-secondary/15 border-secondary/30' },
+  BUG_CREATED: { icon: Bug, color: 'text-accent bg-accent/15 border-accent/30' },
+  BUG_UPDATED: { icon: CheckCircle2, color: 'text-accent bg-accent/15 border-accent/30' },
   SDK_TELEMETRY: { icon: Terminal, color: 'text-muted bg-track border-border' },
   REGRESSION_DETECTED: { icon: AlertTriangle, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
   GITHUB_EXPORTED: { icon: Github, color: 'text-status-resolved bg-status-resolved/15 border-status-resolved/30' },
   BUG_DELETED: { icon: Trash2, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
   USER_REGISTERED: { icon: UserPlus, color: 'text-accent bg-accent/15 border-accent/30' },
-  ROLE_CHANGED: { icon: UserCog, color: 'text-secondary bg-secondary/15 border-secondary/30' },
+  ROLE_CHANGED: { icon: UserCog, color: 'text-accent bg-accent/15 border-accent/30' },
   PASSWORD_CHANGED: { icon: KeyRound, color: 'text-status-progress bg-status-progress/15 border-status-progress/30' },
   LOGIN_FAILED: { icon: LogIn, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
-  COMMENT_ADDED: { icon: MessageSquare, color: 'text-primary bg-primary/15 border-primary/30' },
+  COMMENT_ADDED: { icon: MessageSquare, color: 'text-accent bg-accent/15 border-accent/30' },
   COMMENT_DELETED: { icon: MessageSquareX, color: 'text-muted bg-track border-border' },
 };
 
@@ -110,8 +110,8 @@ export default function AuditTrail() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-text-base">Audit log</h1>
-            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/15 text-primary border border-primary/30 flex items-center gap-1">
+            <h1 className="text-xl font-bold text-fg">Audit log</h1>
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-accent/15 text-accent border border-accent/30 flex items-center gap-1">
               <Shield size={12} /> Staff only
             </span>
           </div>
@@ -140,8 +140,8 @@ export default function AuditTrail() {
             onClick={() => selectFilter(tab.id)}
             className={`px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ${
               filterType === tab.id
-                ? 'bg-primary/20 text-primary border border-primary/30'
-                : 'text-muted hover:text-text-base hover:bg-track'
+                ? 'bg-accent/20 text-accent border border-accent/30'
+                : 'text-muted hover:text-fg hover:bg-track'
             }`}
           >
             {tab.label}
@@ -174,7 +174,7 @@ export default function AuditTrail() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <span className="text-xs font-semibold text-text-base break-words">
+                    <span className="text-xs font-semibold text-fg break-words">
                       {log.details}
                     </span>
                     <span className="text-[10px] text-muted whitespace-nowrap flex items-center gap-1 font-mono">
@@ -183,7 +183,7 @@ export default function AuditTrail() {
                   </div>
 
                   <div className="flex items-center gap-2 text-[11px] text-muted flex-wrap">
-                    <span className="font-medium text-text-base">
+                    <span className="font-medium text-fg">
                       {log.performedBy?.name || log.performedByName}
                     </span>
                     <span>•</span>
@@ -193,7 +193,7 @@ export default function AuditTrail() {
                     {linksToBug && (
                       <>
                         <span>•</span>
-                        <Link to={`/bugs/${log.entityId}`} className="text-primary hover:underline">
+                        <Link to={`/bugs/${log.entityId}`} className="text-accent hover:underline">
                           View bug →
                         </Link>
                       </>

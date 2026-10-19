@@ -188,9 +188,9 @@ export default function KanbanBoard() {
 
       {pagination.total > BOARD_LIMIT && (
         <div className="glass-card p-3 flex items-center gap-2 text-xs text-muted">
-          <Info size={14} className="text-primary flex-shrink-0" aria-hidden="true" />
+          <Info size={14} className="text-accent flex-shrink-0" aria-hidden="true" />
           Showing the {BOARD_LIMIT} most recent of {pagination.total} bugs.{' '}
-          <Link to="/bugs" className="text-primary hover:underline">Use the list view</Link> to see the rest.
+          <Link to="/bugs" className="text-accent hover:underline">Use the list view</Link> to see the rest.
         </div>
       )}
 

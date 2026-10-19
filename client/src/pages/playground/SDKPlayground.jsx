@@ -39,7 +39,7 @@ export default function SDKPlayground() {
     setRecentBugs((prev) => [newBug, ...prev.slice(0, 4)]);
     toast.success(
       <div className="flex items-center gap-2">
-        <Zap size={14} className="text-secondary" />
+        <Zap size={14} className="text-accent" />
         <span>Telemetry received: <strong>{newBug.title.slice(0, 35)}...</strong></span>
       </div>,
       { duration: 4000 }
@@ -88,13 +88,13 @@ export default function SDKPlayground() {
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Header Banner */}
-      <div className="glass-card p-6 relative overflow-hidden border border-primary/30">
-        <div className="absolute -top-20 -right-20 w-56 h-56 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="glass-card p-6 relative overflow-hidden border border-accent/30">
+        <div className="absolute -top-20 -right-20 w-56 h-56 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/20 text-primary border border-primary/30 flex items-center gap-1.5">
-                <Play size={10} className="fill-primary" /> Live Telemetry Sandbox
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent/20 text-accent border border-accent/30 flex items-center gap-1.5">
+                <Play size={10} className="fill-accent" /> Live Telemetry Sandbox
               </span>
               <span
                 className={`px-2.5 py-0.5 rounded-full text-xs border flex items-center gap-1 ${
@@ -106,7 +106,7 @@ export default function SDKPlayground() {
                 <ShieldCheck size={11} /> {sdkReady ? 'SDK Active' : 'Loading SDK...'}
               </span>
             </div>
-            <h1 className="text-xl font-bold text-text-base mb-1">
+            <h1 className="text-xl font-bold text-fg mb-1">
               SDK sandbox
             </h1>
             <p className="text-xs text-muted max-w-2xl leading-relaxed">
@@ -134,7 +134,7 @@ export default function SDKPlayground() {
                   <ShoppingBag size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-text-base">Simulated Customer Storefront</h3>
+                  <h3 className="text-sm font-semibold text-fg">Simulated Customer Storefront</h3>
                   <p className="text-[11px] text-muted">Client website with embedded &lt;script src=&quot;.../bugsense.js&quot;&gt;</p>
                 </div>
               </div>
@@ -146,18 +146,18 @@ export default function SDKPlayground() {
             {/* Cart Items Mock */}
             <div className="space-y-2 bg-track p-3 rounded-xl border border-hairline text-xs text-muted">
               <div className="flex justify-between items-center py-1">
-                <span className="text-text-base font-medium">Mechanical Keyboard Pro (RGB Wireless)</span>
-                <span className="font-mono text-text-base">$129.00</span>
+                <span className="text-fg font-medium">Mechanical Keyboard Pro (RGB Wireless)</span>
+                <span className="font-mono text-fg">$129.00</span>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="text-text-base font-medium">Braided USB-C Aviator Cable</span>
-                <span className="font-mono text-text-base">$20.99</span>
+                <span className="text-fg font-medium">Braided USB-C Aviator Cable</span>
+                <span className="font-mono text-fg">$20.99</span>
               </div>
             </div>
 
             {/* Fault Injection Panel */}
             <div>
-              <h4 className="text-xs font-semibold text-text-base uppercase tracking-wider text-muted mb-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">
                 Interactive Fault Injection Triggers
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -199,9 +199,9 @@ export default function SDKPlayground() {
 
                 <button
                   onClick={handleCustomCapture}
-                  className="p-3.5 rounded-xl text-left glass-card border-secondary/30 hover:border-secondary hover:bg-secondary/5 transition-all group"
+                  className="p-3.5 rounded-xl text-left glass-card border-accent/30 hover:border-accent hover:bg-accent/5 transition-all group"
                 >
-                  <div className="flex items-center gap-2 text-secondary mb-1.5 font-semibold text-xs">
+                  <div className="flex items-center gap-2 text-accent mb-1.5 font-semibold text-xs">
                     <CheckCircle2 size={15} /> Custom SDK Telemetry Message
                   </div>
                   <p className="text-[11px] text-muted leading-snug">
@@ -212,9 +212,9 @@ export default function SDKPlayground() {
             </div>
 
             {/* Widget Tip Banner */}
-            <div className="bg-primary/10 border border-primary/20 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs text-muted">
+            <div className="bg-accent/10 border border-accent/20 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs text-muted">
               <div>
-                <span className="font-semibold text-primary block mb-0.5">Tip: Try the Floating Bug Pill!</span>
+                <span className="font-semibold text-accent block mb-0.5">Tip: Try the Floating Bug Pill!</span>
                 Look at the bottom-right of this page. Click the purple <strong>&quot;🐞 Report Bug&quot;</strong> pill to submit user feedback with auto-attached breadcrumbs.
               </div>
             </div>
@@ -225,8 +225,8 @@ export default function SDKPlayground() {
         <div className="space-y-4">
           <div className="glass-card p-5 border border-border space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-hairline">
-              <h3 className="text-xs font-semibold text-text-base uppercase tracking-wider text-muted flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" aria-hidden="true" /> Live Ingestion Feed
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-accent animate-pulse" aria-hidden="true" /> Live Ingestion Feed
               </h3>
               <span className="text-[10px] text-muted">WebSocket Sync</span>
             </div>
@@ -242,10 +242,10 @@ export default function SDKPlayground() {
                   <Link
                     key={b._id}
                     to={`/bugs/${b._id}`}
-                    className="block p-3 rounded-lg bg-track border border-hairline hover:border-primary/40 hover:bg-track transition-all group"
+                    className="block p-3 rounded-lg bg-track border border-hairline hover:border-accent/40 hover:bg-track transition-all group"
                   >
                     <div className="flex items-start justify-between gap-2 mb-1">
-                      <span className="text-xs font-semibold text-text-base group-hover:text-primary transition-colors line-clamp-1">
+                      <span className="text-xs font-semibold text-fg group-hover:text-accent transition-colors line-clamp-1">
                         {b.title}
                       </span>
                       <span className="text-[10px] text-priority-high font-mono font-bold bg-priority-high/15 px-1.5 py-0.5 rounded border border-priority-high/30">

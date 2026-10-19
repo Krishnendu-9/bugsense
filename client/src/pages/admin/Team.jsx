@@ -61,8 +61,8 @@ export default function Team() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <Users size={20} className="text-primary" />
-          <h1 className="text-xl font-bold text-text-base">Team</h1>
+          <Users size={20} className="text-accent" />
+          <h1 className="text-xl font-bold text-fg">Team</h1>
         </div>
         <p className="text-xs text-muted">
           Developers and admins can triage every bug. Role changes apply on the member&apos;s next request.
@@ -73,7 +73,7 @@ export default function Team() {
         <div className="flex flex-wrap gap-2 text-xs">
           {ROLE_OPTIONS.map((opt) => (
             <span key={opt.value} className="px-2.5 py-1 rounded-full bg-track border border-border text-muted">
-              {opt.label}s: <span className="text-text-base font-semibold">{counts[opt.value] || 0}</span>
+              {opt.label}s: <span className="text-fg font-semibold">{counts[opt.value] || 0}</span>
             </span>
           ))}
         </div>
@@ -95,7 +95,7 @@ export default function Team() {
                   )}
                 </div>
                 <div className="flex-1 min-w-[180px]">
-                  <p className="text-sm font-medium text-text-base flex items-center gap-2">
+                  <p className="text-sm font-medium text-fg flex items-center gap-2">
                     {member.name} {isMe && <span className="text-[10px] text-muted font-normal">(you)</span>}
                   </p>
                   <p className="text-xs text-muted truncate">

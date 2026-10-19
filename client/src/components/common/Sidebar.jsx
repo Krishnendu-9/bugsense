@@ -90,7 +90,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
           <button
             onClick={onCloseMobile}
             aria-label="Close menu"
-            className="lg:hidden p-1.5 rounded-lg text-muted hover:text-text-base hover:bg-track"
+            className="lg:hidden p-1.5 rounded-lg text-muted hover:text-fg hover:bg-track"
           >
             <X size={18} />
           </button>
@@ -158,7 +158,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
 
         <button
           onClick={onToggle}
-          className="hidden lg:flex absolute -right-3 top-20 w-6 h-6 rounded-full bg-surface border border-border items-center justify-center text-muted hover:text-text-base hover:border-primary/50 transition-all duration-200 shadow-md"
+          className="hidden lg:flex absolute -right-3 top-20 w-6 h-6 rounded-full bg-surface border border-border items-center justify-center text-muted hover:text-fg hover:border-accent/50 transition-all duration-200 shadow-md"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >

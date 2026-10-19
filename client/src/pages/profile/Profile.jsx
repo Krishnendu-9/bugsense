@@ -188,7 +188,7 @@ export default function Profile() {
     <div className="max-w-5xl space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-text-base">Profile</h1>
+        <h1 className="text-2xl font-bold text-fg">Profile</h1>
         <p className="text-muted text-sm mt-0.5">
           Manage your account credentials, avatar, and workspace preferences.
         </p>
@@ -199,8 +199,8 @@ export default function Profile() {
         <div className="space-y-6">
           <div className="glass-card p-6 flex flex-col items-center text-center relative overflow-hidden">
             {/* Background ambient gradient glow */}
-            <div className="absolute -top-12 -left-12 w-32 h-32 bg-primary/20 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute -bottom-12 -right-12 w-32 h-32 bg-secondary/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -top-12 -left-12 w-32 h-32 bg-accent/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-12 -right-12 w-32 h-32 bg-accent/20 rounded-full blur-2xl pointer-events-none" />
 
             {/* Avatar with upload trigger */}
             <div className="relative group mb-4">
@@ -245,7 +245,7 @@ export default function Profile() {
               />
             </div>
 
-            <h2 className="text-lg font-bold text-text-base">{user?.name}</h2>
+            <h2 className="text-lg font-bold text-fg">{user?.name}</h2>
             <p className="text-xs text-muted mb-3">{user?.email}</p>
 
             <div className="mb-5">
@@ -257,19 +257,19 @@ export default function Profile() {
                 <span className="flex items-center gap-1.5">
                   <Mail size={13} className="text-muted" /> Email
                 </span>
-                <span className="text-text-base truncate max-w-[150px]">{user?.email}</span>
+                <span className="text-fg truncate max-w-[150px]">{user?.email}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Shield size={13} className="text-muted" /> Role
                 </span>
-                <span className="text-text-base capitalize">{user?.role}</span>
+                <span className="text-fg capitalize">{user?.role}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Calendar size={13} className="text-muted" /> Member since
                 </span>
-                <span className="text-text-base">{formatDate(user?.createdAt, 'MMM yyyy')}</span>
+                <span className="text-fg">{formatDate(user?.createdAt, 'MMM yyyy')}</span>
               </div>
             </div>
           </div>
@@ -280,8 +280,8 @@ export default function Profile() {
           {/* Card 1: Account Details */}
           <div className="glass-card p-6">
             <div className="flex items-center gap-2 mb-4 pb-3 border-b border-hairline">
-              <UserIcon size={18} className="text-primary" />
-              <h3 className="text-base font-semibold text-text-base">Account Details</h3>
+              <UserIcon size={18} className="text-accent" />
+              <h3 className="text-base font-semibold text-fg">Account Details</h3>
             </div>
 
             <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
@@ -346,8 +346,8 @@ export default function Profile() {
           {/* Card 2: Password & Security */}
           <div className="glass-card p-6">
             <div className="flex items-center gap-2 mb-4 pb-3 border-b border-hairline">
-              <KeyRound size={18} className="text-secondary" />
-              <h3 className="text-base font-semibold text-text-base">Change Password</h3>
+              <KeyRound size={18} className="text-accent" />
+              <h3 className="text-base font-semibold text-fg">Change Password</h3>
             </div>
 
             <form onSubmit={handlePasswordSubmit(onPasswordSubmit)} className="space-y-4">
@@ -365,7 +365,7 @@ export default function Profile() {
                   <button
                     type="button"
                     onClick={() => setShowCurrentPass((p) => !p)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-base transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg transition-colors"
                   >
                     {showCurrentPass ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
@@ -396,7 +396,7 @@ export default function Profile() {
                     <button
                       type="button"
                       onClick={() => setShowNewPass((p) => !p)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-base transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg transition-colors"
                     >
                       {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -424,7 +424,7 @@ export default function Profile() {
                     <button
                       type="button"
                       onClick={() => setShowConfirmPass((p) => !p)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-base transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg transition-colors"
                     >
                       {showConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -465,7 +465,7 @@ export default function Profile() {
                 <Bell size={16} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-text-base">Webhook alerts</h3>
+                <h3 className="text-sm font-semibold text-fg">Webhook alerts</h3>
                 <p className="text-xs text-muted">Receive live notifications in Discord and Slack when bugs are created or regress</p>
               </div>
             </div>
@@ -502,7 +502,7 @@ export default function Profile() {
                   <input
                     type="checkbox"
                     {...regWebhook('alertOnCritical')}
-                    className="rounded border-border bg-track text-primary"
+                    className="rounded border-border bg-track text-accent"
                   />
                   Alert on critical and blocker bugs
                 </label>
@@ -510,7 +510,7 @@ export default function Profile() {
                   <input
                     type="checkbox"
                     {...regWebhook('alertOnRegression')}
-                    className="rounded border-border bg-track text-primary"
+                    className="rounded border-border bg-track text-accent"
                   />
                   Alert on Telemetry Regressions
                 </label>

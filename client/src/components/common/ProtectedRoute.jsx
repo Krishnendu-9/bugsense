@@ -8,7 +8,7 @@ import { PageSkeleton } from './Loader.jsx';
 
 function AppShellSkeleton() {
   return (
-    <div className="flex min-h-screen bg-background" aria-busy="true" aria-label="Loading">
+    <div className="flex min-h-screen bg-canvas" aria-busy="true" aria-label="Loading">
       <div className="hidden lg:block w-[244px] border-r border-border p-4 space-y-4">
         <div className="skeleton h-9 w-36 rounded-xl" />
         {Array.from({ length: 7 }).map((_, i) => (
@@ -46,7 +46,7 @@ export default function ProtectedRoute() {
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-canvas">
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}

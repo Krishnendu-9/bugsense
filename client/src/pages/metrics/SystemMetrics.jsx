@@ -85,7 +85,7 @@ export default function SystemMetrics() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-text-base">Metrics</h1>
+            <h1 className="text-xl font-bold text-fg">Metrics</h1>
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-semibold border flex items-center gap-1 ${
                 operational
@@ -127,7 +127,7 @@ export default function SystemMetrics() {
             </div>
           </div>
           <div>
-            <div className="text-xl font-bold text-text-base capitalize">
+            <div className="text-xl font-bold text-fg capitalize">
               {metrics?.database?.status || 'Unknown'}
             </div>
             <p className="text-[11px] text-muted font-mono mt-0.5 truncate">
@@ -144,12 +144,12 @@ export default function SystemMetrics() {
         <div className="glass-card p-5 border border-border space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted font-medium">SDK Deduplication</span>
-            <div className="w-7 h-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
               <Zap size={15} />
             </div>
           </div>
           <div>
-            <div className="text-xl font-bold text-text-base font-mono">
+            <div className="text-xl font-bold text-fg font-mono">
               {/* null means no SDK crash has been received yet, which is not
                   the same claim as a 0% rate. */}
               {metrics?.telemetry?.dedupRate == null ? '—' : `${metrics.telemetry.dedupRate}%`}
@@ -175,7 +175,7 @@ export default function SystemMetrics() {
             </div>
           </div>
           <div>
-            <div className="text-xl font-bold text-text-base font-mono">
+            <div className="text-xl font-bold text-fg font-mono">
               {metrics?.memory?.heapUsedMb} MB
             </div>
             <p className="text-[11px] text-muted mt-0.5 font-mono">
@@ -199,7 +199,7 @@ export default function SystemMetrics() {
             </div>
           </div>
           <div>
-            <div className="text-xl font-bold text-text-base font-mono">
+            <div className="text-xl font-bold text-fg font-mono">
               {formatUptime(metrics?.uptimeSeconds)}
             </div>
             <p className="text-[11px] text-muted mt-0.5">
@@ -214,13 +214,13 @@ export default function SystemMetrics() {
 
       {/* Detailed Telemetry Breakdown Card */}
       <div className="glass-card p-6 border border-border space-y-4">
-        <h3 className="text-sm font-semibold text-text-base flex items-center gap-2">
-          <HardDrive size={16} className="text-primary" /> SDK telemetry
+        <h3 className="text-sm font-semibold text-fg flex items-center gap-2">
+          <HardDrive size={16} className="text-accent" /> SDK telemetry
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
           <div className="p-4 rounded-xl bg-track border border-hairline space-y-1">
             <span className="text-xs text-muted">SDK Crashes Received</span>
-            <div className="text-2xl font-bold text-text-base font-mono">
+            <div className="text-2xl font-bold text-fg font-mono">
               {metrics?.telemetry?.sdkCrashesReceived || 0}
             </div>
             <p className="text-[11px] text-muted">Every report sent by <code>bugsense.js</code></p>
@@ -234,7 +234,7 @@ export default function SystemMetrics() {
           </div>
           <div className="p-4 rounded-xl bg-track border border-hairline space-y-1">
             <span className="text-xs text-muted">Duplicates Merged</span>
-            <div className="text-2xl font-bold text-text-base font-mono">
+            <div className="text-2xl font-bold text-fg font-mono">
               {metrics?.telemetry?.duplicatesMerged || 0}
             </div>
             <p className="text-[11px] text-muted">Received minus bugs</p>

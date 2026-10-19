@@ -16,11 +16,11 @@ export default function RoleRoute({ roles, children }) {
       <div className="w-14 h-14 rounded-2xl bg-track border border-border flex items-center justify-center mx-auto text-muted">
         <ShieldOff size={26} />
       </div>
-      <h1 className="text-lg font-semibold text-text-base">{adminOnly ? 'Admins only' : 'Staff only'}</h1>
+      <h1 className="text-lg font-semibold text-fg">{adminOnly ? 'Admins only' : 'Staff only'}</h1>
       <p className="text-sm text-muted">
         {adminOnly ? 'This page is available to admins.' : 'This page is available to developers and admins.'}
       </p>
-      <Link to="/dashboard" className="text-primary hover:underline text-sm">Back to dashboard</Link>
+      <Link to="/dashboard" className="text-accent hover:underline text-sm">Back to dashboard</Link>
     </div>
   );
 }

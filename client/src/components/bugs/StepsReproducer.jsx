@@ -35,7 +35,7 @@ export default function StepsReproducer({ value = [], onChange }) {
           <div className="flex-shrink-0 text-muted cursor-grab">
             <GripVertical size={16} />
           </div>
-          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-medium">
+          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-medium">
             {index + 1}
           </span>
           <input
@@ -72,7 +72,7 @@ export default function StepsReproducer({ value = [], onChange }) {
           type="button"
           onClick={addStep}
           disabled={!draft.trim()}
-          className="flex-shrink-0 p-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors duration-200 disabled:opacity-40"
+          className="flex-shrink-0 p-1.5 rounded-lg text-accent hover:bg-accent/10 transition-colors duration-200 disabled:opacity-40"
         >
           <Plus size={16} />
         </button>

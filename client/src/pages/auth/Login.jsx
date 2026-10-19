@@ -32,14 +32,14 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent mb-4">
             <ShieldCheck size={28} className="text-on-accent" />
           </div>
-          <h1 className="text-2xl font-bold text-text-base">
-            Welcome to <span className="text-primary">BugSense</span>
+          <h1 className="text-2xl font-bold text-fg">
+            Welcome to <span className="text-accent">BugSense</span>
           </h1>
           <p className="text-muted text-sm mt-1">Sign in to your account</p>
         </div>
@@ -81,7 +81,7 @@ export default function Login() {
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-base transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg transition-colors"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -103,14 +103,14 @@ export default function Login() {
 
           <p className="text-center text-sm text-muted mt-6">
             Don&apos;t have an account?{' '}
-            <Link to="/register" className="text-primary hover:text-primary/80 font-medium transition-colors">
+            <Link to="/register" className="text-accent hover:text-accent/80 font-medium transition-colors">
               Create one
             </Link>
           </p>
         </div>
 
         <div className="mt-6 p-4 glass-card text-xs text-muted text-center space-y-1">
-          <p className="font-medium text-text-base">Demo accounts:</p>
+          <p className="font-medium text-fg">Demo accounts:</p>
           <p>admin@bugsense.dev / password123</p>
           <p>dev@bugsense.dev / password123</p>
         </div>

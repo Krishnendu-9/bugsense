@@ -14,7 +14,7 @@ export default function ReportBug() {
     toast(
       (t) => (
         <span className="flex items-center gap-2 text-sm">
-          <Copy size={14} className="flex-shrink-0 text-secondary" />
+          <Copy size={14} className="flex-shrink-0 text-accent" />
           <span>
             Looks similar to &ldquo;{title}&rdquo;.{' '}
             <button
@@ -23,7 +23,7 @@ export default function ReportBug() {
                 toast.dismiss(t.id);
                 navigate(`/bugs/${_id}`);
               }}
-              className="text-primary hover:underline font-medium"
+              className="text-accent hover:underline font-medium"
             >
               View it
             </button>
@@ -75,14 +75,14 @@ export default function ReportBug() {
         <button
           onClick={() => navigate(-1)}
           aria-label="Go back"
-          className="p-2 rounded-lg hover:bg-track text-muted hover:text-text-base transition-colors duration-200"
+          className="p-2 rounded-lg hover:bg-track text-muted hover:text-fg transition-colors duration-200"
         >
           <ArrowLeft size={20} />
         </button>
         <div>
           <div className="flex items-center gap-2 mb-0.5">
-            <Bug size={20} className="text-primary" />
-            <h1 className="text-2xl font-bold text-text-base">Report a bug</h1>
+            <Bug size={20} className="text-accent" />
+            <h1 className="text-2xl font-bold text-fg">Report a bug</h1>
           </div>
           <p className="text-muted text-sm">Fill in the details below. Any error log is analyzed automatically.</p>
         </div>
