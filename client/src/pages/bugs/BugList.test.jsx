@@ -99,6 +99,12 @@ describe('Bugs list', () => {
     const table = await screen.findByRole('table');
     const headers = within(table).getAllByRole('columnheader').map((th) => th.textContent);
     expect(headers).toEqual(['Bug', 'Status', 'Priority', 'Project', 'Source', 'Updated']);
+    // On a phone (below md) only Bug, Status and Priority show.
+    const phoneHidden = within(table)
+      .getAllByRole('columnheader')
+      .filter((th) => th.classList.contains('hidden') && th.classList.contains('md:table-cell'))
+      .map((th) => th.textContent);
+    expect(phoneHidden).toEqual(['Project', 'Source', 'Updated']);
   });
 
   it("gives a person's report its discussion and owner, and an SDK bug its grouping evidence", async () => {

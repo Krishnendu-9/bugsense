@@ -58,19 +58,24 @@ function RowContext({ bug }) {
 /**
  * Bugs as a dense table: the same cells and marks as the Overview's Recent
  * table (StatusMark, PriorityText), so the two read as one system.
+ *
+ * Below md (phones) it shows Bug, Status and Priority -- what triage needs --
+ * and drops Project, Source and Updated. From md all six fit without sideways
+ * scrolling: the other five need ~490px and the Bug column, which truncates,
+ * takes the rest (~230px at 768px with no sidebar, ~240px at 1024px with it).
  */
 export default function BugTable({ bugs }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[820px] text-sm">
+      <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs text-subtle">
             <th scope="col" className="px-5 py-2 font-medium">Bug</th>
             <th scope="col" className="px-3 py-2 font-medium">Status</th>
-            <th scope="col" className="px-3 py-2 font-medium">Priority</th>
-            <th scope="col" className="px-3 py-2 font-medium">Project</th>
-            <th scope="col" className="px-3 py-2 font-medium">Source</th>
-            <th scope="col" className="px-5 py-2 font-medium text-right">Updated</th>
+            <th scope="col" className="pl-3 pr-5 md:pr-3 py-2 font-medium">Priority</th>
+            <th scope="col" className="hidden md:table-cell px-3 py-2 font-medium">Project</th>
+            <th scope="col" className="hidden md:table-cell px-3 py-2 font-medium">Source</th>
+            <th scope="col" className="hidden md:table-cell px-5 py-2 font-medium text-right">Updated</th>
           </tr>
         </thead>
         <tbody>
@@ -96,15 +101,15 @@ export default function BugTable({ bugs }) {
                 <td className="px-3 py-2.5 whitespace-nowrap">
                   <StatusMark status={bug.status} />
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap">
+                <td className="pl-3 pr-5 md:pr-3 py-2.5 whitespace-nowrap">
                   <PriorityText priority={bug.priority} />
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap text-muted">
+                <td className="hidden md:table-cell px-3 py-2.5 whitespace-nowrap text-muted">
                   {bug.project || <span className="text-subtle" aria-label="No project">{NO_VALUE}</span>}
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap text-muted">{sdk ? 'SDK' : 'Person'}</td>
+                <td className="hidden md:table-cell px-3 py-2.5 whitespace-nowrap text-muted">{sdk ? 'SDK' : 'Person'}</td>
                 <td
-                  className="px-5 py-2.5 whitespace-nowrap text-right font-mono tabular-nums text-muted"
+                  className="hidden md:table-cell px-5 py-2.5 whitespace-nowrap text-right font-mono tabular-nums text-muted"
                   title={formatDate(bug.updatedAt, 'MMM d, yyyy HH:mm')}
                 >
                   {compactAgo(bug.updatedAt) || NO_VALUE}
