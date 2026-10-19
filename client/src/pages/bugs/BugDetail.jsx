@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import {
   ArrowLeft, Trash2, Edit3, MessageSquare, Send, Monitor,
   Tag, AlertTriangle, Cpu, X, Check, Pencil, History,
-  GitPullRequest, ExternalLink, Github, Zap, FileText, UserCheck, FileEdit,
+  GitPullRequest, ExternalLink, Github, Zap, FileText, UserCheck, FileEdit, Copy, RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
@@ -15,6 +15,7 @@ import { PriorityBadge, StatusBadge, SeverityBadge } from '../../components/comm
 import ErrorInsights from '../../components/ai/ErrorInsights.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import ConfirmDialog from '../../components/common/ConfirmDialog.jsx';
+import OverflowMenu from '../../components/common/OverflowMenu.jsx';
 import BreadcrumbTimeline from '../../components/bugs/BreadcrumbTimeline.jsx';
 import GitPatchModal from '../../components/ai/GitPatchModal.jsx';
 import PostMortemModal from '../../components/ai/PostMortemModal.jsx';
@@ -22,7 +23,7 @@ import GitHubExportModal from '../../components/bugs/GitHubExportModal.jsx';
 import { BugDetailSkeleton } from '../../components/common/Loader.jsx';
 import {
   timeAgo, getInitials, formatDate, getImageUrl, sanitizeHtml, isStaff, dataUrlToFile,
-  isBugReporter, statusOptionsFor,
+  isBugReporter, statusOptionsFor, stripHtml, findRegressions,
 } from '../../utils/helpers.js';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, STATUS_MARK_COLORS } from '../../utils/constants.js';
 import api from '../../api/axios.js';
@@ -47,6 +48,11 @@ const EditBugModal = lazy(() => import('../../components/bugs/EditBugModal.jsx')
 // How long to wait for a background analysis before refetching once and
 // letting the user run it manually.
 const ANALYSIS_WAIT_MS = 30000;
+
+// What the server stores as an SDK bug's description when the SDK sent none
+// (server/controllers/telemetry.controller.js). It says nothing, so the page
+// shows no description instead of this sentence.
+const SDK_PLACEHOLDER_DESCRIPTION = 'Crash reported automatically by the BugSense SDK.';
 
 function AnnotationSkeleton() {
   return (
@@ -347,12 +353,31 @@ function BugDetailView() {
   const allowedStatuses = statusOptionsFor(user, bug);
   const hasScreenshot = bug.screenshot || bug.annotatedScreenshot;
 
+  const sdk = bug.source === 'sdk';
+  const showCrashBanner = sdk || bug.occurrences > 1;
+  const regressions = findRegressions(bug.statusHistory);
+  const lastRegression = regressions.at(-1);
+  // The server stores SDK_PLACEHOLDER_DESCRIPTION when the SDK sent none
+  // (description is required); that sentence carries no information.
+  const descriptionText = stripHtml(bug.description || '').trim();
+  const hasDescription = Boolean(descriptionText) && !(sdk && descriptionText === SDK_PLACEHOLDER_DESCRIPTION);
+
+  const copyFingerprint = async () => {
+    try {
+      // Absent outside secure contexts; the throw lands in the catch.
+      await navigator.clipboard.writeText(bug.fingerprint);
+      toast.success('Fingerprint copied');
+    } catch {
+      toast.error('Could not copy the fingerprint');
+    }
+  };
+
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Header: title on its own row so long titles use the full width, with
-          the actions underneath. */}
-      <div className="space-y-3">
-        <div className="flex items-start gap-4">
+    <div className="space-y-5">
+      {/* Header: title with the triage actions beside it, then one meta row
+          (status, priority, severity, project, dates). */}
+      <header className="space-y-2">
+        <div className="flex flex-wrap items-start gap-3">
           <button
             onClick={() => navigate(-1)}
             aria-label="Go back"
@@ -360,115 +385,149 @@ function BugDetailView() {
           >
             <ArrowLeft size={20} />
           </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 text-xs text-muted mb-1">
-              <span>Bug Report</span>
-              <span>•</span>
-              <span>{formatDate(bug.createdAt)}</span>
-            </div>
-            <h1 className="text-xl font-bold text-text-base break-words">{bug.title}</h1>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap sm:pl-14">
-          {canEdit && (
-            <button
-              onClick={handleOpenPatch}
-              disabled={patchLoading}
-              className="btn-secondary flex items-center gap-1.5 text-sm border-secondary/30 text-secondary hover:bg-secondary/10"
-              title={bug.gitPatch?.diff ? 'Show the saved AI patch' : 'Generate a code patch with Claude'}
-            >
-              <GitPullRequest size={15} />
-              {patchLoading && !gitPatch ? 'Patching...' : bug.gitPatch?.diff ? 'View AI Patch' : 'AI PR Fix'}
-            </button>
-          )}
-          {bug.githubIssue?.url ? (
-            <a
-              href={bug.githubIssue.url}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-secondary flex items-center gap-1.5 text-sm text-status-resolved border-status-resolved/30 hover:bg-status-resolved/10"
-            >
-              <Github size={14} /> Issue #{bug.githubIssue.issueNumber} <ExternalLink size={12} />
-            </a>
-          ) : (
-            staff && (
-              <button
-                onClick={() => setShowGithubModal(true)}
-                className="btn-secondary flex items-center gap-1.5 text-sm"
-                title="Export bug to GitHub Issues"
-              >
-                <Github size={15} /> GitHub
-              </button>
-            )
-          )}
-          <button
-            onClick={handleGeneratePostMortem}
-            disabled={postMortemLoading}
-            className="btn-secondary flex items-center gap-1.5 text-sm"
-            title="Generate a post-mortem"
-          >
-            <FileText size={15} />
-            {postMortemLoading ? 'Generating...' : 'Post-Mortem'}
-          </button>
-          {bug.errorLog && canEdit && (
-            <button onClick={handleAnalyze} disabled={aiLoading} className="btn-secondary flex items-center gap-2 text-sm">
-              <Cpu size={15} />
-              {aiLoading ? 'Analyzing...' : 'AI Analyze'}
-            </button>
-          )}
-          {canEdit && (
-            <button
-              onClick={() => setShowEditDetails(true)}
-              className="btn-secondary flex items-center gap-2 text-sm"
-            >
-              <FileEdit size={15} /> Edit Details
-            </button>
-          )}
-          {canEdit && (
-            <button
-              onClick={() => (isEditing ? setIsEditing(false) : openEditor())}
-              aria-expanded={isEditing}
-              className="btn-secondary flex items-center gap-2 text-sm"
-            >
-              {isEditing ? <X size={15} /> : <Edit3 size={15} />}
-              {isEditing ? 'Cancel' : staff ? 'Triage' : 'Status'}
-            </button>
-          )}
-          {canDelete && (
-            <button onClick={() => setConfirmingDelete(true)} className="btn-danger flex items-center gap-2 text-sm">
-              <Trash2 size={15} /> Delete
-            </button>
-          )}
-        </div>
-      </div>
+          <h1 className="flex-1 min-w-[16rem] pt-1 text-xl font-bold text-text-base break-words">{bug.title}</h1>
 
-      {/* Occurrences & Telemetry Banner */}
-      {(bug.occurrences > 1 || bug.source === 'sdk') && (
-        <div className="glass-card p-4 border border-priority-high/30 bg-priority-high/5 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-priority-high/15 border border-priority-high/30 flex items-center justify-center text-priority-high flex-shrink-0">
-              <Zap size={18} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-text-base text-sm">
-                  {bug.occurrences > 1 ? 'Recurring crash' : 'Single crash'}
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-priority-high/20 text-priority-high border border-priority-high/30">
-                  {bug.occurrences}x occurrences
-                </span>
-                {bug.source === 'sdk' && (
-                  <span className="px-2 py-0.5 rounded-full text-xs bg-track text-muted border border-border">
-                    Client SDK Ingested
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted mt-0.5">
-                First detected {formatDate(bug.firstSeenAt || bug.createdAt)} • Last active {timeAgo(bug.lastSeenAt || bug.updatedAt)}
-              </p>
-            </div>
+          {/* Inline: what triage itself uses -- Triage (status, priority,
+              owner) and AI Analyze (the cause, when there is none yet), plus
+              the GitHub issue link once one exists, since that is state. The
+              rest happens after triage, rarely, or destroys the bug. */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {bug.githubIssue?.url && (
+              <a
+                href={bug.githubIssue.url}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary flex items-center gap-1.5 text-sm text-status-resolved border-status-resolved/30 hover:bg-status-resolved/10"
+              >
+                <Github size={14} /> Issue #{bug.githubIssue.issueNumber} <ExternalLink size={12} />
+              </a>
+            )}
+            {bug.errorLog && canEdit && (
+              <button onClick={handleAnalyze} disabled={aiLoading} className="btn-secondary flex items-center gap-2 text-sm">
+                <Cpu size={15} />
+                {aiLoading ? 'Analyzing...' : 'AI Analyze'}
+              </button>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => (isEditing ? setIsEditing(false) : openEditor())}
+                aria-expanded={isEditing}
+                className="btn-secondary flex items-center gap-2 text-sm"
+              >
+                {isEditing ? <X size={15} /> : <Edit3 size={15} />}
+                {isEditing ? 'Cancel' : staff ? 'Triage' : 'Status'}
+              </button>
+            )}
+            <OverflowMenu
+              label="More actions"
+              items={[
+                canEdit && {
+                  key: 'patch',
+                  label: patchLoading && !gitPatch ? 'Patching...' : bug.gitPatch?.diff ? 'View AI patch' : 'AI PR fix',
+                  icon: GitPullRequest,
+                  onClick: handleOpenPatch,
+                  disabled: patchLoading,
+                },
+                staff && !bug.githubIssue?.url && {
+                  key: 'github',
+                  label: 'Export to GitHub',
+                  icon: Github,
+                  onClick: () => setShowGithubModal(true),
+                },
+                {
+                  key: 'postmortem',
+                  label: postMortemLoading ? 'Generating...' : 'Post-mortem',
+                  icon: FileText,
+                  onClick: handleGeneratePostMortem,
+                  disabled: postMortemLoading,
+                },
+                canEdit && {
+                  key: 'edit',
+                  label: 'Edit details',
+                  icon: FileEdit,
+                  onClick: () => setShowEditDetails(true),
+                },
+                canDelete && {
+                  key: 'delete',
+                  label: 'Delete bug',
+                  icon: Trash2,
+                  onClick: () => setConfirmingDelete(true),
+                  danger: true,
+                },
+              ]}
+            />
           </div>
         </div>
+
+        <div className="flex flex-wrap items-center gap-2 sm:pl-12 text-xs text-muted">
+          <StatusBadge status={bug.status} />
+          <PriorityBadge priority={bug.priority} />
+          <SeverityBadge severity={bug.severity} />
+          {bug.project && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs bg-secondary/10 text-secondary border border-secondary/20">
+              <Tag size={10} /> {bug.project}
+            </span>
+          )}
+          {/* An SDK bug's first crash is in the banner; a person's report says
+              when it was filed. "Updated" is any change at all -- an edit, a
+              status move, a comment or a new crash report -- so it can be later
+              than the last crash, and both are shown. */}
+          {!showCrashBanner && (
+            <>
+              <span>Reported {formatDate(bug.createdAt)}</span>
+              <span aria-hidden="true">·</span>
+            </>
+          )}
+          <span title={`Last change of any kind (edit, status, comment or crash report): ${formatDate(bug.updatedAt, 'MMM d, yyyy HH:mm')}`}>
+            Updated {timeAgo(bug.updatedAt)}
+          </span>
+        </div>
+      </header>
+
+      {/* Crash summary: count, first and last crash, regression, fingerprint. */}
+      {showCrashBanner && (
+        <section aria-label="Crash summary" className="glass-card px-4 py-3 border border-priority-high/30 bg-priority-high/5 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <span className="flex items-center gap-2 font-semibold text-text-base">
+              <Zap size={16} className="text-priority-high" aria-hidden="true" />
+              <span><span className="font-mono">{bug.occurrences || 1}</span> {(bug.occurrences || 1) === 1 ? 'occurrence' : 'occurrences'}</span>
+            </span>
+            <span className="text-muted">
+              First crash <span className="text-text-base">{formatDate(bug.firstSeenAt || bug.createdAt)}</span>
+            </span>
+            <span className="text-muted" title={`When the SDK last reported this crash: ${formatDate(bug.lastSeenAt || bug.updatedAt, 'MMM d, yyyy HH:mm')}`}>
+              Last crash <span className="text-text-base">{timeAgo(bug.lastSeenAt || bug.updatedAt)}</span>
+            </span>
+            {sdk && <span className="text-muted">Reported by the SDK</span>}
+            {bug.fingerprint && (
+              <button
+                type="button"
+                onClick={copyFingerprint}
+                title={`Fingerprint ${bug.fingerprint} (click to copy)`}
+                aria-label={`Copy fingerprint ${bug.fingerprint}`}
+                className="sm:ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-2 py-0.5 text-xs text-muted hover:text-text-base hover:bg-track transition-colors"
+              >
+                Fingerprint <span className="font-mono text-text-base">{bug.fingerprint.slice(0, 8)}</span>
+                <Copy size={12} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          {lastRegression && (
+            <p className="flex items-start gap-2 text-sm font-semibold text-text-base">
+              <RotateCcw size={15} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+              <span>
+                Regressed {timeAgo(lastRegression.at)}: it crashed again after being{' '}
+                {lastRegression.previous
+                  ? `${lastRegression.previous.status}${lastRegression.previous.changedBy?.name ? ` by ${lastRegression.previous.changedBy.name}` : ''} on ${formatDate(lastRegression.previous.changedAt)}`
+                  : 'resolved'}
+                .
+                {regressions.length > 1 && (
+                  <span className="font-normal text-muted"> {regressions.length} regressions in total.</span>
+                )}
+              </span>
+            </p>
+          )}
+        </section>
       )}
 
       {/* Edit panel */}
@@ -547,35 +606,31 @@ function BugDetailView() {
         </Modal>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main column */}
-        <div className="lg:col-span-2 space-y-5 min-w-0">
-          {/* Description */}
-          <div className="glass-card p-6">
-            <div className="flex flex-wrap gap-2 mb-4">
-              <StatusBadge status={bug.status} />
-              <PriorityBadge priority={bug.priority} />
-              <SeverityBadge severity={bug.severity} />
-              {bug.project && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs bg-secondary/10 text-secondary border border-secondary/20">
-                  <Tag size={10} /> {bug.project}
-                </span>
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+        {/* Main column: the report (description, steps), then the debugging
+            core (error, analysis), then reference (breadcrumbs, screenshot,
+            discussion). An SDK crash has no report, so it opens on the error. */}
+        <div className="space-y-5 min-w-0">
+          {/* Description -- omitted when there is none, or only the SDK's placeholder */}
+          {(hasDescription || bug.tags?.length > 0) && (
+            <div className="glass-card p-6">
+              {hasDescription && (
+                <div
+                  className="rich-text text-text-base text-sm leading-relaxed break-words"
+                  dangerouslySetInnerHTML={{ __html: safeDescription }}
+                />
+              )}
+              {bug.tags?.length > 0 && (
+                <div className={`flex flex-wrap gap-1.5 ${hasDescription ? 'mt-4 pt-4 border-t border-hairline' : ''}`}>
+                  {bug.tags.map((tag) => (
+                    <span key={tag} className="px-2 py-0.5 rounded text-xs bg-track text-muted border border-border">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
-            <div
-              className="rich-text text-text-base text-sm leading-relaxed break-words"
-              dangerouslySetInnerHTML={{ __html: safeDescription }}
-            />
-            {bug.tags?.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-hairline">
-                {bug.tags.map((tag) => (
-                  <span key={tag} className="px-2 py-0.5 rounded text-xs bg-track text-muted border border-border">
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Steps */}
           {bug.steps?.length > 0 && (
@@ -605,6 +660,15 @@ function BugDetailView() {
                 {bug.errorLog}
               </pre>
             </div>
+          )}
+
+          {/* AI Insights -- straight after the error it explains */}
+          {(aiLoading || analysisPending || bug.aiInsights?.possibleCause) && (
+            <ErrorInsights
+              insights={bug.aiInsights}
+              analyzedAt={bug.aiInsights?.analyzedAt}
+              isLoading={aiLoading || analysisPending}
+            />
           )}
 
           {/* Flight Recorder Breadcrumbs */}
@@ -649,15 +713,6 @@ function BugDetailView() {
                 </p>
               )}
             </div>
-          )}
-
-          {/* AI Insights */}
-          {(aiLoading || analysisPending || bug.aiInsights?.possibleCause) && (
-            <ErrorInsights
-              insights={bug.aiInsights}
-              analyzedAt={bug.aiInsights?.analyzedAt}
-              isLoading={aiLoading || analysisPending}
-            />
           )}
 
           {/* Comments */}
@@ -719,24 +774,8 @@ function BugDetailView() {
           </div>
         </div>
 
-        {/* Sidebar column */}
+        {/* Sidebar column: owner first (a triage fact), then reference */}
         <div className="space-y-4 min-w-0">
-          {/* Reporter */}
-          <div className="glass-card p-5">
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Reporter</h3>
-            {bug.reporter ? (
-              <div className="flex items-center gap-3 min-w-0">
-                <Avatar person={bug.reporter} size="w-10 h-10" text="text-sm" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-text-base truncate">{bug.reporter.name}</p>
-                  <p className="text-xs text-muted truncate">{bug.reporter.email}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted">{bug.source === 'sdk' ? 'BugSense SDK' : 'Unknown'}</p>
-            )}
-          </div>
-
           {/* Assigned to */}
           <div className="glass-card p-5">
             <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Assigned To</h3>
@@ -754,6 +793,24 @@ function BugDetailView() {
               </p>
             )}
           </div>
+
+          {/* Reporter -- not for SDK crashes: the banner already says the SDK reported it */}
+          {!(sdk && !bug.reporter) && (
+            <div className="glass-card p-5">
+              <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Reporter</h3>
+              {bug.reporter ? (
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar person={bug.reporter} size="w-10 h-10" text="text-sm" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text-base truncate">{bug.reporter.name}</p>
+                    <p className="text-xs text-muted truncate">{bug.reporter.email}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted">Unknown</p>
+              )}
+            </div>
+          )}
 
           {/* Browser info */}
           {(bug.browserInfo?.os || bug.browserInfo?.browser) && (
@@ -815,17 +872,6 @@ function BugDetailView() {
             </div>
           )}
 
-          {/* Timeline */}
-          <div className="glass-card p-5">
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Timeline</h3>
-            <div className="space-y-2 text-xs text-muted">
-              <p>Created: <span className="text-text-base">{formatDate(bug.createdAt, 'MMM d, yyyy')}</span></p>
-              <p>Updated: <span className="text-text-base">{formatDate(bug.updatedAt, 'MMM d, yyyy')}</span></p>
-              {bug.aiInsights?.analyzedAt && (
-                <p>Analyzed: <span className="text-primary">{formatDate(bug.aiInsights.analyzedAt, 'MMM d, yyyy')}</span></p>
-              )}
-            </div>
-          </div>
         </div>
       </div>
 

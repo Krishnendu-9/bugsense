@@ -111,3 +111,70 @@ describe('BugDetail real-time behaviour', () => {
     expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument();
   });
 });
+
+describe('BugDetail layout', () => {
+  const sdkBug = () => ({
+    ...baseBug(),
+    source: 'sdk',
+    reporter: null,
+    description: 'Crash reported automatically by the BugSense SDK.',
+    steps: [],
+    occurrences: 6,
+    fingerprint: '3e070587aa11bb22cc33dd44ee55ff66',
+    firstSeenAt: '2026-09-14T12:00:00.000Z',
+    lastSeenAt: '2026-09-19T15:10:00.000Z',
+    status: 'in-progress',
+    statusHistory: [
+      { status: 'resolved', changedBy: { _id: 'd1', name: 'Dev User' }, changedAt: '2026-09-15T10:00:00.000Z', note: 'Fixed' },
+      { status: 'in-progress', changedAt: '2026-09-19T15:10:00.000Z', note: 'Regression auto-detected' },
+    ],
+  });
+
+  const serve = (bug) => {
+    api.get.mockReset().mockImplementation(async (url) => {
+      if (url === '/bugs/b1') return { data: bug };
+      return { data: [] };
+    });
+  };
+
+  it('puts the regression, count and fingerprint in the banner, and drops what says nothing', async () => {
+    serve(sdkBug());
+    await renderDetail();
+
+    const banner = screen.getByRole('region', { name: 'Crash summary' });
+    expect(within(banner).getByText(/Regressed .* after being resolved by Dev User on Sep 15, 2026/)).toBeInTheDocument();
+    expect(within(banner).getByText('occurrences')).toBeInTheDocument();
+    expect(within(banner).getByRole('button', { name: 'Copy fingerprint 3e070587aa11bb22cc33dd44ee55ff66' })).toHaveTextContent('3e070587');
+
+    // The SDK placeholder description, the SDK "reporter" card and the Timeline card are gone.
+    expect(screen.queryByText('Crash reported automatically by the BugSense SDK.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Reporter' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Timeline' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a real description and the reporter card for a person’s report, with no crash banner', async () => {
+    serve(baseBug());
+    await renderDetail();
+
+    expect(screen.getByText('Nothing happens on click')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Reporter' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Crash summary' })).not.toBeInTheDocument();
+  });
+
+  it('keeps Triage inline and moves the rest, Delete included, into More actions', async () => {
+    serve(baseBug());
+    await renderDetail(USERS.admin);
+    const user = setupUser();
+
+    expect(screen.getByRole('button', { name: 'Triage' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent);
+    expect(items).toEqual(['AI PR fix', 'Export to GitHub', 'Post-mortem', 'Edit details', 'Delete bug']);
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus();
+  });
+});
