@@ -152,6 +152,13 @@ describe('BugDetail layout', () => {
     expect(screen.queryByRole('heading', { name: 'Timeline' })).not.toBeInTheDocument();
   });
 
+  it('shows no description card for an SDK crash stored with an empty description', async () => {
+    serve({ ...sdkBug(), description: '', tags: [] });
+    await renderDetail();
+    expect(screen.getByRole('region', { name: 'Crash summary' })).toBeInTheDocument();
+    expect(document.querySelector('.rich-text')).toBeNull();
+  });
+
   it('keeps a real description and the reporter card for a person’s report, with no crash banner', async () => {
     serve(baseBug());
     await renderDetail();

@@ -68,6 +68,16 @@ export function PriorityText({ priority }) {
   return <span className={PRIORITY_TEXT[priority] || 'text-muted'}>{capitalize(priority)}</span>;
 }
 
+// Severity as plain text, by the same rule: only the urgent end -- Blocker --
+// carries colour (the critical colour, as on the Board's cards).
+export function SeverityText({ severity }) {
+  return (
+    <span className={severity === 'blocker' ? 'text-priority-critical font-medium' : 'text-muted'}>
+      {capitalize(severity)}
+    </span>
+  );
+}
+
 /*
  * How many times the SDK has reported this bug. A count of one isn't a count,
  * so the badge only appears from two upwards; where a single SDK report needs

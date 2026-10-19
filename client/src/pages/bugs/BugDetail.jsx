@@ -4,14 +4,14 @@ import { useForm } from 'react-hook-form';
 import {
   ArrowLeft, Trash2, Edit3, MessageSquare, Send, Monitor,
   Tag, AlertTriangle, Cpu, X, Check, Pencil, History,
-  GitPullRequest, ExternalLink, Github, Zap, FileText, UserCheck, FileEdit, Copy, RotateCcw,
+  GitPullRequest, ExternalLink, Github, Zap, FileText, UserCheck, FileEdit, Copy, RotateCcw, RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
 import useAI from '../../hooks/useAI.js';
 import useAuth from '../../hooks/useAuth.js';
 import useSocket, { useSocketEvent } from '../../hooks/useSocket.js';
-import { PriorityBadge, StatusBadge, SeverityBadge } from '../../components/common/Badge.jsx';
+import { PriorityText, SeverityText, StatusMark } from '../../components/common/Badge.jsx';
 import ErrorInsights from '../../components/ai/ErrorInsights.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import ConfirmDialog from '../../components/common/ConfirmDialog.jsx';
@@ -49,9 +49,10 @@ const EditBugModal = lazy(() => import('../../components/bugs/EditBugModal.jsx')
 // letting the user run it manually.
 const ANALYSIS_WAIT_MS = 30000;
 
-// What the server stores as an SDK bug's description when the SDK sent none
-// (server/controllers/telemetry.controller.js). It says nothing, so the page
-// shows no description instead of this sentence.
+// An SDK crash with no description is now stored with an empty one, and an
+// empty description renders nothing. Records created before that change hold
+// this placeholder instead (it was the server's old default); matching it is
+// a fallback for those records only, not the mechanism.
 const SDK_PLACEHOLDER_DESCRIPTION = 'Crash reported automatically by the BugSense SDK.';
 
 function AnnotationSkeleton() {
@@ -161,7 +162,7 @@ function BugDetailView() {
             const changedById = lastChange?.changedBy?._id ?? lastChange?.changedBy;
             if (changedById !== user?._id) {
               const who = lastChange?.changedBy?.name || (lastChange?.changedBy ? 'a team member' : 'the telemetry pipeline');
-              toast(`Status changed to "${updatedBug.status}" by ${who}`, { icon: '🔄' });
+              toast(`Status changed to "${updatedBug.status}" by ${who}`, { icon: <RefreshCw size={16} className="text-muted" aria-hidden="true" /> });
             }
           }
           // Merge rather than replace, so a partial payload can never blank
@@ -183,7 +184,7 @@ function BugDetailView() {
         setComments((prev) => {
           if (prev.some((c) => c._id === newComment._id)) return prev;
           if (newComment.author?._id !== user?._id) {
-            toast(`New comment from ${newComment.author?.name || 'team member'}`, { icon: '💬' });
+            toast(`New comment from ${newComment.author?.name || 'team member'}`, { icon: <MessageSquare size={16} className="text-muted" aria-hidden="true" /> });
           }
           return [...prev, newComment];
         });
@@ -208,7 +209,7 @@ function BugDetailView() {
     useCallback(
       ({ _id }) => {
         if (_id !== id) return;
-        toast('This bug was deleted', { icon: '🗑️' });
+        toast('This bug was deleted', { icon: <Trash2 size={16} className="text-muted" aria-hidden="true" /> });
         navigate('/bugs');
       },
       [id, navigate]
@@ -343,7 +344,7 @@ function BugDetailView() {
     return (
       <div className="text-center py-20 text-muted space-y-3">
         <p>Bug not found</p>
-        <Link to="/bugs" className="text-primary hover:underline text-sm">Back to all bugs</Link>
+        <Link to="/bugs" className="text-accent hover:underline text-sm">Back to all bugs</Link>
       </div>
     );
   }
@@ -357,8 +358,7 @@ function BugDetailView() {
   const showCrashBanner = sdk || bug.occurrences > 1;
   const regressions = findRegressions(bug.statusHistory);
   const lastRegression = regressions.at(-1);
-  // The server stores SDK_PLACEHOLDER_DESCRIPTION when the SDK sent none
-  // (description is required); that sentence carries no information.
+  // Empty -> no description card. The placeholder check covers older records.
   const descriptionText = stripHtml(bug.description || '').trim();
   const hasDescription = Boolean(descriptionText) && !(sdk && descriptionText === SDK_PLACEHOLDER_DESCRIPTION);
 
@@ -381,11 +381,11 @@ function BugDetailView() {
           <button
             onClick={() => navigate(-1)}
             aria-label="Go back"
-            className="p-2 rounded-lg hover:bg-track text-muted hover:text-text-base transition-colors duration-200 flex-shrink-0"
+            className="p-2 rounded-lg hover:bg-track text-muted hover:text-fg transition-colors duration-200 flex-shrink-0"
           >
             <ArrowLeft size={20} />
           </button>
-          <h1 className="flex-1 min-w-[16rem] pt-1 text-xl font-bold text-text-base break-words">{bug.title}</h1>
+          <h1 className="flex-1 min-w-[16rem] pt-1 text-xl font-bold text-fg break-words">{bug.title}</h1>
 
           {/* Inline: what triage itself uses -- Triage (status, priority,
               owner) and AI Analyze (the cause, when there is none yet), plus
@@ -459,14 +459,23 @@ function BugDetailView() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 sm:pl-12 text-xs text-muted">
-          <StatusBadge status={bug.status} />
-          <PriorityBadge priority={bug.priority} />
-          <SeverityBadge severity={bug.severity} />
+        {/* The same marks as the tables and the Board: a status square, and
+            priority and severity as text, coloured only at the urgent end
+            (critical/high, blocker). Labelled, since outside a table "High"
+            and "Major" alone don't say which is which. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:pl-12 text-sm text-subtle">
+          <StatusMark status={bug.status} />
+          <span aria-hidden="true">·</span>
+          <span>Priority <PriorityText priority={bug.priority} /></span>
+          <span aria-hidden="true">·</span>
+          <span>Severity <SeverityText severity={bug.severity} /></span>
           {bug.project && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs bg-secondary/10 text-secondary border border-secondary/20">
-              <Tag size={10} /> {bug.project}
-            </span>
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="inline-flex items-center gap-1 text-muted">
+                <Tag size={12} aria-hidden="true" /> {bug.project}
+              </span>
+            </>
           )}
           {/* An SDK bug's first crash is in the banner; a person's report says
               when it was filed. "Updated" is any change at all -- an edit, a
@@ -474,29 +483,32 @@ function BugDetailView() {
               than the last crash, and both are shown. */}
           {!showCrashBanner && (
             <>
-              <span>Reported {formatDate(bug.createdAt)}</span>
               <span aria-hidden="true">·</span>
+              <span>Reported {formatDate(bug.createdAt)}</span>
             </>
           )}
+          <span aria-hidden="true">·</span>
           <span title={`Last change of any kind (edit, status, comment or crash report): ${formatDate(bug.updatedAt, 'MMM d, yyyy HH:mm')}`}>
             Updated {timeAgo(bug.updatedAt)}
           </span>
         </div>
       </header>
 
-      {/* Crash summary: count, first and last crash, regression, fingerprint. */}
+      {/* Crash summary: count, first and last crash, regression, fingerprint.
+          A neutral surface: an SDK crash is not urgent by being one. Only the
+          regression line carries colour. */}
       {showCrashBanner && (
-        <section aria-label="Crash summary" className="glass-card px-4 py-3 border border-priority-high/30 bg-priority-high/5 space-y-1.5">
+        <section aria-label="Crash summary" className="glass-card px-4 py-3 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-            <span className="flex items-center gap-2 font-semibold text-text-base">
-              <Zap size={16} className="text-priority-high" aria-hidden="true" />
+            <span className="flex items-center gap-2 font-semibold text-fg">
+              <Zap size={16} className="text-muted" aria-hidden="true" />
               <span><span className="font-mono">{bug.occurrences || 1}</span> {(bug.occurrences || 1) === 1 ? 'occurrence' : 'occurrences'}</span>
             </span>
             <span className="text-muted">
-              First crash <span className="text-text-base">{formatDate(bug.firstSeenAt || bug.createdAt)}</span>
+              First crash <span className="text-fg">{formatDate(bug.firstSeenAt || bug.createdAt)}</span>
             </span>
             <span className="text-muted" title={`When the SDK last reported this crash: ${formatDate(bug.lastSeenAt || bug.updatedAt, 'MMM d, yyyy HH:mm')}`}>
-              Last crash <span className="text-text-base">{timeAgo(bug.lastSeenAt || bug.updatedAt)}</span>
+              Last crash <span className="text-fg">{timeAgo(bug.lastSeenAt || bug.updatedAt)}</span>
             </span>
             {sdk && <span className="text-muted">Reported by the SDK</span>}
             {bug.fingerprint && (
@@ -505,15 +517,15 @@ function BugDetailView() {
                 onClick={copyFingerprint}
                 title={`Fingerprint ${bug.fingerprint} (click to copy)`}
                 aria-label={`Copy fingerprint ${bug.fingerprint}`}
-                className="sm:ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-2 py-0.5 text-xs text-muted hover:text-text-base hover:bg-track transition-colors"
+                className="sm:ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-2 py-0.5 text-xs text-muted hover:text-fg hover:bg-track transition-colors"
               >
-                Fingerprint <span className="font-mono text-text-base">{bug.fingerprint.slice(0, 8)}</span>
+                Fingerprint <span className="font-mono text-fg">{bug.fingerprint.slice(0, 8)}</span>
                 <Copy size={12} aria-hidden="true" />
               </button>
             )}
           </div>
           {lastRegression && (
-            <p className="flex items-start gap-2 text-sm font-semibold text-text-base">
+            <p className="flex items-start gap-2 text-sm font-semibold text-danger">
               <RotateCcw size={15} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
               <span>
                 Regressed {timeAgo(lastRegression.at)}: it crashed again after being{' '}
@@ -533,7 +545,7 @@ function BugDetailView() {
       {/* Edit panel */}
       {isEditing && (
         <div className="glass-card p-5">
-          <h3 className="text-sm font-semibold text-text-base mb-1">{staff ? 'Triage' : 'Update Status'}</h3>
+          <h3 className="text-sm font-semibold text-fg mb-1">{staff ? 'Triage' : 'Update Status'}</h3>
           {!staff && (
             <p className="text-xs text-muted mb-4">
               You can close your bug if it no longer happens, or reopen it if it came back. The team handles the rest of the workflow.
@@ -616,7 +628,7 @@ function BugDetailView() {
             <div className="glass-card p-6">
               {hasDescription && (
                 <div
-                  className="rich-text text-text-base text-sm leading-relaxed break-words"
+                  className="rich-text text-fg text-sm leading-relaxed break-words"
                   dangerouslySetInnerHTML={{ __html: safeDescription }}
                 />
               )}
@@ -635,11 +647,11 @@ function BugDetailView() {
           {/* Steps */}
           {bug.steps?.length > 0 && (
             <div className="glass-card p-6">
-              <h3 className="text-sm font-semibold text-text-base mb-3">Steps to Reproduce</h3>
+              <h3 className="text-sm font-semibold text-fg mb-3">Steps to Reproduce</h3>
               <ol className="space-y-2">
                 {bug.steps.map((step, i) => (
                   <li key={i} className="flex items-start gap-3 text-sm text-muted">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-medium mt-0.5">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-track text-muted text-xs flex items-center justify-center font-medium mt-0.5">
                       {i + 1}
                     </span>
                     {step}
@@ -654,7 +666,7 @@ function BugDetailView() {
             <div className="glass-card p-6">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle size={15} className="text-muted" />
-                <h3 className="text-sm font-semibold text-text-base">Error Log</h3>
+                <h3 className="text-sm font-semibold text-fg">Error Log</h3>
               </div>
               <pre className="text-xs text-muted font-mono bg-track p-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words max-h-96">
                 {bug.errorLog}
@@ -682,7 +694,7 @@ function BugDetailView() {
           {hasScreenshot && (
             <div className="glass-card p-6">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-text-base">
+                <h3 className="text-sm font-semibold text-fg">
                   {bug.annotatedScreenshot ? 'Annotated Screenshot' : 'Screenshot'}
                 </h3>
                 {canEdit && (
@@ -706,7 +718,7 @@ function BugDetailView() {
                     href={getImageUrl(bug.screenshot)}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-primary hover:underline"
+                    className="text-accent hover:underline"
                   >
                     View original
                   </a>
@@ -719,7 +731,7 @@ function BugDetailView() {
           <div className="glass-card p-6">
             <div className="flex items-center gap-2 mb-4">
               <MessageSquare size={15} className="text-muted" />
-              <h3 className="text-sm font-semibold text-text-base">Comments ({comments.length})</h3>
+              <h3 className="text-sm font-semibold text-fg">Comments ({comments.length})</h3>
             </div>
             <div className="space-y-4 mb-5">
               {comments.map((comment) => (
@@ -729,7 +741,7 @@ function BugDetailView() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-text-base">{comment.author?.name}</span>
+                      <span className="text-sm font-medium text-fg">{comment.author?.name}</span>
                       <span className="text-xs text-muted">{timeAgo(comment.createdAt)}</span>
                     </div>
                     <p className="text-sm text-muted leading-relaxed whitespace-pre-wrap break-words">{comment.content}</p>
@@ -738,7 +750,7 @@ function BugDetailView() {
                     <button
                       onClick={() => handleDeleteComment(comment._id)}
                       aria-label="Delete comment"
-                      className="p-1 rounded text-muted hover:text-priority-high hover:bg-priority-high/10 transition-colors md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
+                      className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -783,7 +795,7 @@ function BugDetailView() {
               <div className="flex items-center gap-3 min-w-0">
                 <Avatar person={bug.assignedTo} size="w-10 h-10" text="text-sm" />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-text-base truncate">{bug.assignedTo.name}</p>
+                  <p className="text-sm font-medium text-fg truncate">{bug.assignedTo.name}</p>
                   <p className="text-xs text-muted truncate">{bug.assignedTo.email}</p>
                 </div>
               </div>
@@ -802,7 +814,7 @@ function BugDetailView() {
                 <div className="flex items-center gap-3 min-w-0">
                   <Avatar person={bug.reporter} size="w-10 h-10" text="text-sm" />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-text-base truncate">{bug.reporter.name}</p>
+                    <p className="text-sm font-medium text-fg truncate">{bug.reporter.name}</p>
                     <p className="text-xs text-muted truncate">{bug.reporter.email}</p>
                   </div>
                 </div>
@@ -821,13 +833,13 @@ function BugDetailView() {
               </div>
               <div className="space-y-1.5 text-xs text-muted">
                 {bug.browserInfo.browser && (
-                  <p>Browser: <span className="text-text-base">{bug.browserInfo.browser} {bug.browserInfo.version}</span></p>
+                  <p>Browser: <span className="text-fg">{bug.browserInfo.browser} {bug.browserInfo.version}</span></p>
                 )}
-                {bug.browserInfo.os && <p>OS: <span className="text-text-base">{bug.browserInfo.os}</span></p>}
-                {bug.browserInfo.screenSize && <p>Screen: <span className="text-text-base">{bug.browserInfo.screenSize}</span></p>}
+                {bug.browserInfo.os && <p>OS: <span className="text-fg">{bug.browserInfo.os}</span></p>}
+                {bug.browserInfo.screenSize && <p>Screen: <span className="text-fg">{bug.browserInfo.screenSize}</span></p>}
                 {bug.browserInfo.userAgent && (
                   <p className="truncate" title={bug.browserInfo.userAgent}>
-                    UA: <span className="text-text-base">{bug.browserInfo.userAgent}</span>
+                    UA: <span className="text-fg">{bug.browserInfo.userAgent}</span>
                   </p>
                 )}
               </div>
@@ -853,7 +865,7 @@ function BugDetailView() {
                           <div className={`w-2 h-2 rounded-full ${dotColor}`} />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-text-base capitalize">
+                          <p className="text-xs font-medium text-fg capitalize">
                             {entry.status === 'in-progress' ? 'In Progress' : entry.status}
                           </p>
                           <p className="text-xs text-muted">
@@ -862,7 +874,7 @@ function BugDetailView() {
                           {entry.note && (
                             <p className="text-xs text-muted italic mt-0.5 break-words">&quot;{entry.note}&quot;</p>
                           )}
-                          <p className="text-[10px] text-muted/60 mt-0.5">{timeAgo(entry.changedAt)}</p>
+                          <p className="text-[10px] text-subtle mt-0.5">{timeAgo(entry.changedAt)}</p>
                         </div>
                       </div>
                     );
