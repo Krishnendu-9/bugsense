@@ -11,24 +11,32 @@ import { removeStoredFile, storeUpload } from '../services/storage.service.js';
 import { getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { dispatchWebhookAlert } from '../services/webhook.service.js';
 import { queueAutoAnalysis } from '../services/autoAnalysis.service.js';
+import { analysisMarkdown } from '../services/ai.service.js';
 import { tryConsumeReportAIBudget } from '../utils/aiBudget.js';
 import { logActivity } from '../services/audit.service.js';
+import { countResolvedSince, openCountsByDay, resolutionStats, windowStart } from '../utils/bugStats.js';
 import {
   BUG_POPULATE,
   LIST_EXCLUDED_FIELDS,
   emitBugCreated,
   emitBugDeleted,
   emitBugUpdated,
+  toListPayload,
 } from '../services/bugEvents.service.js';
 
 const STATUSES = ['open', 'in-progress', 'resolved', 'closed'];
 const PRIORITIES = ['low', 'medium', 'high', 'critical'];
+const SOURCES = ['manual', 'sdk', 'api'];
 const MAX_PAGE_SIZE = 100;
 const LIST_QUERY_TIME_LIMIT_MS = 5000;
 
-// Leaving heavy fields out keeps list responses small as incidents accumulate
-// telemetry; the same list is applied to broadcast socket events.
-const LIST_PROJECTION = LIST_EXCLUDED_FIELDS.map((field) => `-${field}`).join(' ');
+// Leaving heavy fields out keeps list responses small as bugs accumulate
+// telemetry; the same list is applied to broadcast socket events. The error
+// log is read so toListPayload can cut each SDK row's top frame from it, and
+// is then dropped before the response is sent.
+const LIST_PROJECTION = LIST_EXCLUDED_FIELDS.filter((field) => field !== 'errorLog')
+  .map((field) => `-${field}`)
+  .join(' ');
 
 // Escapes user input before it is used inside a RegExp filter.
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -125,7 +133,7 @@ const assertAssignable = async (assignedTo) => {
 
 export const getBugs = async (req, res, next) => {
   try {
-    const { status, priority, assignedTo, reporter, project, search } = req.query;
+    const { status, priority, assignedTo, reporter, project, source, search } = req.query;
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
 
@@ -149,6 +157,11 @@ export const getBugs = async (req, res, next) => {
       if (typeof project !== 'string') return badRequest(res, 'Invalid project filter');
       filter.project = project;
     }
+    // Who reported it: a person (manual) or the SDK. Same enum as the model.
+    if (source) {
+      if (!SOURCES.includes(source)) return badRequest(res, 'Invalid source filter');
+      filter.source = source;
+    }
     if (search) {
       if (typeof search !== 'string') return badRequest(res, 'Invalid search filter');
       if (search.trim()) {
@@ -166,14 +179,18 @@ export const getBugs = async (req, res, next) => {
         .select(LIST_PROJECTION)
         .populate('reporter', 'name email avatar')
         .populate('assignedTo', 'name email avatar')
-        .sort({ createdAt: -1 })
+        // Most recently active first, matching the Updated column and the
+        // Overview's Recent list. _id breaks ties so pages never overlap.
+        .sort({ updatedAt: -1, _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
       Bug.countDocuments(filter).maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
     ]);
 
-    return res.json({ bugs, total, page, pages: Math.max(1, Math.ceil(total / limit)), limit });
+    // Every row goes through toListPayload: it cuts the top frame from the
+    // error log and drops the log itself, which must never reach a list.
+    return res.json({ bugs: bugs.map(toListPayload), total, page, pages: Math.max(1, Math.ceil(total / limit)), limit });
   } catch (err) {
     return next(err);
   }
@@ -226,7 +243,7 @@ export const createBug = async (req, res, next) => {
       entityId: bug._id,
       performedBy: req.user._id,
       performedByName: req.user.name,
-      details: `Reported incident: "${bug.title}" (${bug.severity} / ${bug.priority})`,
+      details: `Reported bug: "${bug.title}" (${bug.severity} / ${bug.priority})`,
     });
 
     // Analysis runs after the response, so filing a bug never waits on the
@@ -308,7 +325,7 @@ export const updateBug = async (req, res, next) => {
       entityId: bug._id,
       performedBy: req.user._id,
       performedByName: req.user.name,
-      details: `Updated incident #${bug._id.toString().slice(-6)} (Status: ${bug.status}, Priority: ${bug.priority})`,
+      details: `Updated bug #${bug._id.toString().slice(-6)} (Status: ${bug.status}, Priority: ${bug.priority})`,
     });
 
     return res.json(bug);
@@ -333,7 +350,7 @@ export const deleteBug = async (req, res, next) => {
       entityId: bug._id,
       performedBy: req.user._id,
       performedByName: req.user.name,
-      details: `Deleted incident: "${bug.title}" (${bug.occurrences || 1} occurrence(s))`,
+      details: `Deleted bug: "${bug.title}" (${bug.occurrences || 1} occurrence(s))`,
     });
 
     return res.json({ message: 'Bug deleted successfully' });
@@ -372,17 +389,88 @@ export const uploadAnnotation = replaceBugImage('annotatedScreenshot');
 
 export const getDashboardStats = async (req, res, next) => {
   try {
-    const [total, open, inProgress, resolved, closed, byPriority, recent] = await Promise.all([
+    const [total, open, inProgress, resolved, closed, byPriority, projectNames, oldestOpen, recent] = await Promise.all([
       Bug.countDocuments(),
       Bug.countDocuments({ status: 'open' }),
       Bug.countDocuments({ status: 'in-progress' }),
       Bug.countDocuments({ status: 'resolved' }),
       Bug.countDocuments({ status: 'closed' }),
       Bug.aggregate([{ $group: { _id: '$priority', count: { $sum: 1 } } }]),
-      Bug.find().select('title status priority createdAt reporter').sort({ createdAt: -1 }).limit(5).populate('reporter', 'name avatar'),
+      // `project` defaults to an empty string, which is "no project", not one.
+      Bug.distinct('project', { project: { $nin: ['', null] } }),
+      Bug.findOne({ status: 'open' }).sort({ createdAt: 1 }).select('createdAt').lean(),
+      // Most recently *active*, not most recently reported: the dashboard
+      // shows an Updated column, which should read in order.
+      Bug.find()
+        .select('title status priority project assignedTo source occurrences createdAt updatedAt')
+        .sort({ updatedAt: -1 })
+        .limit(5)
+        .populate('assignedTo', 'name avatar')
+        .lean(),
     ]);
 
-    return res.json({ total, open, inProgress, resolved, closed, byPriority, recent });
+    return res.json({
+      total,
+      open,
+      inProgress,
+      resolved,
+      closed,
+      byPriority,
+      projects: projectNames.length,
+      // The names themselves, for the Bugs list's project filter.
+      projectNames: [...projectNames].sort((a, b) => a.localeCompare(b)),
+      // When the longest-waiting open bug was reported; null when none is open.
+      oldestOpenAt: oldestOpen?.createdAt ?? null,
+      recent,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const TREND_DAYS = 7;
+const HISTORY_FIELDS = 'createdAt status statusHistory.status statusHistory.changedAt';
+
+/*
+ * Figures reconstructed from statusHistory, kept apart from getDashboardStats
+ * because they are a different kind of number: that endpoint is a snapshot of
+ * now, these are replays of the past with their own caveats (UTC day
+ * boundaries, sample size).
+ */
+export const getTrendStats = async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const since = new Date(windowStart(now, TREND_DAYS));
+
+    const [windowBugs, resolvedBugs] = await Promise.all([
+      // Only bugs whose status could have been 'open' at some point in the
+      // window: open now, or changed status during it. Any other bug held one
+      // non-open status for the whole window and contributes nothing.
+      Bug.find({
+        createdAt: { $lte: now },
+        $or: [{ status: 'open' }, { 'statusHistory.changedAt': { $gte: since } }],
+      })
+        .select(HISTORY_FIELDS)
+        .lean()
+        .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
+      Bug.find({ 'statusHistory.status': 'resolved' })
+        .select(HISTORY_FIELDS)
+        .lean()
+        .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
+    ]);
+
+    return res.json({
+      openByDay: {
+        timezone: 'UTC',
+        days: openCountsByDay(windowBugs, now, TREND_DAYS),
+      },
+      timeToResolve: resolutionStats(resolvedBugs),
+      // Same seven UTC days as openByDay, starting at `since`.
+      resolvedInWindow: {
+        since: since.toISOString(),
+        count: countResolvedSince(resolvedBugs, since),
+      },
+    });
   } catch (err) {
     return next(err);
   }
@@ -439,7 +527,7 @@ ${bug.description?.replace(/<[^>]*>?/gm, '') || ''}
 
 ${bug.steps?.length ? `### Steps to Reproduce\n${bug.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n` : ''}
 ${bug.errorLog ? `### Error Log\n\`\`\`\n${bug.errorLog}\n\`\`\`\n` : ''}
-${bug.aiInsights?.possibleCause ? `### ${bug.aiInsights.source === 'heuristic' ? 'Heuristic' : 'AI'} Diagnosis\n**Possible Cause:** ${bug.aiInsights.possibleCause}\n\n**Suggested Fix:**\n${bug.aiInsights.suggestedFix}\n` : ''}
+${analysisMarkdown(bug.aiInsights)}
 
 ---
 - **Priority:** ${bug.priority}
@@ -491,7 +579,7 @@ ${bug.aiInsights?.possibleCause ? `### ${bug.aiInsights.source === 'heuristic' ?
       entityId: bug._id,
       performedBy: req.user._id,
       performedByName: req.user.name,
-      details: `Exported incident to GitHub: ${repoOwner}/${repoName} #${ghIssue.number}`,
+      details: `Exported bug to GitHub: ${repoOwner}/${repoName} #${ghIssue.number}`,
     });
 
     return res.json({

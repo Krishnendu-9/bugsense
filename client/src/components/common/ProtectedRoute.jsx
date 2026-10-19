@@ -8,15 +8,15 @@ import { PageSkeleton } from './Loader.jsx';
 
 function AppShellSkeleton() {
   return (
-    <div className="flex min-h-screen bg-background" aria-busy="true" aria-label="Loading">
-      <div className="hidden lg:block w-64 border-r border-white/[0.08] p-4 space-y-4">
+    <div className="flex min-h-screen bg-canvas" aria-busy="true" aria-label="Loading">
+      <div className="hidden lg:block w-[244px] border-r border-border p-4 space-y-4">
         <div className="skeleton h-9 w-36 rounded-xl" />
         {Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="skeleton h-8 w-full rounded-xl" />
         ))}
       </div>
       <div className="flex-1 flex flex-col">
-        <div className="h-16 border-b border-white/[0.08] px-6 flex items-center">
+        <div className="h-16 border-b border-border px-6 flex items-center">
           <div className="skeleton h-8 w-72 rounded-xl" />
         </div>
         <div className="p-6 space-y-4">
@@ -46,18 +46,31 @@ export default function ProtectedRoute() {
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-canvas">
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setDrawerPath(null)}
       />
+      {/*
+        The sidebar column. The sidebar itself is position: fixed, so it only
+        ever spans the window -- which is right while scrolling, but anything
+        that renders the whole page at once (a full-page screenshot, print)
+        draws it once at window height and leaves the rest of the page with no
+        column beside it. This in-flow element stretches with the page and
+        carries the same surface and divider to the bottom of the document;
+        in the browser the fixed sidebar sits exactly on top of it. It also
+        reserves the column's width, replacing the old margin on the content.
+      */}
       <div
-        className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-300 ease-in-out ${
-          collapsed ? 'lg:ml-16' : 'lg:ml-64'
+        aria-hidden="true"
+        data-testid="sidebar-column"
+        className={`hidden lg:block flex-shrink-0 bg-surface border-r border-border transition-[width] duration-300 ease-in-out ${
+          collapsed ? 'lg:w-16' : 'lg:w-[244px]'
         }`}
-      >
+      />
+      <div className="flex-1 flex flex-col min-w-0">
         <Navbar onOpenMenu={() => setDrawerPath(location.pathname)} />
         <main className="flex-1 p-4 sm:p-6 overflow-x-hidden">
           {/* A crash in one page keeps the sidebar and navbar usable, and

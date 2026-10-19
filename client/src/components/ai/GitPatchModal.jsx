@@ -16,10 +16,10 @@ const copyToClipboard = async (text, successMessage) => {
 };
 
 const lineStyle = (line) => {
-  if (line.startsWith('+') && !line.startsWith('+++')) return 'text-green-400 bg-green-500/10 block px-1 -mx-1 rounded-sm';
-  if (line.startsWith('-') && !line.startsWith('---')) return 'text-red-400 bg-red-500/10 block px-1 -mx-1 rounded-sm';
-  if (line.startsWith('@@')) return 'text-secondary font-semibold block pt-1';
-  if (line.startsWith('---') || line.startsWith('+++')) return 'text-yellow-400 font-semibold';
+  if (line.startsWith('+') && !line.startsWith('+++')) return 'text-status-resolved bg-status-resolved/10 block px-1 -mx-1 rounded-sm';
+  if (line.startsWith('-') && !line.startsWith('---')) return 'text-danger bg-danger/10 block px-1 -mx-1 rounded-sm';
+  if (line.startsWith('@@')) return 'text-accent font-semibold block pt-1';
+  if (line.startsWith('---') || line.startsWith('+++')) return 'text-muted font-semibold';
   return 'text-muted';
 };
 
@@ -55,8 +55,8 @@ export default function GitPatchModal({ patch, onClose, onRegenerate, regenerati
       footer={
         <>
           {hasDiff ? (
-            <span className="text-xs text-muted font-mono">
-              Apply via: <code className="text-text-base bg-black/40 px-1.5 py-0.5 rounded">git apply patch.diff</code>
+            <span className="text-xs text-muted">
+              Apply via: <code className="text-fg bg-track px-1.5 py-0.5 rounded">git apply patch.diff</code>
             </span>
           ) : (
             <span />
@@ -90,27 +90,27 @@ export default function GitPatchModal({ patch, onClose, onRegenerate, regenerati
           <div className="skeleton h-64 w-full rounded-xl" />
         </div>
       ) : !hasDiff ? (
-        <div className="flex items-start gap-3 rounded-xl p-4 bg-white/5 border border-white/10 text-sm text-muted">
-          <Info size={16} className="flex-shrink-0 mt-0.5 text-primary" />
-          <p>{patch.explanation || 'The AI service did not return a patch for this incident.'}</p>
+        <div className="flex items-start gap-3 rounded-xl p-4 bg-track border border-border text-sm text-muted">
+          <Info size={16} className="flex-shrink-0 mt-0.5 text-accent" />
+          <p>{patch.explanation || 'The AI service did not return a patch for this bug.'}</p>
         </div>
       ) : (
         <div className="space-y-4">
           {patch.explanation && (
-            <div className="bg-primary/10 border border-primary/20 rounded-xl p-3.5 text-xs text-text-base leading-relaxed">
-              <span className="font-semibold text-primary block mb-1">Fix Rationale:</span>
+            <div className="bg-accent/10 border border-accent/20 rounded-xl p-3.5 text-xs text-fg leading-relaxed">
+              <span className="font-semibold text-accent block mb-1">Fix Rationale:</span>
               {patch.explanation}
             </div>
           )}
 
-          <div className="rounded-xl border border-white/10 overflow-hidden bg-[#0A0E17]">
-            <div className="flex items-center justify-between px-4 py-2 bg-black/40 border-b border-white/5 text-xs text-muted">
-              <span className="flex items-center gap-1.5 font-mono">
+          <div className="rounded-xl border border-border overflow-hidden bg-canvas">
+            <div className="flex items-center justify-between px-4 py-2 bg-track border-b border-hairline text-xs text-muted">
+              <span className="flex items-center gap-1.5">
                 <FileCode size={13} /> unified diff (git apply)
               </span>
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary-hover transition-colors"
+                className="flex items-center gap-1 text-[11px] font-semibold text-accent hover:text-accent transition-colors"
               >
                 {copied ? <Check size={12} /> : <Copy size={12} />}
                 {copied ? 'Copied' : 'Copy Diff'}

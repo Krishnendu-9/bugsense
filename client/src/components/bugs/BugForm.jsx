@@ -233,7 +233,7 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
             Browser Info
             <span className="text-xs text-muted normal-case tracking-normal font-normal">(auto-captured)</span>
           </p>
-          <div className="p-3 rounded-lg bg-white/5 border border-border text-xs text-muted font-mono space-y-1">
+          <div className="p-3 rounded-lg bg-track border border-border text-xs text-muted font-mono space-y-1">
             <p>Browser: {browserInfo.browser} {browserInfo.version}</p>
             <p>OS: {browserInfo.os}</p>
             <p>Screen: {browserInfo.screenSize}</p>
@@ -262,7 +262,7 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {tags.map((tag) => (
-                <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-primary/10 text-primary border border-primary/20">
+                <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-accent/10 text-accent border border-accent/20">
                   #{tag}
                   <button type="button" onClick={() => removeTag(tag)} aria-label={`Remove tag ${tag}`} className="hover:text-priority-high transition-colors">
                     <X size={10} />
@@ -284,7 +284,7 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
                 type="button"
                 onClick={removeScreenshot}
                 aria-label="Remove screenshot"
-                className="absolute top-2 right-2 p-1.5 rounded-lg bg-priority-high/80 text-white hover:bg-priority-high transition-colors"
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-surface text-danger border border-border hover:bg-danger/10 transition-colors"
               >
                 <X size={14} />
               </button>
@@ -304,12 +304,12 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
                   fileInputRef.current?.click();
                 }
               }}
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors duration-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-white/[0.03]'
+              className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors duration-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                isDragging ? 'border-accent bg-accent/5' : 'border-border hover:border-accent/50 hover:bg-track'
               }`}
             >
               <Upload size={24} className="mx-auto text-muted mb-2" />
-              <p className="text-sm text-muted">Drag & drop screenshot or <span className="text-primary">browse</span></p>
+              <p className="text-sm text-muted">Drag & drop screenshot or <span className="text-accent">browse</span></p>
               <p className="text-xs text-muted mt-1">PNG, JPG, GIF or WebP up to 5MB</p>
               <input
                 ref={fileInputRef}

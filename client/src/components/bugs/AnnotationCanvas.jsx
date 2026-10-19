@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pencil, Square, Circle, Minus, RotateCcw, Download, Palette } from 'lucide-react';
 import toast from 'react-hot-toast';
+import useTheme from '../../hooks/useTheme.js';
+import { readToken } from '../../utils/theme.js';
 
 const TOOLS = [
   { id: 'pencil', icon: Pencil, label: 'Pencil' },
@@ -9,7 +11,21 @@ const TOOLS = [
   { id: 'circle', icon: Circle, label: 'Ellipse' },
 ];
 
-const COLORS = ['#EF4444', '#F59E0B', '#22C55E', '#6366F1', '#F1F5F9', '#000000'];
+/*
+ * Annotation ink is the one place in the client that keeps colour literals,
+ * deliberately: these strokes are drawn into a PNG that is uploaded and stored.
+ * A circle the reporter drew in red has to still be red when the bug is read
+ * back under the other theme, so the ink cannot come from a theme token. Only
+ * the canvas background and the surrounding controls follow the theme.
+ */
+const INK_COLORS = [
+  { value: '#EF4444', label: 'Red' },
+  { value: '#F59E0B', label: 'Amber' },
+  { value: '#22C55E', label: 'Green' },
+  { value: '#3B82F6', label: 'Blue' },
+  { value: '#FFFFFF', label: 'White' },
+  { value: '#000000', label: 'Black' },
+];
 
 const CANVAS_WIDTH = 800;
 const STROKE_WIDTH = 3;
@@ -25,8 +41,9 @@ export default function AnnotationCanvas({ imageUrl, onSave }) {
   // handlers can use it synchronously.
   const fabricModRef = useRef(null);
   const [activeTool, setActiveTool] = useState('pencil');
-  const [activeColor, setActiveColor] = useState('#EF4444');
+  const [activeColor, setActiveColor] = useState(INK_COLORS[0].value);
   const [fabricReady, setFabricReady] = useState(false);
+  const { theme } = useTheme();
 
   useEffect(() => {
     let disposed = false;
@@ -39,7 +56,9 @@ export default function AnnotationCanvas({ imageUrl, onSave }) {
       canvas = new fabric.Canvas(canvasRef.current, {
         width: CANVAS_WIDTH,
         height: 500,
-        backgroundColor: '#1E293B',
+        // Fabric takes a colour value, not a class, so the token is resolved
+        // here. It is only visible where the screenshot does not reach.
+        backgroundColor: readToken('track'),
       });
       fabricCanvasRef.current = canvas;
 
@@ -76,6 +95,15 @@ export default function AnnotationCanvas({ imageUrl, onSave }) {
       }
     };
   }, [imageUrl]);
+
+  // The background was resolved once at construction, so switching theme while
+  // the editor is open would otherwise leave the old surface colour behind.
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || !fabricReady) return;
+    canvas.backgroundColor = readToken('track');
+    canvas.requestRenderAll();
+  }, [theme, fabricReady]);
 
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
@@ -200,8 +228,8 @@ export default function AnnotationCanvas({ imageUrl, onSave }) {
               onClick={() => setActiveTool(id)}
               className={`p-2 rounded-md transition-colors duration-200 ${
                 activeTool === id
-                  ? 'bg-primary text-white'
-                  : 'text-muted hover:text-text-base hover:bg-white/5'
+                  ? 'bg-primary-bg text-primary-fg'
+                  : 'text-muted hover:text-fg hover:bg-track'
               }`}
             >
               <Icon size={16} />
@@ -211,17 +239,17 @@ export default function AnnotationCanvas({ imageUrl, onSave }) {
 
         <div className="flex items-center gap-1 p-1 bg-surface rounded-lg border border-border" role="toolbar" aria-label="Colors">
           <Palette size={14} className="text-muted ml-1" />
-          {COLORS.map((color) => (
+          {INK_COLORS.map(({ value, label }) => (
             <button
-              key={color}
+              key={value}
               type="button"
-              aria-label={`Color ${color}`}
-              aria-pressed={activeColor === color}
-              onClick={() => setActiveColor(color)}
+              aria-label={`${label} ink`}
+              aria-pressed={activeColor === value}
+              onClick={() => setActiveColor(value)}
               className={`w-5 h-5 rounded-full border-2 transition-transform duration-150 hover:scale-110 ${
-                activeColor === color ? 'border-white scale-110' : 'border-transparent'
+                activeColor === value ? 'border-fg scale-110' : 'border-border'
               }`}
-              style={{ backgroundColor: color }}
+              style={{ backgroundColor: value }}
             />
           ))}
         </div>

@@ -77,6 +77,37 @@ export const getHeuristicAnalysis = (errorLog = '') => {
 };
 
 /**
+ * A saved analysis as a Markdown section for text that leaves BugSense (the
+ * GitHub issue body), attributed by its recorded source. Only 'claude' is
+ * called AI. A missing or unknown source is said to be unrecorded rather than
+ * assumed: analyses saved before `source` existed include unlabelled fallback
+ * text. Returns '' when there is no analysis.
+ */
+export const analysisMarkdown = (insights) => {
+  if (!insights?.possibleCause) return '';
+  let heading;
+  let note;
+  if (insights.source === 'claude') {
+    heading = 'AI Analysis (Claude)';
+  } else if (insights.source === 'heuristic') {
+    heading = 'Heuristic Analysis';
+    note = '_Matched from keywords in the error log by BugSense rules. This is not a model diagnosis._';
+  } else {
+    heading = 'Analysis (source not recorded)';
+    note = '_BugSense has no record of what produced this analysis, so it is not presented as model output._';
+  }
+  return [
+    `### ${heading}`,
+    ...(note ? [note, ''] : []),
+    `**Possible Cause:** ${insights.possibleCause}`,
+    '',
+    '**Suggested Fix:**',
+    insights.suggestedFix || '',
+    '',
+  ].join('\n');
+};
+
+/**
  * Service: Analyze an error log using Claude AI (with automatic heuristic fallback).
  * The result's `source` says which one produced it, so the UI never labels a
  * keyword match as a model diagnosis.
@@ -155,7 +186,7 @@ export const generateGitPatch = async (errorLog = '', bugDescription = '', steps
     };
   } catch (err) {
     console.warn('AI patch generation failed:', err.message);
-    return unavailable('The AI service could not produce a patch for this incident. Try again later.');
+    return unavailable('The AI service could not produce a patch for this bug. Try again later.');
   }
 };
 

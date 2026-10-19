@@ -11,6 +11,77 @@ export const formatDate = (date, pattern = 'MMM d, yyyy') => {
   return format(new Date(date), pattern);
 };
 
+/**
+ * A duration as one compact unit: "<1m", "45m", "23h", "1d", "6d". Switches to
+ * days at 24 hours, so a column of these never sets "47h" above "2d" and asks
+ * the reader to convert. Days are floored: 30 hours reads "1d". Returns null
+ * for a missing or invalid value, so the caller decides what an absent number
+ * looks like rather than getting "0m".
+ */
+export const formatDuration = (ms) => {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return '<1m';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+};
+
+/**
+ * A duration as a headline statistic, where precision is the point: hours up
+ * to 72, then days to one decimal. 30 hours reads "30h" (formatDuration would
+ * say "1d" and hide six of them); 100 hours reads "4.2d". Rounds to the
+ * nearest unit rather than flooring, since this is a measurement, not an age.
+ * Returns null for a missing or invalid value.
+ *
+ * Not for table columns -- those use formatDuration, whose job is making rows
+ * comparable at a glance.
+ */
+export const formatStatDuration = (ms) => {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 1) return '<1m';
+  if (minutes < 60) return `${minutes}m`;
+  // Round once, then decide the unit, so 71h40m becomes "3.0d" rather than "72h".
+  const hours = Math.round(ms / 3600000);
+  if (hours < 72) return `${hours}h`;
+  return `${(ms / 86400000).toFixed(1)}d`;
+};
+
+// A frame location reduced to its file name, line and column:
+// "https://shop.example.com/assets/Cart-3f9a1c.js:41:18" -> "Cart-3f9a1c.js:41:18".
+// A query or hash left on the file name is dropped. Locations with no path
+// ("<anonymous>", "native") come back unchanged.
+const shortLocation = (location) => {
+  const withoutQuery = location.replace(/[?#][^:]*/, '');
+  return withoutQuery.split(/[\\/]/).pop() || location;
+};
+
+/**
+ * A V8 stack frame shortened for a table cell: the function, then the file's
+ * base name with line and column instead of the full URL. Shows
+ * "at CartSummary (CartSummary-3f9a1c.js:41:18)" where the frame was
+ * "at CartSummary (https://shop.example.com/assets/CartSummary-3f9a1c.js:41:18)".
+ * Anything that is not a recognisable "at ..." frame is returned unchanged, so
+ * the complete frame can always go in the title attribute.
+ */
+export const shortFrame = (frame) => {
+  if (!frame) return frame;
+  const named = frame.match(/^at (.+) \(([^()]+)\)$/);
+  if (named) return `at ${named[1]} (${shortLocation(named[2])})`;
+  const anonymous = frame.match(/^at (\S+)$/);
+  if (anonymous) return `at ${shortLocation(anonymous[1])}`;
+  return frame;
+};
+
+/** Compact relative time for dense tables: "3h ago", "6d ago". */
+export const compactAgo = (date) => {
+  if (!date) return null;
+  const elapsed = formatDuration(Date.now() - new Date(date).getTime());
+  return elapsed && `${elapsed} ago`;
+};
+
 export const capitalize = (str) => {
   if (!str) return '';
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -134,6 +205,27 @@ export const statusOptionsFor = (user, bug) => {
   const allowed = new Set([bug.status, 'closed']);
   if (bug.status === 'resolved' || bug.status === 'closed') allowed.add('open');
   return ALL_STATUSES.filter((status) => allowed.has(status));
+};
+
+/*
+ * The regressions in a bug's status history: each time it came back after
+ * being resolved or closed. Same rule the server applies (recordRepeat in
+ * telemetry.controller.js): only the telemetry pipeline writes a status change
+ * with no changedBy, and it only does so to move a resolved or closed bug back
+ * to in-progress. Returns [{ at, note, previous }] oldest first, where
+ * `previous` is the history entry that had resolved or closed it (or null when
+ * the history does not record one).
+ */
+export const findRegressions = (statusHistory = []) => {
+  const regressions = [];
+  (statusHistory || []).forEach((entry, i) => {
+    const previous = statusHistory[i - 1] || null;
+    const reopenedFromDone = !previous || previous.status === 'resolved' || previous.status === 'closed';
+    if (!entry.changedBy && entry.status === 'in-progress' && reopenedFromDone) {
+      regressions.push({ at: entry.changedAt, note: entry.note || '', previous });
+    }
+  });
+  return regressions;
 };
 
 // Converts a canvas data URL into a File so it can be uploaded as multipart.

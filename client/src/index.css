@@ -1,8 +1,105 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Fonts are self-hosted from @fontsource (imported in main.jsx); there is no
+   font CDN request. Family stacks live in tailwind.config.cjs. */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Design tokens.
+ *
+ * Every value is stored as bare "R G B" channels rather than a hex string so
+ * Tailwind can compose them with its own opacity modifiers: the config maps
+ * each token to rgb(var(--token) / <alpha-value>), which is what makes
+ * bg-surface/70 and border-border/30 work. A hex variable cannot do that.
+ *
+ * :root carries the light theme; [data-theme="dark"] overrides it. The theme is
+ * chosen before first paint by the inline script in index.html, so there is no
+ * flash of the wrong palette.
+ *
+ * JavaScript that cannot use classes -- Recharts props, the Fabric canvas --
+ * reads these same variables through utils/theme.js. Nothing holds a colour
+ * literal except the annotation ink palette, which is drawing content rather
+ * than interface (see AnnotationCanvas.jsx).
+ */
+:root {
+  --bg: 255 255 255;
+  --surface: 255 255 255;
+  --canvas: 250 250 250;
+  --border: 231 231 234;
+  --hairline: 240 240 242;
+  --text: 24 24 27;
+  --muted: 82 82 91;
+  --subtle: 113 113 122;
+  /* #0F766E rather than #0D9488: against white (--on-accent) the lighter teal
+     reached only 3.74:1, below AA for the small text that sits on an accent
+     fill -- avatar initials, the connection pill. This gives 5.47:1 on white
+     and 4.86:1 against --accent-dim. Dark mode needs no equivalent change. */
+  --accent: 15 118 110;
+  --accent-dim: 204 251 241;
+  --on-accent: 255 255 255;
+  --primary-bg: 24 24 27;
+  --primary-fg: 255 255 255;
+  --track: 240 240 242;
+
+  /* One shade darker than first agreed (#2563EB, #B45309, #15803D, #DC2626,
+     #C2410C). Those reached ~5:1 on white, but every badge puts the colour on
+     a 10-15% tint of itself, which pulled them to 4.08-4.48:1 -- under AA for
+     badge-sized text. These clear 5:1 on a 15% tint. */
+  --status-open: 29 78 216;
+  --status-progress: 146 64 14;
+  --status-resolved: 22 101 52;
+  --priority-critical: 185 28 28;
+  --priority-high: 154 52 18;
+
+  /* In progress, for graphics only: status squares and chart segments. The
+     text colour above has to clear 4.5:1 on its own tint, and no amber hue
+     does that without turning brown, so filled shapes -- which need 3:1 --
+     get a true amber instead: 3.51:1 on --surface, 3.08:1 on --track (a
+     hovered table row). Never use it for text. */
+  --status-progress-mark: 194 120 3;
+
+  /* Additions to the agreed set -- see the step 1 notes. --danger is the
+     destructive-action colour (delete, form errors, sign out), which until now
+     borrowed priority-high; --shadow is the elevation colour, which has to be
+     far lighter over white than over near-black. */
+  --danger: 185 28 28;
+  --shadow: 24 24 27;
+  --shadow-opacity: 0.08;
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: 9 9 11;
+  --surface: 14 14 16;
+  --canvas: 9 9 11;
+  --border: 28 28 32;
+  --hairline: 20 20 23;
+  --text: 250 250 250;
+  --muted: 161 161 170;
+  --subtle: 110 110 118;
+  --accent: 45 212 191;
+  --accent-dim: 31 58 56;
+  --on-accent: 9 9 11;
+  --primary-bg: 250 250 250;
+  --primary-fg: 9 9 11;
+  --track: 25 25 29;
+
+  --status-open: 96 165 250;
+  --status-progress: 251 191 36;
+  /* Dark mode's text amber already reads as amber; the mark matches it. */
+  --status-progress-mark: 251 191 36;
+  --status-resolved: 74 222 128;
+  --priority-critical: 248 113 113;
+  --priority-high: 251 146 60;
+
+  --danger: 248 113 113;
+  --shadow: 0 0 0;
+  --shadow-opacity: 0.4;
+
+  color-scheme: dark;
+}
 
 @layer base {
   * {
@@ -10,17 +107,12 @@
   }
 
   html {
-    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-    color-scheme: dark;
+    font-family: theme('fontFamily.sans');
   }
 
   body {
-    background-color: #090D16;
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
-    background-attachment: fixed;
-    color: #F8FAFC;
+    background-color: rgb(var(--canvas));
+    color: rgb(var(--text));
     min-height: 100vh;
   }
 
@@ -30,106 +122,101 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: #090D16;
+    background: rgb(var(--canvas));
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #1E293B;
+    background: rgb(var(--border));
     border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #4F46E5;
+    background: rgb(var(--subtle));
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.25);
   }
 }
 
 @layer components {
   .glass-card {
-    background: rgba(17, 24, 39, 0.7);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    background: rgb(var(--surface));
+    border: 1px solid rgb(var(--border));
+    box-shadow: 0 1px 2px 0 rgb(var(--shadow) / var(--shadow-opacity));
     border-radius: 14px;
   }
 
   .glass-card-hover {
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
   }
 
   .glass-card-hover:hover {
-    transform: translateY(-2px);
-    border-color: rgba(99, 102, 241, 0.4);
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12), 0 16px 36px -12px rgba(99, 102, 241, 0.2);
+    border-color: rgb(var(--subtle) / 0.5);
   }
 
   .btn-primary {
-    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
-    box-shadow: 0 4px 16px -2px rgba(99, 102, 241, 0.45);
-    color: #FFFFFF;
+    background: rgb(var(--primary-bg));
+    color: rgb(var(--primary-fg));
     font-weight: 600;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    transition: all 0.2s ease-in-out;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: opacity 0.2s ease-in-out;
+    border: 1px solid transparent;
   }
 
   .btn-primary:hover:not(:disabled) {
-    box-shadow: 0 6px 20px -2px rgba(99, 102, 241, 0.65);
-    transform: translateY(-1px);
-    filter: brightness(1.08);
-  }
-
-  .btn-primary:active:not(:disabled) {
-    transform: translateY(0);
+    opacity: 0.88;
   }
 
   .btn-secondary {
-    background: rgba(22, 31, 48, 0.8);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #F1F5F9;
+    background: rgb(var(--surface));
+    border: 1px solid rgb(var(--border));
+    color: rgb(var(--text));
     font-weight: 500;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    transition: all 0.2s ease-in-out;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: rgba(30, 41, 59, 0.9);
-    border-color: rgba(255, 255, 255, 0.18);
-    transform: translateY(-1px);
+    background: rgb(var(--track));
+    border-color: rgb(var(--subtle) / 0.5);
   }
 
   .btn-danger {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #EF4444;
+    background: rgb(var(--danger) / 0.12);
+    border: 1px solid rgb(var(--danger) / 0.3);
+    color: rgb(var(--danger));
     font-weight: 500;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    transition: all 0.2s ease-in-out;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
   }
 
   .btn-danger:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.25);
-    border-color: rgba(239, 68, 68, 0.5);
+    background: rgb(var(--danger) / 0.2);
+    border-color: rgb(var(--danger) / 0.5);
   }
 
   .input-field {
     width: 100%;
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: rgb(var(--bg));
+    border: 1px solid rgb(var(--border));
     border-radius: 0.5rem;
     padding: 0.5rem 0.75rem;
-    color: #F8FAFC;
-    transition: all 0.2s ease-in-out;
+    color: rgb(var(--text));
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  }
+
+  .input-field::placeholder {
+    color: rgb(var(--subtle));
   }
 
   .input-field:focus {
     outline: none;
-    border-color: #6366F1;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+    border-color: rgb(var(--accent));
+    box-shadow: 0 0 0 2px rgb(var(--accent) / 0.25);
   }
 
   .label {
@@ -138,14 +225,31 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #94A3B8;
+    color: rgb(var(--muted));
     margin-bottom: 0.25rem;
   }
 
   .skeleton {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgb(var(--track));
     border-radius: 0.5rem;
+  }
+
+  /*
+   * Scroll shadows for a scrolling panel on --surface: a soft edge appears at
+   * the top or bottom only while there is more content that way, and is gone
+   * when there isn't. CSS only -- the two `local` covers move with the content
+   * and hide the two `scroll` shadows at either end. The sidebar nav uses it
+   * because its scrollbar alone was too faint to show that items (Team) were
+   * hidden below the fold.
+   */
+  .scroll-fade {
+    background:
+      linear-gradient(rgb(var(--surface)) 30%, rgb(var(--surface) / 0)) center top / 100% 32px no-repeat local,
+      linear-gradient(rgb(var(--surface) / 0), rgb(var(--surface)) 70%) center bottom / 100% 32px no-repeat local,
+      linear-gradient(rgb(var(--subtle) / 0.25), rgb(var(--subtle) / 0)) center top / 100% 12px no-repeat scroll,
+      linear-gradient(rgb(var(--subtle) / 0), rgb(var(--subtle) / 0.25)) center bottom / 100% 12px no-repeat scroll;
+    background-color: rgb(var(--surface));
   }
 }
 
@@ -155,7 +259,7 @@
 }
 
 .rich-text a {
-  color: #818CF8;
+  color: rgb(var(--accent));
   text-decoration: underline;
 }
 
@@ -175,9 +279,9 @@
 
 .rich-text pre,
 .rich-text code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: theme('fontFamily.mono');
   font-size: 0.8125rem;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgb(var(--track));
   border-radius: 0.375rem;
 }
 
@@ -192,24 +296,31 @@
 }
 
 .rich-text blockquote {
-  border-left: 3px solid #334155;
+  border-left: 3px solid rgb(var(--border));
   padding-left: 0.75rem;
-  color: #94A3B8;
+  color: rgb(var(--muted));
 }
 
-/* React Quill dark theme overrides */
-.ql-toolbar {
-  background-color: #1E293B !important;
-  border-color: #334155 !important;
+/*
+ * React Quill overrides.
+ *
+ * quill.snow.css hardcodes a light editor (white background, #444 icon
+ * strokes, #ccc borders) at a specificity we have to beat, hence !important
+ * throughout. Driving the overrides from tokens rather than from dark literals
+ * is what lets the editor follow the theme instead of always being dark.
+ */
+.ql-toolbar.ql-snow {
+  background-color: rgb(var(--track)) !important;
+  border-color: rgb(var(--border)) !important;
   border-radius: 8px 8px 0 0 !important;
 }
 
-.ql-container {
-  background-color: #1E293B !important;
-  border-color: #334155 !important;
+.ql-container.ql-snow {
+  background-color: rgb(var(--bg)) !important;
+  border-color: rgb(var(--border)) !important;
   border-radius: 0 0 8px 8px !important;
-  color: #F1F5F9 !important;
-  font-family: 'Inter', sans-serif !important;
+  color: rgb(var(--text)) !important;
+  font-family: inherit !important;
   font-size: 14px !important;
   min-height: 120px;
 }
@@ -219,18 +330,66 @@
 }
 
 .ql-editor.ql-blank::before {
-  color: #94A3B8 !important;
+  color: rgb(var(--subtle)) !important;
   font-style: normal !important;
 }
 
-.ql-stroke {
-  stroke: #94A3B8 !important;
+.ql-snow .ql-stroke,
+.ql-snow .ql-stroke-miter {
+  stroke: rgb(var(--muted)) !important;
 }
 
-.ql-fill {
-  fill: #94A3B8 !important;
+.ql-snow .ql-fill {
+  fill: rgb(var(--muted)) !important;
 }
 
-.ql-picker {
-  color: #94A3B8 !important;
+.ql-snow .ql-picker {
+  color: rgb(var(--muted)) !important;
+}
+
+/* The format dropdowns render as absolutely positioned panels that inherit
+   nothing from the container, so they need the surface colour spelled out or
+   they open as white boxes on the dark theme. */
+.ql-snow .ql-picker-options {
+  background-color: rgb(var(--surface)) !important;
+  border-color: rgb(var(--border)) !important;
+  color: rgb(var(--text)) !important;
+}
+
+.ql-snow .ql-picker-label:hover,
+.ql-snow .ql-picker-item:hover,
+.ql-snow button:hover {
+  color: rgb(var(--accent)) !important;
+}
+
+.ql-snow button:hover .ql-stroke,
+.ql-snow .ql-picker-label:hover .ql-stroke,
+.ql-snow button.ql-active .ql-stroke {
+  stroke: rgb(var(--accent)) !important;
+}
+
+.ql-snow button:hover .ql-fill,
+.ql-snow button.ql-active .ql-fill {
+  fill: rgb(var(--accent)) !important;
+}
+
+/* Quill's link tooltip and code blocks also assume a white page. */
+.ql-snow .ql-tooltip {
+  background-color: rgb(var(--surface)) !important;
+  border-color: rgb(var(--border)) !important;
+  box-shadow: 0 2px 8px 0 rgb(var(--shadow) / var(--shadow-opacity)) !important;
+  color: rgb(var(--text)) !important;
+}
+
+.ql-snow .ql-tooltip input[type='text'] {
+  background-color: rgb(var(--bg)) !important;
+  border-color: rgb(var(--border)) !important;
+  color: rgb(var(--text)) !important;
+}
+
+.ql-snow .ql-editor pre.ql-syntax,
+.ql-snow .ql-editor blockquote {
+  background-color: rgb(var(--track)) !important;
+  color: rgb(var(--text)) !important;
+  border-color: rgb(var(--border)) !important;
 }

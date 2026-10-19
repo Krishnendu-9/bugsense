@@ -60,11 +60,11 @@ export default function AIAnalyzer() {
     <div className="max-w-4xl space-y-6">
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/25">
-            <Cpu size={20} className="text-white" />
+          <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center">
+            <Cpu size={20} className="text-on-accent" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-text-base">AI Debug Analyzer</h1>
+            <h1 className="text-2xl font-bold text-fg">AI analyzer</h1>
             <p className="text-muted text-sm">Powered by Claude (keyword heuristics when no API key is configured) — paste any error and get debug insights</p>
           </div>
         </div>
@@ -73,7 +73,7 @@ export default function AIAnalyzer() {
       <div className="glass-card p-6">
         <div className="flex items-center gap-2 mb-3">
           <FileText size={14} className="text-muted" />
-          <h3 className="text-sm font-semibold text-text-base">Example Errors</h3>
+          <h3 className="text-sm font-semibold text-fg">Example Errors</h3>
         </div>
         <div className="flex flex-wrap gap-2">
           {EXAMPLE_ERRORS.map((ex) => (
@@ -81,7 +81,7 @@ export default function AIAnalyzer() {
               key={ex.label}
               type="button"
               onClick={() => loadExample(ex.value)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-border text-muted hover:text-text-base hover:border-primary/40 transition-all duration-200"
+              className="text-xs px-3 py-1.5 rounded-lg bg-track border border-border text-muted hover:text-fg hover:border-accent/40 transition-all duration-200"
             >
               {ex.label}
             </button>
@@ -156,10 +156,10 @@ export default function AIAnalyzer() {
 
       {!insights && !loading && (
         <div className="glass-card p-10 text-center">
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <Cpu size={28} className="text-primary" />
+          <div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
+            <Cpu size={28} className="text-accent" />
           </div>
-          <h3 className="text-lg font-semibold text-text-base mb-2">Ready to Debug</h3>
+          <h3 className="text-lg font-semibold text-fg mb-2">Ready to Debug</h3>
           <p className="text-muted text-sm max-w-sm mx-auto">
             Paste your error log above and Claude will analyze the root cause and suggest actionable fixes in seconds.
           </p>

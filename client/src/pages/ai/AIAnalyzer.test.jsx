@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import AIAnalyzer from './AIAnalyzer.jsx';
 import api from '../../api/axios.js';
 
@@ -15,7 +15,7 @@ describe('AIAnalyzer', () => {
   });
 
   it('enables Analyze for typed text and sends it', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     render(<AIAnalyzer />);
 
     const analyzeButton = screen.getByRole('button', { name: /Analyze with AI/ });
@@ -32,7 +32,7 @@ describe('AIAnalyzer', () => {
   });
 
   it('enables Analyze for pasted text', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     render(<AIAnalyzer />);
 
     await user.click(screen.getByLabelText(/Error Log/));
@@ -42,7 +42,7 @@ describe('AIAnalyzer', () => {
   });
 
   it('loads an example error', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     render(<AIAnalyzer />);
 
     await user.click(screen.getByRole('button', { name: 'JWT verification failed' }));

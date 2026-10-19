@@ -1,72 +1,49 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
-import { TrendingUp, TrendingDown, Minus, ArrowUpRight } from 'lucide-react';
+import { NO_VALUE } from '../../utils/constants.js';
 
-export default function StatsCard({ title, value, icon: Icon, color = 'text-primary', trend, subtitle, to, onClick }) {
-  const trendIcon = trend > 0
-    ? <TrendingUp size={12} className="text-priority-low" />
-    : trend < 0
-    ? <TrendingDown size={12} className="text-priority-high" />
-    : <Minus size={12} className="text-muted" />;
+/**
+ * One headline figure. `value` of null or undefined renders NO_VALUE; the
+ * caption is where the card says why, so a missing number is never silent.
+ */
+export default function StatsCard({ label, value, caption, to }) {
+  const missing = value === null || value === undefined;
 
-  const isClickable = Boolean(to || onClick);
-
-  const cardContent = (
+  const body = (
     <div
-      className={`glass-card glass-card-hover p-5 relative overflow-hidden group transition-all duration-200 ${
-        isClickable
-          ? 'cursor-pointer hover:border-primary/50 hover:shadow-glow-primary active:scale-[0.98]'
-          : ''
+      className={`glass-card p-5 h-full transition-colors duration-200 ${
+        to ? 'hover:border-subtle/50' : ''
       }`}
     >
-      {/* Subtle corner light flare */}
-      <div className="absolute -top-10 -right-10 w-24 h-24 bg-primary/10 rounded-full blur-2xl pointer-events-none group-hover:bg-primary/25 transition-all duration-300" />
-
-      <div className="flex items-center justify-between mb-3 relative z-10">
-        <div className="flex items-center gap-1.5">
-          <p className="text-xs font-semibold text-muted tracking-wide uppercase group-hover:text-text-base transition-colors">
-            {title}
-          </p>
-          {isClickable && (
-            <ArrowUpRight size={13} className="text-muted/40 group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
-          )}
-        </div>
-        {Icon && (
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.08] group-hover:border-primary/40 group-hover:scale-105 transition-all duration-200 ${color}`}>
-            <Icon size={18} />
-          </div>
-        )}
-      </div>
-
-      <p className="text-3xl font-extrabold text-text-base tracking-tight mb-1 font-sans">
-        {value ?? 0}
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <p
+        className={`mt-2 text-3xl font-semibold font-mono tabular-nums tracking-tight ${
+          missing ? 'text-subtle' : 'text-fg'
+        }`}
+      >
+        {missing ? NO_VALUE : value}
       </p>
-
-      <div className="flex items-center justify-between gap-1.5 text-xs text-muted">
-        <div className="flex items-center gap-1.5">
-          {trend !== undefined && trendIcon}
-          {subtitle && <span className="text-[11px] text-muted/80">{subtitle}</span>}
-        </div>
-        {isClickable && (
-          <span className="text-[10px] font-mono text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-            Filter →
-          </span>
-        )}
-      </div>
+      {caption && <p className="mt-1 text-xs text-subtle">{caption}</p>}
     </div>
   );
 
-  if (to) {
-    return <Link to={to} className="block no-underline">{cardContent}</Link>;
-  }
+  return to ? (
+    <Link
+      to={to}
+      className="block rounded-[14px] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      {body}
+    </Link>
+  ) : (
+    body
+  );
+}
 
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} className="block w-full text-left">
-        {cardContent}
-      </button>
-    );
-  }
-
-  return cardContent;
+export function StatsCardSkeleton() {
+  return (
+    <div className="glass-card p-5 space-y-3">
+      <div className="skeleton h-3 w-20 rounded" />
+      <div className="skeleton h-8 w-16 rounded" />
+      <div className="skeleton h-3 w-24 rounded" />
+    </div>
+  );
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import ErrorBoundary from './ErrorBoundary.jsx';
 
 function Bomb({ explode, message = 'Kaboom' }) {
@@ -47,7 +47,7 @@ describe('ErrorBoundary (page variant)', () => {
     render(<ErrorBoundary variant="page" resetKey="/x"><Flaky /></ErrorBoundary>);
 
     explode = false;
-    await userEvent.click(screen.getByRole('button', { name: /Try Again/ }));
+    await setupUser().click(screen.getByRole('button', { name: /Try Again/ }));
     expect(screen.getByText('Page content')).toBeInTheDocument();
   });
 

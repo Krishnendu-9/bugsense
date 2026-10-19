@@ -10,6 +10,7 @@ import {
   uploadScreenshot,
   uploadAnnotation,
   getDashboardStats,
+  getTrendStats,
   exportToGitHub,
   getGitHubConfig,
 } from '../controllers/bug.controller.js';
@@ -25,6 +26,7 @@ router.param('id', (req, res, next, id) => {
 });
 
 router.get('/stats', protect, getDashboardStats);
+router.get('/stats/trends', protect, getTrendStats);
 
 router.get('/github-config', protect, authorize('developer', 'admin'), getGitHubConfig);
 

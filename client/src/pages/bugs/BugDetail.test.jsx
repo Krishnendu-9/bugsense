@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import BugDetail from './BugDetail.jsx';
 import api from '../../api/axios.js';
 import { createFakeSocket, renderWithProviders, USERS } from '../../test/renderWithProviders.jsx';
@@ -82,8 +82,8 @@ describe('BugDetail real-time behaviour', () => {
     const mine = comment('c1', USERS.developer);
     api.post.mockResolvedValue({ data: mine });
 
-    await userEvent.type(screen.getByLabelText('Add a comment'), 'Comment c1');
-    await userEvent.click(screen.getByRole('button', { name: 'Post comment' }));
+    await setupUser().type(screen.getByLabelText('Add a comment'), 'Comment c1');
+    await setupUser().click(screen.getByRole('button', { name: 'Post comment' }));
     act(() => socket.serverEmit('comment:added', mine));
     act(() => socket.serverEmit('comment:added', comment('c2', USERS.admin)));
     act(() => socket.serverEmit('comment:added', comment('c2', USERS.admin)));
@@ -96,6 +96,34 @@ describe('BugDetail real-time behaviour', () => {
     expect(screen.queryByText('Comment c2')).not.toBeInTheDocument();
   });
 
+  it('asks before deleting a comment, and only deletes on confirm', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/bugs/b1') return { data: baseBug() };
+      if (url === '/comments/bug/b1') return { data: [comment('c1', USERS.developer)] };
+      return { data: [] };
+    });
+    api.delete.mockReset().mockResolvedValue({ data: {} });
+    await renderDetail(USERS.developer);
+    const user = setupUser();
+
+    await user.click(await screen.findByRole('button', { name: `Delete comment by ${USERS.developer.name}` }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete this comment?' });
+    expect(api.delete).not.toHaveBeenCalled();
+
+    // Cancel keeps it.
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Comment c1')).toBeInTheDocument();
+    expect(api.delete).not.toHaveBeenCalled();
+
+    // Confirm deletes it.
+    await user.click(screen.getByRole('button', { name: `Delete comment by ${USERS.developer.name}` }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete comment' }));
+    expect(api.delete).toHaveBeenCalledWith('/comments/c1');
+    expect(screen.queryByText('Comment c1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('leaves the page when the bug is deleted', async () => {
     const socket = await renderDetail();
     act(() => socket.serverEmit('bug:deleted', { _id: 'b1' }));
@@ -104,10 +132,84 @@ describe('BugDetail real-time behaviour', () => {
 
   it('offers the reporter only close for an open bug, and no priority', async () => {
     await renderDetail(USERS.reporter);
-    await userEvent.click(screen.getByRole('button', { name: 'Status' }));
+    await setupUser().click(screen.getByRole('button', { name: 'Status' }));
 
     const options = within(screen.getByLabelText('Status')).getAllByRole('option').map((o) => o.value);
     expect(options).toEqual(['open', 'closed']);
     expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument();
+  });
+});
+
+describe('BugDetail layout', () => {
+  const sdkBug = () => ({
+    ...baseBug(),
+    source: 'sdk',
+    reporter: null,
+    description: 'Crash reported automatically by the BugSense SDK.',
+    steps: [],
+    occurrences: 6,
+    fingerprint: '3e070587aa11bb22cc33dd44ee55ff66',
+    firstSeenAt: '2026-09-14T12:00:00.000Z',
+    lastSeenAt: '2026-09-19T15:10:00.000Z',
+    status: 'in-progress',
+    statusHistory: [
+      { status: 'resolved', changedBy: { _id: 'd1', name: 'Dev User' }, changedAt: '2026-09-15T10:00:00.000Z', note: 'Fixed' },
+      { status: 'in-progress', changedAt: '2026-09-19T15:10:00.000Z', note: 'Regression auto-detected' },
+    ],
+  });
+
+  const serve = (bug) => {
+    api.get.mockReset().mockImplementation(async (url) => {
+      if (url === '/bugs/b1') return { data: bug };
+      return { data: [] };
+    });
+  };
+
+  it('puts the regression, count and fingerprint in the banner, and drops what says nothing', async () => {
+    serve(sdkBug());
+    await renderDetail();
+
+    const banner = screen.getByRole('region', { name: 'Crash summary' });
+    expect(within(banner).getByText(/Regressed .* after being resolved by Dev User on Sep 15, 2026/)).toBeInTheDocument();
+    expect(within(banner).getByText('occurrences')).toBeInTheDocument();
+    expect(within(banner).getByRole('button', { name: 'Copy fingerprint 3e070587aa11bb22cc33dd44ee55ff66' })).toHaveTextContent('3e070587');
+
+    // The SDK placeholder description, the SDK "reporter" card and the Timeline card are gone.
+    expect(screen.queryByText('Crash reported automatically by the BugSense SDK.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Reporter' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Timeline' })).not.toBeInTheDocument();
+  });
+
+  it('shows no description card for an SDK crash stored with an empty description', async () => {
+    serve({ ...sdkBug(), description: '', tags: [] });
+    await renderDetail();
+    expect(screen.getByRole('region', { name: 'Crash summary' })).toBeInTheDocument();
+    expect(document.querySelector('.rich-text')).toBeNull();
+  });
+
+  it('keeps a real description and the reporter card for a person’s report, with no crash banner', async () => {
+    serve(baseBug());
+    await renderDetail();
+
+    expect(screen.getByText('Nothing happens on click')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Reporter' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Crash summary' })).not.toBeInTheDocument();
+  });
+
+  it('keeps Triage inline and moves the rest, Delete included, into More actions', async () => {
+    serve(baseBug());
+    await renderDetail(USERS.admin);
+    const user = setupUser();
+
+    expect(screen.getByRole('button', { name: 'Triage' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent);
+    expect(items).toEqual(['AI PR fix', 'Export to GitHub', 'Post-mortem', 'Edit details', 'Delete bug']);
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus();
   });
 });

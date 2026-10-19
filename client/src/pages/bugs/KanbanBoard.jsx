@@ -1,23 +1,78 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { LayoutGrid, List, MessageSquare, ArrowRight, ArrowLeft, Info } from 'lucide-react';
+import { Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
 import { useSocketEvent } from '../../hooks/useSocket.js';
 import useAuth from '../../hooks/useAuth.js';
-import { PriorityBadge, SeverityBadge } from '../../components/common/Badge.jsx';
-import { timeAgo, truncate, stripHtml, isStaff, statusOptionsFor } from '../../utils/helpers.js';
+import { OccurrenceBadge, PriorityText, StatusMark } from '../../components/common/Badge.jsx';
+import ViewSwitch from '../../components/bugs/ViewSwitch.jsx';
+import OverflowMenu from '../../components/common/OverflowMenu.jsx';
+import { compactAgo, formatDate, isStaff, statusOptionsFor } from '../../utils/helpers.js';
 import api from '../../api/axios.js';
 
 // The board shows at most one API page; beyond that it links to the list view.
 const BOARD_LIMIT = 100;
 
+// Column headers use StatusMark, so a column and a table row name a status
+// the same way; the label here is only for toasts and button labels.
 const COLUMNS = [
-  { id: 'open', label: 'Open', color: 'border-blue-500/30 bg-blue-500/5', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  { id: 'in-progress', label: 'In Progress', color: 'border-amber-500/30 bg-amber-500/5', badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  { id: 'resolved', label: 'Resolved', color: 'border-green-500/30 bg-green-500/5', badge: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  { id: 'closed', label: 'Closed', color: 'border-slate-500/30 bg-slate-500/5', badge: 'bg-slate-500/20 text-slate-400 border-slate-500/30' },
+  { id: 'open', label: 'Open' },
+  { id: 'in-progress', label: 'In Progress' },
+  { id: 'resolved', label: 'Resolved' },
+  { id: 'closed', label: 'Closed' },
 ];
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/*
+ * The card's muted line: severity, priority, source, project, age.
+ *
+ * The board is the triage surface, so it shows severity where the tables
+ * don't -- but only Blocker, in colour, by the same rule as priority: the
+ * urgent end gets colour and the rest stays quiet. (A blocker alerts the team
+ * whatever its priority, so a low-priority blocker must not look ordinary.)
+ * SDK is spelled out only for a single report; from two upwards the
+ * occurrence badge beside the title already says it.
+ *
+ * Only the project name gives way when the line is too long (ellipsis, full
+ * name on hover); severity, priority and age always render whole.
+ */
+function CardContext({ bug }) {
+  const fixed = 'flex-shrink-0 whitespace-nowrap';
+  const parts = [];
+  if (bug.severity === 'blocker') {
+    parts.push(<span key="sev" className={`${fixed} text-priority-critical font-medium`}>Blocker</span>);
+  }
+  // Medium weight for High as well as Critical: at card text size the hue
+  // alone doesn't register, so both urgent priorities carry weight and the
+  // hue tells them apart. (The table's larger text doesn't need this.)
+  parts.push(
+    <span key="pri" className={`${fixed} ${bug.priority === 'high' ? 'font-medium' : ''}`}>
+      <PriorityText priority={bug.priority} />
+    </span>
+  );
+  if (bug.source === 'sdk' && !(bug.occurrences > 1)) parts.push(<span key="src" className={fixed}>SDK</span>);
+  if (bug.project) {
+    parts.push(
+      <span key="proj" className="min-w-0 truncate" title={bug.project}>
+        {bug.project}
+      </span>
+    );
+  }
+  parts.push(
+    <span key="age" className={fixed} title={formatDate(bug.createdAt, 'MMM d, yyyy HH:mm')}>
+      {compactAgo(bug.createdAt)}
+    </span>
+  );
+  return parts.reduce(
+    (acc, part, i) =>
+      i === 0
+        ? [part]
+        : [...acc, <span key={`sep${i}`} className="flex-shrink-0 whitespace-pre" aria-hidden="true"> · </span>, part],
+    []
+  );
+}
 
 export default function KanbanBoard() {
   const { user } = useAuth();
@@ -112,100 +167,75 @@ export default function KanbanBoard() {
     setDraggingBugId(null);
   };
 
+  // One quiet line, said once: how to move a card. The Move menu works on
+  // every device; dragging is the desktop shortcut (touch browsers mostly do
+  // not start an HTML drag), so it is mentioned second.
+  let hint = null;
+  if (isStaff(user)) hint = 'Use a card’s Move menu, or drag it, to change its status.';
+  else if (user) hint = 'You can move your own bugs to Closed, or back to Open.';
+
+  const ready = initialized || !loading;
+  const shown = (allBugs || []).length;
+
   return (
-    <div className="space-y-6">
-      {/* Header with View Toggle */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="space-y-4">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-text-base">Issue Workflow Board</h1>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-primary/15 text-primary border border-primary/30">
-              Drag & Drop Enabled
-            </span>
-          </div>
-          <p className="text-xs text-muted">
-            Drag incident cards across columns to advance workflow status in real time.
+          <h1 className="text-2xl font-semibold tracking-tight text-fg">Board</h1>
+          <p className="mt-1 text-sm text-muted">
+            {ready ? [plural(shown, 'bug'), hint].filter(Boolean).join(' · ') : ' '}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/bugs"
-            className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5"
-          >
-            <List size={14} /> Table View
-          </Link>
-          <button className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 cursor-default">
-            <LayoutGrid size={14} /> Kanban Board
-          </button>
-        </div>
+        <ViewSwitch current="board" />
       </div>
 
       {pagination.total > BOARD_LIMIT && (
         <div className="glass-card p-3 flex items-center gap-2 text-xs text-muted">
-          <Info size={14} className="text-primary flex-shrink-0" />
+          <Info size={14} className="text-accent flex-shrink-0" aria-hidden="true" />
           Showing the {BOARD_LIMIT} most recent of {pagination.total} bugs.{' '}
-          <Link to="/bugs" className="text-primary hover:underline">Use the list view</Link> to see the rest.
+          <Link to="/bugs" className="text-accent hover:underline">Use the list view</Link> to see the rest.
         </div>
       )}
 
-      {/* Kanban Columns Grid */}
-      {!initialized && loading ? (
+      {!ready ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {COLUMNS.map((col) => (
-            <div key={col.id} className="glass-card p-3.5 space-y-3 min-h-[300px]">
-              <div className="skeleton h-6 w-24 rounded-full" />
-              <div className="skeleton h-24 w-full rounded-xl" />
-              <div className="skeleton h-24 w-full rounded-xl" />
+            <div key={col.id} className="glass-card min-h-[300px]">
+              <div className="px-4 py-3 border-b border-border">
+                <div className="skeleton h-4 w-24 rounded" />
+              </div>
+              <div className="p-2 space-y-2">
+                <div className="skeleton h-16 w-full rounded-lg" />
+                <div className="skeleton h-16 w-full rounded-lg" />
+              </div>
             </div>
           ))}
         </div>
       ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start select-none">
-        {COLUMNS.map((col, colIndex) => {
+        {COLUMNS.map((col) => {
           const colBugs = (allBugs || []).filter((b) => b.status === col.id);
           const isDropTarget = dragOverColId === col.id;
-          const prevColumn = COLUMNS[colIndex - 1];
-          const nextColumn = COLUMNS[colIndex + 1];
 
           return (
-            <div
+            <section
               key={col.id}
+              aria-label={`${col.label}, ${plural(colBugs.length, 'bug')}`}
               onDragOver={(e) => handleDragOver(e, col.id)}
               onDragEnter={(e) => handleDragOver(e, col.id)}
               onDragLeave={(e) => handleDragLeave(e, col.id)}
               onDrop={(e) => handleDrop(e, col.id)}
-              className={`glass-card p-3.5 flex flex-col min-h-[550px] max-h-[82vh] border transition-all duration-200 rounded-2xl ${
-                isDropTarget
-                  ? 'border-primary bg-primary/[0.08] shadow-[0_0_30px_rgba(99,102,241,0.25),inset_0_0_20px_rgba(99,102,241,0.12)] ring-2 ring-primary/50'
-                  : 'border-white/[0.08]'
+              className={`glass-card flex flex-col min-h-[550px] max-h-[82vh] transition-colors duration-200 ${
+                isDropTarget ? '!border-accent ring-1 ring-accent/40' : ''
               }`}
             >
-              {/* Column Header */}
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
-                <div className="flex items-center gap-2">
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${col.badge}`}>
-                    {col.label}
-                  </span>
-                  <span className="text-xs text-muted font-mono font-bold">
-                    {colBugs.length}
-                  </span>
-                </div>
-                {isDropTarget && (
-                  <span className="text-[10px] font-mono text-primary font-semibold animate-pulse">
-                    Drop to update
-                  </span>
-                )}
+              {/* Column header: the status and its count, nothing else */}
+              <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border text-sm">
+                <StatusMark status={col.id} />
+                <span className="font-mono tabular-nums text-muted">{colBugs.length}</span>
               </div>
 
-              {/* Cards Container */}
-              <div className="space-y-3 overflow-y-auto pr-1 flex-1">
-                {/* Drop indicator if hovering */}
-                {isDropTarget && (
-                  <div className="p-3 rounded-xl border-2 border-dashed border-primary/60 bg-primary/10 text-center text-xs text-primary font-semibold animate-in fade-in zoom-in-95 duration-150">
-                    Release to move to {col.label}
-                  </div>
-                )}
-
+              <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {colBugs.map((bug) => {
                   const isBeingDragged = draggingBugId === bug._id;
                   const movable = canMove(bug);
@@ -216,95 +246,55 @@ export default function KanbanBoard() {
                       draggable={movable}
                       onDragStart={(e) => handleDragStart(e, bug._id)}
                       onDragEnd={handleDragEnd}
-                      className={`p-3.5 rounded-xl bg-[#0B0F19]/90 border transition-all space-y-2.5 group ${movable ? 'cursor-grab active:cursor-grabbing' : ''} ${
-                        isBeingDragged
-                          ? 'opacity-40 scale-95 border-dashed border-primary/80 shadow-none'
-                          : 'border-white/[0.08] hover:border-primary/50 hover:bg-white/[0.04] hover:-translate-y-0.5 hover:shadow-lg'
-                      }`}
+                      className={`group rounded-lg border bg-surface px-3 py-2.5 transition-colors duration-200 ${
+                        movable ? 'cursor-grab active:cursor-grabbing' : ''
+                      } ${isBeingDragged ? 'opacity-40 border-dashed border-accent' : 'border-border hover:border-subtle/50 hover:bg-track'}`}
                     >
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
                         <Link
                           to={`/bugs/${bug._id}`}
                           onClick={(e) => isBeingDragged && e.preventDefault()}
-                          className="text-xs font-semibold text-text-base group-hover:text-primary transition-colors line-clamp-2 flex-1"
+                          className="flex-1 min-w-0 text-sm text-fg line-clamp-2 hover:text-accent transition-colors focus:outline-none focus-visible:underline"
                         >
                           {bug.title}
                         </Link>
-                        <PriorityBadge priority={bug.priority} />
+                        <span className="mt-0.5 flex">
+                          <OccurrenceBadge bug={bug} />
+                        </span>
                       </div>
 
-                      <p className="text-[11px] text-muted line-clamp-2 leading-relaxed">
-                        {truncate(stripHtml(bug.description), 90)}
-                      </p>
-
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <SeverityBadge severity={bug.severity} />
-                        {bug.occurrences > 1 && (
-                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-priority-high/15 text-priority-high border border-priority-high/30">
-                            ⚡ {bug.occurrences}x
-                          </span>
-                        )}
-                        {bug.source === 'sdk' && (
-                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                            SDK
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Card Footer & Quick Move Controls */}
-                      <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-muted">
-                        <div className="flex items-center gap-2">
-                          <span className="flex items-center gap-1">
-                            <MessageSquare size={11} /> {bug.comments?.length || 0}
-                          </span>
-                          <span>{timeAgo(bug.createdAt)}</span>
+                      <div className="mt-1.5 flex items-center gap-2 text-xs">
+                        <div className="flex flex-1 min-w-0 text-muted">
+                          <CardContext bug={bug} />
                         </div>
 
-                        {/* Quick Shift Status Controls (Accessible fallback) */}
-                        <div className="flex items-center gap-1">
-                          {prevColumn && canMoveTo(bug, prevColumn.id) && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStatusChange(bug._id, prevColumn.id);
-                              }}
-                              title="Move back"
-                              aria-label={`Move "${bug.title}" back`}
-                              className="p-1 rounded hover:bg-white/10 text-muted hover:text-text-base transition-colors"
-                            >
-                              <ArrowLeft size={11} />
-                            </button>
-                          )}
-                          {nextColumn && canMoveTo(bug, nextColumn.id) && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStatusChange(bug._id, nextColumn.id);
-                              }}
-                              title="Advance status"
-                              aria-label={`Advance "${bug.title}"`}
-                              className="p-1 rounded hover:bg-white/10 text-muted hover:text-text-base transition-colors"
-                            >
-                              <ArrowRight size={11} />
-                            </button>
-                          )}
-                        </div>
+                        {/* Move: one menu of the statuses this card can go to, on
+                            every width -- the way to move without dragging (touch,
+                            keyboard), with no direction to get wrong. The negative
+                            margins give it a thumb-sized target without making the
+                            card taller. */}
+                        <span className="flex-shrink-0 -my-2.5 -mr-2">
+                          <OverflowMenu
+                            label={`Move "${bug.title}"`}
+                            triggerText="Move"
+                            triggerClassName="inline-flex h-9 items-center rounded-lg px-2.5 text-xs text-muted hover:text-fg hover:bg-track transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            items={COLUMNS.filter((c) => c.id !== bug.status && canMoveTo(bug, c.id)).map((c) => ({
+                              key: c.id,
+                              label: c.label,
+                              onClick: () => handleStatusChange(bug._id, c.id),
+                            }))}
+                          />
+                        </span>
                       </div>
                     </div>
                   );
                 })}
 
-                {colBugs.length === 0 && !isDropTarget && (
-                  <div className="text-center py-16 text-xs text-muted/40 font-mono flex flex-col items-center justify-center gap-2">
-                    <span className="w-8 h-8 rounded-full border border-dashed border-white/10 flex items-center justify-center text-muted/30">
-                      +
-                    </span>
-                    <span>No tickets in this stage</span>
-                    <span className="text-[10px] text-muted/30">Drop card here</span>
-                  </div>
+                {colBugs.length === 0 && (
+                  <p className="px-2 py-6 text-center text-xs text-subtle">No bugs</p>
                 )}
               </div>
-            </div>
+            </section>
           );
         })}
       </div>

@@ -48,7 +48,7 @@ export default class ErrorBoundary extends React.Component {
     return (
       <>
         {error && (
-          <div className="text-left bg-black/40 border border-white/5 rounded-lg p-3.5 text-xs font-mono text-muted overflow-x-auto max-h-32">
+          <div className="text-left bg-track border border-hairline rounded-lg p-3.5 text-xs font-mono text-muted overflow-x-auto max-h-32">
             <span className="text-priority-high font-semibold">{error.toString()}</span>
           </div>
         )}
@@ -69,7 +69,7 @@ export default class ErrorBoundary extends React.Component {
             <AlertOctagon size={28} />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-text-base mb-1">This page crashed</h1>
+            <h1 className="text-lg font-bold text-fg mb-1">This page crashed</h1>
             <p className="text-sm text-muted">The rest of BugSense still works. Your data is safe.</p>
           </div>
           {this.renderDetails()}
@@ -78,7 +78,7 @@ export default class ErrorBoundary extends React.Component {
               <RotateCcw size={15} /> Try Again
             </button>
             <button onClick={this.handleHome} className="btn-secondary flex items-center gap-2 text-sm px-4 py-2">
-              <Home size={15} /> Dashboard
+              <Home size={15} /> Overview
             </button>
           </div>
         </div>
@@ -86,18 +86,18 @@ export default class ErrorBoundary extends React.Component {
     }
 
     return (
-      <div className="min-h-screen bg-background text-text-base flex items-center justify-center p-6">
+      <div className="min-h-screen bg-canvas text-fg flex items-center justify-center p-6">
         <div role="alert" className="glass-card max-w-lg w-full p-8 text-center space-y-6 relative overflow-hidden border border-priority-high/30 shadow-2xl">
           {/* Background ambient red glow */}
           <div className="absolute -top-16 -left-16 w-36 h-36 bg-priority-high/15 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-16 -right-16 w-36 h-36 bg-secondary/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -right-16 w-36 h-36 bg-accent/15 rounded-full blur-3xl pointer-events-none" />
 
           <div className="w-16 h-16 rounded-2xl bg-priority-high/10 border border-priority-high/30 flex items-center justify-center mx-auto text-priority-high">
             <AlertOctagon size={32} />
           </div>
 
           <div>
-            <h1 className="text-xl font-bold text-text-base mb-1.5">Something unexpected happened</h1>
+            <h1 className="text-xl font-bold text-fg mb-1.5">Something unexpected happened</h1>
             <p className="text-sm text-muted">BugSense encountered an unexpected runtime state. Your data is safe.</p>
           </div>
 
@@ -108,7 +108,7 @@ export default class ErrorBoundary extends React.Component {
               <RotateCcw size={15} /> Reload Application
             </button>
             <button onClick={this.handleHome} className="btn-secondary flex items-center gap-2 text-sm px-4 py-2">
-              <Home size={15} /> Dashboard
+              <Home size={15} /> Overview
             </button>
           </div>
         </div>

@@ -85,17 +85,17 @@ export default function Modal({ title, subtitle, icon: Icon, onClose, children, 
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`glass-card bg-surface w-full ${SIZES[size] || SIZES.md} max-h-[90vh] flex flex-col border border-white/10 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 focus:outline-none`}
+        className={`glass-card bg-surface w-full ${SIZES[size] || SIZES.md} max-h-[90vh] flex flex-col border border-border shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 focus:outline-none`}
       >
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-white/10 bg-surface/60">
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border bg-surface/60">
           <div className="flex items-center gap-2.5 min-w-0">
             {Icon && (
-              <div className="w-8 h-8 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center text-primary flex-shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center text-accent flex-shrink-0">
                 <Icon size={17} />
               </div>
             )}
             <div className="min-w-0">
-              <h2 id={titleId} className="font-semibold text-text-base text-sm">{title}</h2>
+              <h2 id={titleId} className="font-semibold text-fg text-sm">{title}</h2>
               {subtitle && <p className="text-xs text-muted truncate">{subtitle}</p>}
             </div>
           </div>
@@ -104,7 +104,7 @@ export default function Modal({ title, subtitle, icon: Icon, onClose, children, 
             onClick={onClose}
             disabled={closeDisabled}
             aria-label="Close"
-            className="p-1.5 rounded-lg text-muted hover:text-text-base hover:bg-white/5 transition-colors duration-200 disabled:opacity-50"
+            className="p-1.5 rounded-lg text-muted hover:text-fg hover:bg-track transition-colors duration-200 disabled:opacity-50"
           >
             <X size={18} />
           </button>
@@ -113,7 +113,7 @@ export default function Modal({ title, subtitle, icon: Icon, onClose, children, 
         <div className="p-6 overflow-y-auto flex-1">{children}</div>
 
         {footer && (
-          <div className="px-6 py-3.5 border-t border-white/10 bg-surface/30 flex items-center justify-between gap-3 flex-wrap">
+          <div className="px-6 py-3.5 border-t border-border bg-surface/30 flex items-center justify-between gap-3 flex-wrap">
             {footer}
           </div>
         )}

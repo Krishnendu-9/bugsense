@@ -24,7 +24,7 @@ const STAFF = ['developer', 'admin'];
 
 export default function App() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background" aria-busy="true" />}>
+    <Suspense fallback={<div className="min-h-screen bg-canvas" aria-busy="true" />}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

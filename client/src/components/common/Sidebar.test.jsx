@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import Sidebar from './Sidebar.jsx';
 import { renderWithProviders, USERS } from '../../test/renderWithProviders.jsx';
 
@@ -15,17 +15,28 @@ describe('Sidebar', () => {
     renderSidebar(USERS.reporter);
     const nav = screen.getByRole('complementary', { name: 'Main navigation' });
 
-    expect(within(nav).getByRole('link', { name: /All Incidents/ })).toBeInTheDocument();
-    expect(within(nav).queryByRole('link', { name: /Audit Trail/ })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole('link', { name: /System Vitals/ })).not.toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'Bugs' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Audit log' })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Metrics' })).not.toBeInTheDocument();
   });
 
   it('shows staff-only pages to developers', () => {
     renderSidebar(USERS.developer);
     const nav = screen.getByRole('complementary', { name: 'Main navigation' });
 
-    expect(within(nav).getByRole('link', { name: /Audit Trail/ })).toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: /System Vitals/ })).toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'Audit log' })).toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'Metrics' })).toBeInTheDocument();
+  });
+
+  it('uses one noun and offers no report entry of its own', () => {
+    renderSidebar(USERS.admin);
+    const nav = screen.getByRole('complementary', { name: 'Main navigation' });
+    const labels = within(nav).getAllByRole('link').map((a) => a.textContent.trim());
+
+    expect(labels).toEqual(expect.arrayContaining(['Overview', 'Bugs', 'Board', 'Metrics', 'Audit log', 'AI analyzer', 'SDK sandbox', 'Profile', 'Team']));
+    expect(nav.textContent).not.toMatch(/incident/i);
+    // The top bar's New bug is the shell's only way to report a bug.
+    expect(nav.querySelector('a[href="/report"]')).toBeNull();
   });
 
   it('hides the Team page from developers', () => {
@@ -47,7 +58,7 @@ describe('Sidebar', () => {
     const onToggle = vi.fn();
     renderSidebar(USERS.developer, { onToggle });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    await setupUser().click(screen.getByRole('button', { name: 'Collapse sidebar' }));
     expect(onToggle).toHaveBeenCalledOnce();
   });
 });

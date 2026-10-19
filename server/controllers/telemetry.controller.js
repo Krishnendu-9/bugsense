@@ -168,7 +168,9 @@ export const reportTelemetry = async (req, res, next) => {
       const now = new Date();
       newBug = await Bug.create({
         ...report,
-        description: report.description || 'Automated telemetry incident reported via the BugSense SDK.',
+        // Empty when the SDK sent none. (Records created before this change
+        // hold the old placeholder sentence; the client hides that one too.)
+        description: report.description || '',
         source: 'sdk',
         fingerprint,
         occurrences: 1,
@@ -193,7 +195,7 @@ export const reportTelemetry = async (req, res, next) => {
       entityType: 'telemetry',
       entityId: newBug._id,
       performedByName: 'BugSense SDK',
-      details: `Client SDK reported runtime incident: "${newBug.title}" (${newBug.severity})`,
+      details: `SDK reported a crash: "${newBug.title}" (${newBug.severity})`,
     });
 
     queueAutoAnalysis(newBug, tryConsumeTelemetryAIBudget);

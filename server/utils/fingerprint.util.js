@@ -40,3 +40,19 @@ export const generateFingerprint = (errorLog = '', title = '', scope = '') => {
 
   return crypto.createHash('sha256').update(rawKey).digest('hex').slice(0, 32);
 };
+
+/**
+ * The top stack frame of an error log, chosen by the same rule the fingerprint
+ * uses (the first trimmed line starting with "at "), so the frame a list shows
+ * beside an SDK bug is the one that actually drove its grouping. Returns null
+ * when there is no such line -- Firefox and Safari write frames as
+ * "fn@file:line:col", which the fingerprint does not use either.
+ */
+export const topFrameOf = (errorLog = '') => {
+  if (!errorLog) return null;
+  const frame = errorLog
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.startsWith('at '));
+  return frame ? frame.slice(0, 160) : null;
+};

@@ -6,6 +6,14 @@ import { formatDate } from '../../utils/helpers.js';
 // backticks; everything else stays plain text, which React escapes.
 const CODE_PATTERN = /(```[\s\S]*?```|`[^`\n]+`)/;
 
+// The two sources an analysis can carry (Bug.aiInsights.source). 'template'
+// and 'unavailable' belong to post-mortems and patches, never to analyses.
+const SOURCE_LABELS = {
+  claude: { title: 'AI Analysis', subtitle: 'Powered by Claude' },
+  heuristic: { title: 'Heuristic Analysis', subtitle: 'Keyword-based rules — AI not configured or unavailable' },
+};
+const UNKNOWN_SOURCE = { title: 'Analysis', subtitle: 'Source not recorded' };
+
 function TextWithCode({ text }) {
   // split() with a capturing group puts the code matches at odd indexes.
   return String(text).split(CODE_PATTERN).map((part, i) => {
@@ -14,13 +22,13 @@ function TextWithCode({ text }) {
       // Drop an optional language tag line ("```js").
       const code = part.slice(3, -3).replace(/^[\w-]*\n/, '');
       return (
-        <pre key={i} className="my-2 p-3 rounded-lg bg-black/40 border border-white/5 font-mono text-xs overflow-x-auto whitespace-pre">
+        <pre key={i} className="my-2 p-3 rounded-lg bg-track border border-hairline font-mono text-xs overflow-x-auto whitespace-pre">
           {code}
         </pre>
       );
     }
     return (
-      <code key={i} className="font-mono text-[0.85em] px-1 py-0.5 rounded bg-black/40 text-text-base">
+      <code key={i} className="font-mono text-[0.85em] px-1 py-0.5 rounded bg-track text-fg">
         {part.slice(1, -1)}
       </code>
     );
@@ -32,8 +40,8 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
     return (
       <div className="glass-card p-6 space-y-4">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-            <Cpu size={16} className="text-primary animate-pulse" />
+          <div className="w-8 h-8 rounded-lg bg-track border border-border flex items-center justify-center">
+            <Cpu size={16} className="text-muted animate-pulse" />
           </div>
           <div>
             <div className="skeleton h-4 w-32 rounded mb-1" />
@@ -56,23 +64,24 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
 
   if (!insights?.possibleCause) return null;
 
-  // Records saved before `source` existed were produced by Claude.
+  // Only an explicit 'claude' is labelled as model output. A missing or
+  // unknown source is not assumed to be Claude: records saved before `source`
+  // existed include the old unlabelled fallback text, and seeded demo data
+  // carries no source at all.
+  const label = SOURCE_LABELS[insights.source] || UNKNOWN_SOURCE;
   const isHeuristic = insights.source === 'heuristic';
+  const isUnknown = label === UNKNOWN_SOURCE;
 
   return (
-    <div className="glass-card p-6 border-primary/20 bg-primary/5">
+    <div className="glass-card p-6">
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-            <Cpu size={16} className="text-primary" />
+          <div className="w-8 h-8 rounded-lg bg-track border border-border flex items-center justify-center">
+            <Cpu size={16} className="text-muted" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-text-base">
-              {isHeuristic ? 'Heuristic Analysis' : 'AI Analysis'}
-            </h3>
-            <p className="text-xs text-muted">
-              {isHeuristic ? 'Keyword-based rules — AI not configured or unavailable' : 'Powered by Claude'}
-            </p>
+            <h3 className="text-sm font-semibold text-fg">{label.title}</h3>
+            <p className="text-xs text-muted">{label.subtitle}</p>
           </div>
         </div>
         {analyzedAt && (
@@ -84,33 +93,43 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
       </div>
 
       {isHeuristic && (
-        <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-white/5 border border-white/10 text-xs text-muted">
+        <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-track border border-border text-xs text-muted">
           <Info size={14} className="flex-shrink-0 mt-0.5" />
           <span>
             This is a generic suggestion matched from keywords in the log, not a model diagnosis.
-            Set <code className="font-mono text-text-base">ANTHROPIC_API_KEY</code> on the server for Claude analysis.
+            Set <code className="font-mono text-fg">ANTHROPIC_API_KEY</code> on the server for Claude analysis.
+          </span>
+        </div>
+      )}
+
+      {isUnknown && (
+        <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-track border border-border text-xs text-muted">
+          <Info size={14} className="flex-shrink-0 mt-0.5" />
+          <span>
+            This analysis was saved without a record of what produced it, so it is not shown as model output.
+            Run the analysis again for a labelled result.
           </span>
         </div>
       )}
 
       <div className="space-y-4">
-        <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
+        <div className="p-4 rounded-lg bg-track border border-border">
           <div className="flex items-center gap-2 mb-2">
-            <Lightbulb size={14} className="text-amber-400 flex-shrink-0" />
-            <h4 className="text-xs font-semibold text-amber-400 uppercase tracking-wide">Possible Cause</h4>
+            <Lightbulb size={14} className="text-muted flex-shrink-0" />
+            <h4 className="text-xs font-semibold text-muted uppercase tracking-wide">Possible Cause</h4>
           </div>
-          <div className="text-sm text-text-base leading-relaxed whitespace-pre-wrap">
+          <div className="text-sm text-fg leading-relaxed whitespace-pre-wrap">
             <TextWithCode text={insights.possibleCause} />
           </div>
         </div>
 
-        <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+        <div className="p-4 rounded-lg bg-track border border-border">
           <div className="flex items-center gap-2 mb-2">
-            <Wrench size={14} className="text-primary flex-shrink-0" />
-            <h4 className="text-xs font-semibold text-primary uppercase tracking-wide">Suggested Fix</h4>
+            <Wrench size={14} className="text-muted flex-shrink-0" />
+            <h4 className="text-xs font-semibold text-muted uppercase tracking-wide">Suggested Fix</h4>
           </div>
           {/* A div, not a p: fenced code renders as a <pre>, which a <p> cannot contain. */}
-          <div className="text-sm text-text-base leading-relaxed whitespace-pre-wrap">
+          <div className="text-sm text-fg leading-relaxed whitespace-pre-wrap">
             <TextWithCode text={insights.suggestedFix} />
           </div>
         </div>

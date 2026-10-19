@@ -47,14 +47,14 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-secondary mb-4 shadow-lg shadow-primary/25">
-            <ShieldCheck size={28} className="text-white" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent mb-4">
+            <ShieldCheck size={28} className="text-on-accent" />
           </div>
-          <h1 className="text-2xl font-bold text-text-base">
-            Join <span className="text-primary">BugSense</span>
+          <h1 className="text-2xl font-bold text-fg">
+            Join <span className="text-accent">BugSense</span>
           </h1>
           <p className="text-muted text-sm mt-1">Create your account to get started</p>
         </div>
@@ -115,7 +115,7 @@ export default function Register() {
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-base transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg transition-colors"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -144,7 +144,7 @@ export default function Register() {
             <button type="submit" disabled={isLoading} className="btn-primary w-full py-2.5 mt-2">
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
+                  <span className="w-2 h-2 rounded-full bg-primary-fg animate-pulse" aria-hidden="true" />
                   Creating account...
                 </span>
               ) : (
@@ -155,7 +155,7 @@ export default function Register() {
 
           <p className="text-center text-sm text-muted mt-6">
             Already have an account?{' '}
-            <Link to="/login" className="text-primary hover:text-primary/80 font-medium transition-colors">
+            <Link to="/login" className="text-accent hover:text-accent/80 font-medium transition-colors">
               Sign in
             </Link>
           </p>
