@@ -140,6 +140,18 @@ describe('stored XSS', () => {
     const bug = await Bug.findById(res.body.bugId);
     assert.doesNotMatch(bug.description, /<img/i);
   });
+
+  it('stores an SDK crash with no description as empty, not a placeholder sentence', async () => {
+    const res = await request.post('/api/telemetry/report').send({ errorLog: 'Error: no description sent\n at x (a.js:1:1)' });
+    assert.equal(res.status, 201);
+    const bug = await Bug.findById(res.body.bugId);
+    assert.equal(bug.description, '');
+  });
+
+  it('still requires a description on a person’s report', async () => {
+    const res = await createBug(reporter, { description: '' });
+    assert.equal(res.status, 400);
+  });
 });
 
 describe('bug permissions and validation', () => {

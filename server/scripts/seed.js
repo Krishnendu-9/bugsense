@@ -215,7 +215,6 @@ const seed = async () => {
    *    3 crashes  ReferenceError at checkout, picked up yesterday
    *    6 crashes  RangeError in date formatting: fixed, then regressed
    */
-  const SDK_DESCRIPTION = 'Crash reported automatically by the BugSense SDK.';
   const REGRESSION_NOTE = 'Regression auto-detected: error re-occurred in production telemetry.';
   const chromeWindows = {
     browser: 'Chrome',
@@ -244,7 +243,8 @@ const seed = async () => {
     const title = errorLog.split('\n')[0];
     return {
       title,
-      description: SDK_DESCRIPTION,
+      // The SDK sends no description for these, so none is stored.
+      description: '',
       errorLog,
       project,
       source: 'sdk',

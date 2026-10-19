@@ -8,9 +8,17 @@ const bugSchema = new mongoose.Schema(
       trim: true,
       maxlength: [200, 'Title cannot exceed 200 characters'],
     },
+    // Required for a person's report. An SDK crash may carry none: it is then
+    // stored empty, not filled with a placeholder sentence.
     description: {
       type: String,
-      required: [true, 'Description is required'],
+      default: '',
+      required: [
+        function descriptionRequired() {
+          return this.source !== 'sdk';
+        },
+        'Description is required',
+      ],
     },
     steps: {
       type: [String],

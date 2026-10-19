@@ -168,7 +168,9 @@ export const reportTelemetry = async (req, res, next) => {
       const now = new Date();
       newBug = await Bug.create({
         ...report,
-        description: report.description || 'Crash reported automatically by the BugSense SDK.',
+        // Empty when the SDK sent none. (Records created before this change
+        // hold the old placeholder sentence; the client hides that one too.)
+        description: report.description || '',
         source: 'sdk',
         fingerprint,
         occurrences: 1,
