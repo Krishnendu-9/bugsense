@@ -74,6 +74,7 @@ bugsense/
 │       │   │   ├── ErrorBoundary.jsx   (app + page variants, self-reports crashes)
 │       │   │   ├── Modal.jsx           (accessible dialog shell)
 │       │   │   ├── ConfirmDialog.jsx
+│       │   │   ├── OverflowMenu.jsx    ("more actions" menu; keyboard + outside-click)
 │       │   │   └── Badge.jsx
 │       │   ├── bugs/
 │       │   │   ├── BugTable.jsx           (Bugs list table; shares StatusMark/PriorityText with Overview)
