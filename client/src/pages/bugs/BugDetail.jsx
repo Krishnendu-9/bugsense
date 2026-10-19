@@ -93,6 +93,7 @@ function BugDetailView() {
   const [showGithubModal, setShowGithubModal] = useState(false);
   const [showEditDetails, setShowEditDetails] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [commentToDelete, setCommentToDelete] = useState(null);
   const [postMortem, setPostMortem] = useState(null);
   const [postMortemLoading, setPostMortemLoading] = useState(false);
 
@@ -199,6 +200,8 @@ function BugDetailView() {
       ({ _id, bugId }) => {
         if (bugId && bugId !== id) return;
         setComments((prev) => prev.filter((c) => c._id !== _id));
+        // Deleted elsewhere while we were asking whether to delete it.
+        setCommentToDelete((pending) => (pending?._id === _id ? null : pending));
       },
       [id]
     )
@@ -260,10 +263,16 @@ function BugDetailView() {
     }
   };
 
-  const handleDeleteComment = async (commentId) => {
+  // Runs from the confirmation dialog only. On failure the dialog stays open
+  // (with the error toast) so the person can retry or cancel.
+  const handleDeleteComment = async () => {
+    const commentId = commentToDelete?._id;
+    if (!commentId) return;
     try {
       await api.delete(`/comments/${commentId}`);
       setComments((prev) => prev.filter((c) => c._id !== commentId));
+      setCommentToDelete(null);
+      toast.success('Comment deleted');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete comment');
     }
@@ -735,7 +744,7 @@ function BugDetailView() {
             </div>
             <div className="space-y-4 mb-5">
               {comments.map((comment) => (
-                <div key={comment._id} className="flex gap-3 group">
+                <div key={comment._id} className="flex gap-3">
                   <div className="mt-0.5">
                     <Avatar person={comment.author} />
                   </div>
@@ -746,13 +755,18 @@ function BugDetailView() {
                     </div>
                     <p className="text-sm text-muted leading-relaxed whitespace-pre-wrap break-words">{comment.content}</p>
                   </div>
+                  {/* Beside the author line, not down the comment's edge; always
+                      visible (no hover on touch); asks before deleting. The
+                      negative margins keep the 40px target from adding height. */}
                   {(comment.author?._id === user?._id || user?.role === 'admin') && (
                     <button
-                      onClick={() => handleDeleteComment(comment._id)}
-                      aria-label="Delete comment"
-                      className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
+                      type="button"
+                      onClick={() => setCommentToDelete(comment)}
+                      aria-label={`Delete comment by ${comment.author?.name || 'unknown'}`}
+                      title="Delete comment"
+                      className="self-start -mt-2 -mr-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-subtle hover:text-danger hover:bg-danger/10 transition-colors"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={15} aria-hidden="true" />
                     </button>
                   )}
                 </div>
@@ -894,6 +908,17 @@ function BugDetailView() {
           onClose={() => setGitPatch(null)}
           onRegenerate={canEdit ? generatePatch : undefined}
           regenerating={patchLoading}
+        />
+      )}
+
+      {commentToDelete && (
+        <ConfirmDialog
+          title="Delete this comment?"
+          message={`${commentToDelete.author?._id === user?._id ? 'Your comment' : `${commentToDelete.author?.name || 'This person'}'s comment`} will be permanently deleted. This cannot be undone.`}
+          confirmLabel="Delete comment"
+          danger
+          onConfirm={handleDeleteComment}
+          onCancel={() => setCommentToDelete(null)}
         />
       )}
 

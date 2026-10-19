@@ -96,6 +96,34 @@ describe('BugDetail real-time behaviour', () => {
     expect(screen.queryByText('Comment c2')).not.toBeInTheDocument();
   });
 
+  it('asks before deleting a comment, and only deletes on confirm', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/bugs/b1') return { data: baseBug() };
+      if (url === '/comments/bug/b1') return { data: [comment('c1', USERS.developer)] };
+      return { data: [] };
+    });
+    api.delete.mockReset().mockResolvedValue({ data: {} });
+    await renderDetail(USERS.developer);
+    const user = setupUser();
+
+    await user.click(await screen.findByRole('button', { name: `Delete comment by ${USERS.developer.name}` }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete this comment?' });
+    expect(api.delete).not.toHaveBeenCalled();
+
+    // Cancel keeps it.
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Comment c1')).toBeInTheDocument();
+    expect(api.delete).not.toHaveBeenCalled();
+
+    // Confirm deletes it.
+    await user.click(screen.getByRole('button', { name: `Delete comment by ${USERS.developer.name}` }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete comment' }));
+    expect(api.delete).toHaveBeenCalledWith('/comments/c1');
+    expect(screen.queryByText('Comment c1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('leaves the page when the bug is deleted', async () => {
     const socket = await renderDetail();
     act(() => socket.serverEmit('bug:deleted', { _id: 'b1' }));
