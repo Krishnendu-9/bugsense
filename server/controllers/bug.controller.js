@@ -11,6 +11,7 @@ import { removeStoredFile, storeUpload } from '../services/storage.service.js';
 import { getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { dispatchWebhookAlert } from '../services/webhook.service.js';
 import { queueAutoAnalysis } from '../services/autoAnalysis.service.js';
+import { analysisMarkdown } from '../services/ai.service.js';
 import { tryConsumeReportAIBudget } from '../utils/aiBudget.js';
 import { logActivity } from '../services/audit.service.js';
 import { countResolvedSince, openCountsByDay, resolutionStats, windowStart } from '../utils/bugStats.js';
@@ -526,7 +527,7 @@ ${bug.description?.replace(/<[^>]*>?/gm, '') || ''}
 
 ${bug.steps?.length ? `### Steps to Reproduce\n${bug.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n` : ''}
 ${bug.errorLog ? `### Error Log\n\`\`\`\n${bug.errorLog}\n\`\`\`\n` : ''}
-${bug.aiInsights?.possibleCause ? `### ${bug.aiInsights.source === 'heuristic' ? 'Heuristic' : 'AI'} Diagnosis\n**Possible Cause:** ${bug.aiInsights.possibleCause}\n\n**Suggested Fix:**\n${bug.aiInsights.suggestedFix}\n` : ''}
+${analysisMarkdown(bug.aiInsights)}
 
 ---
 - **Priority:** ${bug.priority}

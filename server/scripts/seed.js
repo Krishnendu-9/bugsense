@@ -7,6 +7,7 @@ import Bug from '../models/Bug.model.js';
 import Comment from '../models/Comment.model.js';
 import AuditLog from '../models/AuditLog.model.js';
 import { generateFingerprint } from '../utils/fingerprint.util.js';
+import { getHeuristicAnalysis } from '../services/ai.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,6 +80,10 @@ const seed = async () => {
   const daysAgo = (days, hour, minute = 0) =>
     new Date(todayUtc.getTime() - days * 86400000 + (hour * 60 + minute) * 60000);
 
+  const loginErrorLog = `TypeError: Cannot read properties of undefined (reading 'value')
+  at handleAutofill (Login.jsx:34)
+  at HTMLInputElement.<anonymous> (Login.jsx:28)`;
+
   const bugs = await Bug.insertMany([
     {
       title: 'Login page crashes on Safari 17',
@@ -97,9 +102,7 @@ const seed = async () => {
       tags: ['safari', 'login', 'autofill'],
       reporter: reporter._id,
       assignedTo: developer._id,
-      errorLog: `TypeError: Cannot read properties of undefined (reading 'value')
-  at handleAutofill (Login.jsx:34)
-  at HTMLInputElement.<anonymous> (Login.jsx:28)`,
+      errorLog: loginErrorLog,
       browserInfo: {
         browser: 'Safari',
         version: '17.0',
@@ -107,11 +110,9 @@ const seed = async () => {
         screenSize: '1440x900',
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14) AppleWebKit/605.1.15',
       },
-      aiInsights: {
-        possibleCause: 'The autofill event fires before the React controlled input state is initialized, causing a null reference when accessing event.target.value.',
-        suggestedFix: '1. Add a null check before accessing event.target.value in the autofill handler.\n2. Use the onChange event instead of browser autofill events.\n3. Ensure the input is fully mounted before attaching event listeners.',
-        analyzedAt: daysAgo(6, 9, 2),
-      },
+      // What a real analysis returns with no ANTHROPIC_API_KEY: the keyword
+      // heuristic's own output, labelled as such (source: 'heuristic').
+      aiInsights: { ...getHeuristicAnalysis(loginErrorLog), analyzedAt: daysAgo(6, 9, 2) },
       // Open all week: the oldest open bug. Last touched by the comment below.
       createdAt: daysAgo(6, 9),
       updatedAt: daysAgo(6, 15),

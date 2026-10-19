@@ -7,6 +7,7 @@ import { checkJwtSecret } from '../services/token.service.js';
 import { cloudinaryPublicId } from '../services/storage.service.js';
 import { getClientOrigins, getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { parseTrustProxy } from '../utils/trustProxy.js';
+import { analysisMarkdown } from '../services/ai.service.js';
 import { errorHandler } from '../middleware/error.middleware.js';
 import {
   countResolvedSince,
@@ -292,5 +293,35 @@ describe('topFrameOf', () => {
 
   it('caps a very long frame', () => {
     assert.equal(topFrameOf(`Error\n at ${'x'.repeat(500)}`).length, 160);
+  });
+});
+
+describe('analysisMarkdown', () => {
+  const insights = { possibleCause: 'Null reference', suggestedFix: 'Guard the access' };
+
+  it('calls only claude output AI', () => {
+    const md = analysisMarkdown({ ...insights, source: 'claude' });
+    assert.match(md, /^### AI Analysis \(Claude\)$/m);
+    assert.match(md, /\*\*Possible Cause:\*\* Null reference/);
+  });
+
+  it('labels the keyword fallback as heuristic and says it is not a model diagnosis', () => {
+    const md = analysisMarkdown({ ...insights, source: 'heuristic' });
+    assert.match(md, /^### Heuristic Analysis$/m);
+    assert.match(md, /not a model diagnosis/);
+    assert.doesNotMatch(md, /\bAI\b|Claude/);
+  });
+
+  it('never attributes a missing or unknown source to AI', () => {
+    for (const source of [undefined, null, '', 'template', 'something-new']) {
+      const md = analysisMarkdown({ ...insights, source });
+      assert.match(md, /^### Analysis \(source not recorded\)$/m, `source=${source}`);
+      assert.doesNotMatch(md, /\bAI\b|Claude/, `source=${source}`);
+    }
+  });
+
+  it('returns nothing without an analysis', () => {
+    assert.equal(analysisMarkdown(undefined), '');
+    assert.equal(analysisMarkdown({ possibleCause: '', source: 'claude' }), '');
   });
 });
