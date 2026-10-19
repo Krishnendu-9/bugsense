@@ -32,6 +32,14 @@ describe('ErrorInsights labelling', () => {
     }
   });
 
+  it('gives no source an accent tint: only the heading says where it came from', () => {
+    for (const source of ['claude', 'heuristic', undefined]) {
+      const { container, unmount } = render(<ErrorInsights insights={{ ...insights, source }} />);
+      expect(container.innerHTML).not.toMatch(/accent/);
+      unmount();
+    }
+  });
+
   it('renders backtick-marked code as code, without the backticks', () => {
     const { container } = render(
       <ErrorInsights

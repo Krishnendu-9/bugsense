@@ -28,7 +28,7 @@ function TextWithCode({ text }) {
       );
     }
     return (
-      <code key={i} className="font-mono text-[0.85em] px-1 py-0.5 rounded bg-track text-text-base">
+      <code key={i} className="font-mono text-[0.85em] px-1 py-0.5 rounded bg-track text-fg">
         {part.slice(1, -1)}
       </code>
     );
@@ -40,8 +40,8 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
     return (
       <div className="glass-card p-6 space-y-4">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-            <Cpu size={16} className="text-primary animate-pulse" />
+          <div className="w-8 h-8 rounded-lg bg-track border border-border flex items-center justify-center">
+            <Cpu size={16} className="text-muted animate-pulse" />
           </div>
           <div>
             <div className="skeleton h-4 w-32 rounded mb-1" />
@@ -73,14 +73,14 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
   const isUnknown = label === UNKNOWN_SOURCE;
 
   return (
-    <div className="glass-card p-6 border-primary/20 bg-primary/5">
+    <div className="glass-card p-6">
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-            <Cpu size={16} className="text-primary" />
+          <div className="w-8 h-8 rounded-lg bg-track border border-border flex items-center justify-center">
+            <Cpu size={16} className="text-muted" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-text-base">{label.title}</h3>
+            <h3 className="text-sm font-semibold text-fg">{label.title}</h3>
             <p className="text-xs text-muted">{label.subtitle}</p>
           </div>
         </div>
@@ -97,7 +97,7 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
           <Info size={14} className="flex-shrink-0 mt-0.5" />
           <span>
             This is a generic suggestion matched from keywords in the log, not a model diagnosis.
-            Set <code className="font-mono text-text-base">ANTHROPIC_API_KEY</code> on the server for Claude analysis.
+            Set <code className="font-mono text-fg">ANTHROPIC_API_KEY</code> on the server for Claude analysis.
           </span>
         </div>
       )}
@@ -118,18 +118,18 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
             <Lightbulb size={14} className="text-muted flex-shrink-0" />
             <h4 className="text-xs font-semibold text-muted uppercase tracking-wide">Possible Cause</h4>
           </div>
-          <div className="text-sm text-text-base leading-relaxed whitespace-pre-wrap">
+          <div className="text-sm text-fg leading-relaxed whitespace-pre-wrap">
             <TextWithCode text={insights.possibleCause} />
           </div>
         </div>
 
-        <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+        <div className="p-4 rounded-lg bg-track border border-border">
           <div className="flex items-center gap-2 mb-2">
-            <Wrench size={14} className="text-primary flex-shrink-0" />
-            <h4 className="text-xs font-semibold text-primary uppercase tracking-wide">Suggested Fix</h4>
+            <Wrench size={14} className="text-muted flex-shrink-0" />
+            <h4 className="text-xs font-semibold text-muted uppercase tracking-wide">Suggested Fix</h4>
           </div>
           {/* A div, not a p: fenced code renders as a <pre>, which a <p> cannot contain. */}
-          <div className="text-sm text-text-base leading-relaxed whitespace-pre-wrap">
+          <div className="text-sm text-fg leading-relaxed whitespace-pre-wrap">
             <TextWithCode text={insights.suggestedFix} />
           </div>
         </div>
