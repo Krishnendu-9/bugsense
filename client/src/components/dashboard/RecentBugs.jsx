@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { NO_VALUE } from '../../utils/constants.js';
 import { compactAgo, formatDate } from '../../utils/helpers.js';
-import { PriorityText, StatusMark } from '../common/Badge.jsx';
+import { OccurrenceBadge, PriorityText, StatusMark } from '../common/Badge.jsx';
 
 /**
  * The most recently active bugs as a table. `bugs` is /stats.recent, already
@@ -58,14 +58,7 @@ export default function RecentBugs({ bugs, loading }) {
                       >
                         {bug.title}
                       </Link>
-                      {bug.source === 'sdk' && (
-                        <span
-                          className="flex-shrink-0 rounded border border-border px-1.5 text-[11px] font-mono tabular-nums text-muted"
-                          title={`Reported by the SDK ${bug.occurrences} time${bug.occurrences === 1 ? '' : 's'}`}
-                        >
-                          ×{bug.occurrences}
-                        </span>
-                      )}
+                      <OccurrenceBadge bug={bug} />
                     </div>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">

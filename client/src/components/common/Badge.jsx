@@ -73,3 +73,21 @@ export function StatusMark({ status }) {
 export function PriorityText({ priority }) {
   return <span className={PRIORITY_TEXT[priority] || 'text-muted'}>{capitalize(priority)}</span>;
 }
+
+/*
+ * How many times the SDK has reported this bug. A count of one isn't a count,
+ * so the badge only appears from two upwards; where a single SDK report needs
+ * telling apart, the view says SDK in its own words (a Source column, or the
+ * board card's muted line).
+ */
+export function OccurrenceBadge({ bug }) {
+  if (bug.source !== 'sdk' || !(bug.occurrences > 1)) return null;
+  return (
+    <span
+      className="flex-shrink-0 rounded border border-border px-1.5 text-[11px] font-mono tabular-nums text-muted"
+      title={`Reported by the SDK ${bug.occurrences} times`}
+    >
+      ×{bug.occurrences}
+    </span>
+  );
+}

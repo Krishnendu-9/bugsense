@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { NO_VALUE } from '../../utils/constants.js';
 import { compactAgo, formatDate, shortFrame } from '../../utils/helpers.js';
-import { PriorityText, StatusMark } from '../common/Badge.jsx';
+import { OccurrenceBadge, PriorityText, StatusMark } from '../common/Badge.jsx';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -87,14 +87,7 @@ export default function BugTable({ bugs }) {
                     >
                       {bug.title}
                     </Link>
-                    {sdk && (
-                      <span
-                        className="flex-shrink-0 rounded border border-border px-1.5 text-[11px] font-mono tabular-nums text-muted"
-                        title={`Reported by the SDK ${bug.occurrences} time${bug.occurrences === 1 ? '' : 's'}`}
-                      >
-                        ×{bug.occurrences}
-                      </span>
-                    )}
+                    <OccurrenceBadge bug={bug} />
                   </div>
                   <div className="mt-0.5 truncate text-xs text-subtle">
                     <RowContext bug={bug} />
