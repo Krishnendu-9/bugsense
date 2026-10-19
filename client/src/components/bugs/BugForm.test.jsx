@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import BugForm from './BugForm.jsx';
 import { renderWithProviders, USERS } from '../../test/renderWithProviders.jsx';
 
@@ -20,7 +20,7 @@ const fillRequired = async (user) => {
 describe('BugForm', () => {
   it('requires a title and a non-blank description', async () => {
     const onSubmit = vi.fn();
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugForm onSubmit={onSubmit} />, { user: USERS.reporter });
 
     await user.type(screen.getByLabelText('Description'), '   ');
@@ -33,7 +33,7 @@ describe('BugForm', () => {
 
   it('hides the Status field from reporters and never submits a status for them', async () => {
     const onSubmit = vi.fn();
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugForm onSubmit={onSubmit} />, { user: USERS.reporter });
 
     expect(screen.queryByLabelText('Status')).not.toBeInTheDocument();
@@ -47,7 +47,7 @@ describe('BugForm', () => {
 
   it('lets staff set a status', async () => {
     const onSubmit = vi.fn();
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugForm onSubmit={onSubmit} />, { user: USERS.developer });
 
     await fillRequired(user);
@@ -59,7 +59,7 @@ describe('BugForm', () => {
 
   it('collects numbered steps, tags and browser info', async () => {
     const onSubmit = vi.fn();
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugForm onSubmit={onSubmit} />, { user: USERS.reporter });
 
     await fillRequired(user);
@@ -76,7 +76,7 @@ describe('BugForm', () => {
   });
 
   it('rejects screenshots that are not supported images', async () => {
-    const user = userEvent.setup({ applyAccept: false });
+    const user = setupUser({ applyAccept: false });
     renderWithProviders(<BugForm onSubmit={vi.fn()} />, { user: USERS.reporter });
 
     const input = document.querySelector('input[type="file"]');
@@ -99,7 +99,7 @@ describe('BugForm edit mode', () => {
 
   it('pre-fills the content and sends only content fields', async () => {
     const onSubmit = vi.fn();
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugForm mode="edit" defaultValues={existing} onSubmit={onSubmit} />, { user: USERS.developer });
 
     expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument();
@@ -125,7 +125,7 @@ describe('BugForm edit mode', () => {
 
   it('calls onCancel instead of navigating back', async () => {
     const onCancel = vi.fn();
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugForm mode="edit" defaultValues={existing} onSubmit={vi.fn()} onCancel={onCancel} />);
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));

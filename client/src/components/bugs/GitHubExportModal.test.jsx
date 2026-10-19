@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import GitHubExportModal from './GitHubExportModal.jsx';
 import api from '../../api/axios.js';
 
@@ -14,7 +14,7 @@ describe('GitHubExportModal', () => {
 
   it('closes on Escape', async () => {
     const onClose = vi.fn();
-    const user = userEvent.setup();
+    const user = setupUser();
     render(<GitHubExportModal bugId="b1" onClose={onClose} onExported={vi.fn()} />);
 
     await user.keyboard('{Escape}');
@@ -23,7 +23,7 @@ describe('GitHubExportModal', () => {
 
   it('fills the form from an allowlisted repository and exports without a token', async () => {
     const onExported = vi.fn();
-    const user = userEvent.setup();
+    const user = setupUser();
     render(<GitHubExportModal bugId="b1" onClose={vi.fn()} onExported={onExported} />);
 
     await user.click(await screen.findByRole('button', { name: 'acme/web' }));
@@ -34,7 +34,7 @@ describe('GitHubExportModal', () => {
   });
 
   it('validates the repository before calling the API', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     render(<GitHubExportModal bugId="b1" onClose={vi.fn()} onExported={vi.fn()} />);
 
     await user.type(screen.getByLabelText('Repository Owner'), '../../etc');

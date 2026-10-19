@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import BugList from './BugList.jsx';
 import api from '../../api/axios.js';
 import { downloadFile } from '../../utils/helpers.js';
@@ -144,7 +144,7 @@ describe('Bugs list', () => {
   });
 
   it('filters by source, and the other filters still filter', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugList />, { route: '/bugs' });
     await screen.findByRole('table');
 
@@ -162,7 +162,7 @@ describe('Bugs list', () => {
   });
 
   it('pages through the results and disables what it cannot do', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugList />, { route: '/bugs' });
     await screen.findByRole('table');
 
@@ -180,7 +180,7 @@ describe('Bugs list', () => {
   });
 
   it('says when filters match nothing, without an empty table, and clears them on request', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugList />, { route: '/bugs?search=no-such-bug' });
 
     expect(await screen.findByText('No bugs match these filters.')).toBeInTheDocument();
@@ -194,7 +194,7 @@ describe('Bugs list', () => {
   });
 
   it('offers the projects that exist, and filtering by one filters', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugList />, { route: '/bugs' });
     await screen.findByRole('table');
 
@@ -227,7 +227,7 @@ describe('Bugs list', () => {
   });
 
   it('exports every bug the filters select, across pages', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderWithProviders(<BugList />, { route: '/bugs?source=sdk' });
     await screen.findByRole('table');
 
@@ -297,18 +297,31 @@ describe('Bugs list live updates (ordered by last activity)', () => {
     const table = await screen.findByRole('table');
     const requests = listCalls().length;
 
-    act(() => {
-      for (let i = 0; i < 5; i += 1) socket.serverEmit('bug:updated', { ...SDK, occurrences: 13 + i, updatedAt: now() });
-    });
+    // Fake time from here on, so the throttle window is stepped through rather
+    // than waited out. (Not before the table loads: findBy* polls on timers.)
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        for (let i = 0; i < 5; i += 1) socket.serverEmit('bug:updated', { ...SDK, occurrences: 13 + i, updatedAt: now() });
+      });
 
-    await waitFor(() => expect(listCalls().length).toBe(requests + 1), { timeout: 3000 });
-    // waitFor passes the moment the count goes through +1, so let a further
-    // throttle window elapse: five events must have cost one request, not five.
-    await new Promise((r) => setTimeout(r, 1700));
-    expect(listCalls().length).toBe(requests + 1);
-    expect(lastListQuery().get('source')).toBe('sdk');
+      // Throttled, not immediate: nothing until the window (REFRESH_MS, 1500)
+      // closes...
+      await act(() => vi.advanceTimersByTimeAsync(1400));
+      expect(listCalls().length).toBe(requests);
+      // ...then exactly one request for the whole burst...
+      await act(() => vi.advanceTimersByTimeAsync(200));
+      expect(listCalls().length).toBe(requests + 1);
+      expect(lastListQuery().get('source')).toBe('sdk');
+      // ...and no trailing second one in the window after it.
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      expect(listCalls().length).toBe(requests + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+
     // Still the same table element: the refresh never showed the loading state.
-    await waitFor(() => expect(table.isConnected).toBe(true));
+    expect(table.isConnected).toBe(true);
     expect(screen.queryByLabelText('Loading bugs')).not.toBeInTheDocument();
   });
 });

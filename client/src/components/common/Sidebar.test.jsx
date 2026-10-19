@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import Sidebar from './Sidebar.jsx';
 import { renderWithProviders, USERS } from '../../test/renderWithProviders.jsx';
 
@@ -58,7 +58,7 @@ describe('Sidebar', () => {
     const onToggle = vi.fn();
     renderSidebar(USERS.developer, { onToggle });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    await setupUser().click(screen.getByRole('button', { name: 'Collapse sidebar' }));
     expect(onToggle).toHaveBeenCalledOnce();
   });
 });

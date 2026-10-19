@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import BugDetail from './BugDetail.jsx';
 import api from '../../api/axios.js';
 import { createFakeSocket, renderWithProviders, USERS } from '../../test/renderWithProviders.jsx';
@@ -82,8 +82,8 @@ describe('BugDetail real-time behaviour', () => {
     const mine = comment('c1', USERS.developer);
     api.post.mockResolvedValue({ data: mine });
 
-    await userEvent.type(screen.getByLabelText('Add a comment'), 'Comment c1');
-    await userEvent.click(screen.getByRole('button', { name: 'Post comment' }));
+    await setupUser().type(screen.getByLabelText('Add a comment'), 'Comment c1');
+    await setupUser().click(screen.getByRole('button', { name: 'Post comment' }));
     act(() => socket.serverEmit('comment:added', mine));
     act(() => socket.serverEmit('comment:added', comment('c2', USERS.admin)));
     act(() => socket.serverEmit('comment:added', comment('c2', USERS.admin)));
@@ -104,7 +104,7 @@ describe('BugDetail real-time behaviour', () => {
 
   it('offers the reporter only close for an open bug, and no priority', async () => {
     await renderDetail(USERS.reporter);
-    await userEvent.click(screen.getByRole('button', { name: 'Status' }));
+    await setupUser().click(screen.getByRole('button', { name: 'Status' }));
 
     const options = within(screen.getByLabelText('Status')).getAllByRole('option').map((o) => o.value);
     expect(options).toEqual(['open', 'closed']);

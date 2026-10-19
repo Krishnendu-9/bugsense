@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { setupUser } from '../../test/user.js';
 import { Route, Routes } from 'react-router-dom';
 import AccountBlock from './AccountBlock.jsx';
 import { renderWithProviders, USERS } from '../../test/renderWithProviders.jsx';
@@ -24,7 +24,7 @@ const renderBlock = ({ iconOnly = false, logout = vi.fn() } = {}) => {
 
 describe('AccountBlock', () => {
   it('links the avatar, email and role to the Profile page', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { profile, logout } = renderBlock();
 
     expect(profile).toHaveAttribute('href', '/profile');
@@ -40,7 +40,7 @@ describe('AccountBlock', () => {
   });
 
   it('signs out from its own button without opening Profile', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { profile, signOut, logout } = renderBlock();
 
     // A sibling of the link, not inside it.
@@ -53,7 +53,7 @@ describe('AccountBlock', () => {
   });
 
   it('gives the keyboard two separate stops: Profile, then Sign out', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { profile, signOut, logout } = renderBlock();
 
     await user.tab();
