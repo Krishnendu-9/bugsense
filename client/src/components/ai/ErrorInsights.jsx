@@ -6,6 +6,14 @@ import { formatDate } from '../../utils/helpers.js';
 // backticks; everything else stays plain text, which React escapes.
 const CODE_PATTERN = /(```[\s\S]*?```|`[^`\n]+`)/;
 
+// The two sources an analysis can carry (Bug.aiInsights.source). 'template'
+// and 'unavailable' belong to post-mortems and patches, never to analyses.
+const SOURCE_LABELS = {
+  claude: { title: 'AI Analysis', subtitle: 'Powered by Claude' },
+  heuristic: { title: 'Heuristic Analysis', subtitle: 'Keyword-based rules — AI not configured or unavailable' },
+};
+const UNKNOWN_SOURCE = { title: 'Analysis', subtitle: 'Source not recorded' };
+
 function TextWithCode({ text }) {
   // split() with a capturing group puts the code matches at odd indexes.
   return String(text).split(CODE_PATTERN).map((part, i) => {
@@ -56,8 +64,13 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
 
   if (!insights?.possibleCause) return null;
 
-  // Records saved before `source` existed were produced by Claude.
+  // Only an explicit 'claude' is labelled as model output. A missing or
+  // unknown source is not assumed to be Claude: records saved before `source`
+  // existed include the old unlabelled fallback text, and seeded demo data
+  // carries no source at all.
+  const label = SOURCE_LABELS[insights.source] || UNKNOWN_SOURCE;
   const isHeuristic = insights.source === 'heuristic';
+  const isUnknown = label === UNKNOWN_SOURCE;
 
   return (
     <div className="glass-card p-6 border-primary/20 bg-primary/5">
@@ -67,12 +80,8 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
             <Cpu size={16} className="text-primary" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-text-base">
-              {isHeuristic ? 'Heuristic Analysis' : 'AI Analysis'}
-            </h3>
-            <p className="text-xs text-muted">
-              {isHeuristic ? 'Keyword-based rules — AI not configured or unavailable' : 'Powered by Claude'}
-            </p>
+            <h3 className="text-sm font-semibold text-text-base">{label.title}</h3>
+            <p className="text-xs text-muted">{label.subtitle}</p>
           </div>
         </div>
         {analyzedAt && (
@@ -89,6 +98,16 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
           <span>
             This is a generic suggestion matched from keywords in the log, not a model diagnosis.
             Set <code className="font-mono text-text-base">ANTHROPIC_API_KEY</code> on the server for Claude analysis.
+          </span>
+        </div>
+      )}
+
+      {isUnknown && (
+        <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-track border border-border text-xs text-muted">
+          <Info size={14} className="flex-shrink-0 mt-0.5" />
+          <span>
+            This analysis was saved without a record of what produced it, so it is not shown as model output.
+            Run the analysis again for a labelled result.
           </span>
         </div>
       )}

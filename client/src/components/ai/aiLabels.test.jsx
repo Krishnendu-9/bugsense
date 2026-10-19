@@ -21,6 +21,17 @@ describe('ErrorInsights labelling', () => {
     expect(screen.getByText(/not a model diagnosis/)).toBeInTheDocument();
   });
 
+  it('never labels an analysis with a missing or unknown source as Claude', () => {
+    for (const source of [undefined, null, '', 'template', 'something-new']) {
+      const { unmount } = render(<ErrorInsights insights={{ ...insights, source }} />);
+      expect(screen.getByRole('heading', { name: 'Analysis' })).toBeInTheDocument();
+      expect(screen.getByText('Source not recorded')).toBeInTheDocument();
+      expect(screen.getByText(/not shown as model output/)).toBeInTheDocument();
+      expect(screen.queryByText(/Claude/)).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
   it('renders backtick-marked code as code, without the backticks', () => {
     const { container } = render(
       <ErrorInsights
