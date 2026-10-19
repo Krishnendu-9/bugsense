@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatDuration, formatStatDuration, getApiOrigin, shortFrame, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
+import { findRegressions, formatDuration, formatStatDuration, getApiOrigin, shortFrame, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
 
 describe('sanitizeHtml', () => {
   it('removes scripts, event handlers and javascript: links', () => {
@@ -176,5 +176,34 @@ describe('shortFrame', () => {
     expect(shortFrame('at CartSummary (CartSummary.jsx:41:18)')).toBe('at CartSummary (CartSummary.jsx:41:18)');
     expect(shortFrame('render@App.jsx:12:3')).toBe('render@App.jsx:12:3');
     expect(shortFrame(null)).toBeNull();
+  });
+});
+
+describe('findRegressions', () => {
+  const dev = { _id: 'd1', name: 'Dev User' };
+  const resolved = { status: 'resolved', changedBy: dev, changedAt: '2026-10-13T10:00:00Z', note: 'Fixed' };
+  const reopenedBySdk = { status: 'in-progress', changedAt: '2026-10-18T15:10:00Z', note: 'Regression auto-detected' };
+
+  it('finds a pipeline reopen of a resolved bug, with the entry that had resolved it', () => {
+    expect(findRegressions([resolved, reopenedBySdk])).toEqual([
+      { at: reopenedBySdk.changedAt, note: 'Regression auto-detected', previous: resolved },
+    ]);
+  });
+
+  it('does not count a person moving a bug back to in progress', () => {
+    expect(findRegressions([resolved, { ...reopenedBySdk, changedBy: dev }])).toEqual([]);
+  });
+
+  it('does not count an unattributed change that is not a reopen from resolved or closed', () => {
+    const fromOpen = [{ status: 'open', changedBy: dev, changedAt: 'x' }, { status: 'in-progress', changedAt: 'y' }];
+    expect(findRegressions(fromOpen)).toEqual([]);
+    expect(findRegressions([resolved, { status: 'closed', changedAt: 'y' }])).toEqual([]);
+  });
+
+  it('lists every regression, oldest first, and copes with no history', () => {
+    const twice = [resolved, reopenedBySdk, { ...resolved, changedAt: '2026-10-18T18:00:00Z' }, { ...reopenedBySdk, changedAt: '2026-10-19T08:00:00Z' }];
+    expect(findRegressions(twice).map((r) => r.at)).toEqual([reopenedBySdk.changedAt, '2026-10-19T08:00:00Z']);
+    expect(findRegressions(undefined)).toEqual([]);
+    expect(findRegressions(null)).toEqual([]);
   });
 });

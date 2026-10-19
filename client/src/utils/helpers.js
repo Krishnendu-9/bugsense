@@ -207,6 +207,27 @@ export const statusOptionsFor = (user, bug) => {
   return ALL_STATUSES.filter((status) => allowed.has(status));
 };
 
+/*
+ * The regressions in a bug's status history: each time it came back after
+ * being resolved or closed. Same rule the server applies (recordRepeat in
+ * telemetry.controller.js): only the telemetry pipeline writes a status change
+ * with no changedBy, and it only does so to move a resolved or closed bug back
+ * to in-progress. Returns [{ at, note, previous }] oldest first, where
+ * `previous` is the history entry that had resolved or closed it (or null when
+ * the history does not record one).
+ */
+export const findRegressions = (statusHistory = []) => {
+  const regressions = [];
+  (statusHistory || []).forEach((entry, i) => {
+    const previous = statusHistory[i - 1] || null;
+    const reopenedFromDone = !previous || previous.status === 'resolved' || previous.status === 'closed';
+    if (!entry.changedBy && entry.status === 'in-progress' && reopenedFromDone) {
+      regressions.push({ at: entry.changedAt, note: entry.note || '', previous });
+    }
+  });
+  return regressions;
+};
+
 // Converts a canvas data URL into a File so it can be uploaded as multipart.
 export const dataUrlToFile = async (dataUrl, filename) => {
   const blob = await (await fetch(dataUrl)).blob();
