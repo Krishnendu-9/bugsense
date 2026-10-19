@@ -1,4 +1,4 @@
-import { PRIORITY_COLORS, STATUS_COLORS, SEVERITY_COLORS, STATUS_OPTIONS } from '../../utils/constants.js';
+import { PRIORITY_COLORS, STATUS_COLORS, STATUS_MARK_COLORS, SEVERITY_COLORS, STATUS_OPTIONS } from '../../utils/constants.js';
 import { capitalize } from '../../utils/helpers.js';
 
 export function PriorityBadge({ priority }) {
@@ -44,15 +44,9 @@ export function RoleBadge({ role }) {
  * Table cells shared by every bug table (the Overview's Recent, the Bugs list),
  * so the two read as one system and a fix to one is a fix to both.
  *
- * Status is a small square plus the label. The squares are graphics, so In
- * Progress uses the graphics amber (--status-progress-mark), not the text one.
+ * Status is a small square plus the label; its colour comes from
+ * STATUS_MARK_COLORS (constants.js), which every status mark shares.
  */
-const STATUS_MARK = {
-  open: 'bg-status-open',
-  'in-progress': 'bg-status-progress-mark',
-  resolved: 'bg-status-resolved',
-  closed: 'bg-subtle',
-};
 
 // Priority is plain text; only the two that need attention carry colour.
 const PRIORITY_TEXT = {
@@ -64,7 +58,7 @@ export function StatusMark({ status }) {
   const label = STATUS_OPTIONS.find((s) => s.value === status)?.label || capitalize(status);
   return (
     <span className="inline-flex items-center gap-2 text-fg">
-      <span className={`h-2 w-2 rounded-[2px] ${STATUS_MARK[status] || 'bg-subtle'}`} aria-hidden="true" />
+      <span className={`h-2 w-2 rounded-[2px] ${STATUS_MARK_COLORS[status] || 'bg-subtle'}`} aria-hidden="true" />
       {label}
     </span>
   );

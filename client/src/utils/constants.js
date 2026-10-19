@@ -52,6 +52,18 @@ export const STATUS_COLORS = {
   closed: 'text-muted bg-track border-border',
 };
 
+// Status marks -- the filled squares and dots (StatusMark, the bug page's
+// status history). Graphics, so In Progress takes the graphics amber
+// (--status-progress-mark), not the text colour above. Look the class up here;
+// never derive it from a text class at runtime: Tailwind only generates
+// classes it can read in the source.
+export const STATUS_MARK_COLORS = {
+  open: 'bg-status-open',
+  'in-progress': 'bg-status-progress-mark',
+  resolved: 'bg-status-resolved',
+  closed: 'bg-subtle',
+};
+
 // Severity has no tokens of its own; it borrows the priority scale, which runs
 // in the same direction.
 export const SEVERITY_COLORS = {

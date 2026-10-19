@@ -24,7 +24,7 @@ import {
   timeAgo, getInitials, formatDate, getImageUrl, sanitizeHtml, isStaff, dataUrlToFile,
   isBugReporter, statusOptionsFor,
 } from '../../utils/helpers.js';
-import { STATUS_OPTIONS, PRIORITY_OPTIONS, STATUS_COLORS } from '../../utils/constants.js';
+import { STATUS_OPTIONS, PRIORITY_OPTIONS, STATUS_MARK_COLORS } from '../../utils/constants.js';
 import api from '../../api/axios.js';
 
 function Avatar({ person, size = 'w-8 h-8', text = 'text-xs' }) {
@@ -788,11 +788,12 @@ function BugDetailView() {
                 <div className="absolute left-2 top-0 bottom-0 w-px bg-border" />
                 <div className="space-y-4">
                   {bug.statusHistory.map((entry, i) => {
-                    const dotColor = STATUS_COLORS[entry.status]?.split(' ')[0] || 'text-muted';
+                    // A static lookup on the mark tokens, shared with StatusMark.
+                    const dotColor = STATUS_MARK_COLORS[entry.status] || 'bg-subtle';
                     return (
                       <div key={entry._id || i} className="flex gap-3 pl-6 relative">
                         <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full border-2 border-surface flex items-center justify-center bg-surface">
-                          <div className={`w-2 h-2 rounded-full ${dotColor.replace('text-', 'bg-')}`} />
+                          <div className={`w-2 h-2 rounded-full ${dotColor}`} />
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-medium text-text-base capitalize">
