@@ -74,18 +74,15 @@ module.exports = {
          *   text-base           -> text        (113 call sites)
          *   background          -> canvas      (6)
          *   primary / secondary -> accent      (98 -- these meant "the accent")
-         *   status-in-progress  -> status-progress (4)
-         *   status-closed       -> muted       (4, closed is now colourless)
+         *
+         * surface-elevated, border-light, status-in-progress and status-closed
+         * were removed once their last call sites were gone.
          */
         'text-base': token('text'),
         background: token('canvas'),
-        'surface-elevated': token('surface'),
-        'border-light': token('hairline'),
         primary: token('accent'),
         'primary-hover': token('accent'),
         secondary: token('accent'),
-        'status-in-progress': token('status-progress'),
-        'status-closed': token('muted'),
       },
       // IBM Plex, self-hosted from @fontsource (see main.jsx). Sans is the
       // interface; Mono is for data only -- counts, durations, timestamps,

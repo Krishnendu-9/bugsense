@@ -13,7 +13,6 @@ yarn-error.log*
 .vite/
 build/
 coverage/
-claude.md
 # Per-machine Claude Code settings (shared .claude/settings.json is not ignored)
 .claude/settings.local.json
 TESTING-SHEET.md
