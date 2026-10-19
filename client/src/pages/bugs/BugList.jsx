@@ -7,6 +7,7 @@ import useDebouncedValue from '../../hooks/useDebouncedValue.js';
 import { useSocketEvent } from '../../hooks/useSocket.js';
 import BugFilters from '../../components/bugs/BugFilters.jsx';
 import BugTable from '../../components/bugs/BugTable.jsx';
+import ViewSwitch from '../../components/bugs/ViewSwitch.jsx';
 import { downloadFile, toCsvCell } from '../../utils/helpers.js';
 
 const DEFAULT_FILTERS = { status: '', priority: '', project: '', source: '', search: '' };
@@ -264,40 +265,43 @@ export default function BugList() {
           </p>
         </div>
 
-        <div className="relative" ref={exportMenuRef}>
-          <button
-            type="button"
-            onClick={() => setShowExportMenu((p) => !p)}
-            disabled={exporting}
-            aria-haspopup="menu"
-            aria-expanded={showExportMenu}
-            className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 disabled:opacity-60"
-          >
-            <Download size={14} aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export'} <ChevronDown size={12} aria-hidden="true" />
-          </button>
-          {showExportMenu && (
-            <div role="menu" className="absolute right-0 mt-1.5 w-56 bg-surface border border-border rounded-xl shadow-popover p-1.5 z-30">
-              <p className="px-3 py-1.5 text-xs text-subtle">
-                {hasActiveFilters ? `The ${plural(pagination.total, 'bug')} matching these filters` : `All ${plural(pagination.total, 'bug')}`}
-              </p>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => exportAll('csv')}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-fg hover:bg-track transition-colors"
-              >
-                <FileSpreadsheet size={14} className="text-muted" aria-hidden="true" /> CSV
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => exportAll('json')}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-fg hover:bg-track transition-colors"
-              >
-                <FileCode size={14} className="text-muted" aria-hidden="true" /> JSON
-              </button>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <ViewSwitch current="list" />
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowExportMenu((p) => !p)}
+              disabled={exporting}
+              aria-haspopup="menu"
+              aria-expanded={showExportMenu}
+              className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 disabled:opacity-60"
+            >
+              <Download size={14} aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export'} <ChevronDown size={12} aria-hidden="true" />
+            </button>
+            {showExportMenu && (
+              <div role="menu" className="absolute right-0 mt-1.5 w-56 bg-surface border border-border rounded-xl shadow-popover p-1.5 z-30">
+                <p className="px-3 py-1.5 text-xs text-subtle">
+                  {hasActiveFilters ? `The ${plural(pagination.total, 'bug')} matching these filters` : `All ${plural(pagination.total, 'bug')}`}
+                </p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => exportAll('csv')}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-fg hover:bg-track transition-colors"
+                >
+                  <FileSpreadsheet size={14} className="text-muted" aria-hidden="true" /> CSV
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => exportAll('json')}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-fg hover:bg-track transition-colors"
+                >
+                  <FileCode size={14} className="text-muted" aria-hidden="true" /> JSON
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

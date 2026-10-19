@@ -114,6 +114,15 @@ describe('Bugs list', () => {
 
     const sdk = row(SDK.title);
     expect(within(sdk).getByText('×12')).toHaveClass('font-mono');
+
+    // A count of one isn't a count: no badge, and the Source column says SDK.
+    const single = row(FILLERS[0].title);
+    expect(within(single).queryByText(/^×/)).not.toBeInTheDocument();
+    expect(within(single).getByText('SDK')).toBeInTheDocument();
+
+    // List and Board link to each other through the same switch.
+    expect(screen.getByRole('link', { name: /Board/ })).toHaveAttribute('href', '/board');
+    expect(screen.getByText('List').closest('[aria-current="page"]')).not.toBeNull();
     expect(within(sdk).getByText('abcdef12')).toBeInTheDocument();
     // The URL is cut to the file name on screen; the whole frame is on hover.
     const frame = within(sdk).getByText('at handleClick (app-1a2b3c.js:10:5)');
