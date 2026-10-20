@@ -10,11 +10,16 @@ auto-reports uncaught errors and unhandled rejections, and injects a floating
 ```html
 <script
   src="https://your-bugsense-host/sdk/bugsense.js"
+  crossorigin="anonymous"
   data-api-url="https://your-bugsense-host"
   data-project="My Client App"
   data-key="your-ingest-key"
 ></script>
 ```
+
+Keep `crossorigin="anonymous"`: without it, Chromium reports nothing for
+unhandled fetch rejections. If it is missing, the SDK logs one console warning
+saying so.
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|

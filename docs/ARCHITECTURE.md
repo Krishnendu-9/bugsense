@@ -184,6 +184,16 @@ tests run the real middleware stack against an in-memory MongoDB.
     the advisory does not list. Editor output is sanitized on the server before
     it is stored and again by DOMPurify before it is rendered, so exported HTML
     never reaches the page unsanitized.
+- An SDK embedded from another origin without `crossorigin="anonymous"` misses
+  unhandled fetch failures in Chromium-based browsers. The SDK calls the native
+  `fetch` for the page, so the error is created inside the SDK's script; when
+  that script is loaded without CORS, Chromium treats it as opaque and fires no
+  `unhandledrejection` event at all (the console still shows the error).
+  Firefox reports these failures either way. The server now sends
+  `Access-Control-Allow-Origin: *` on `/sdk/` and the snippet carries the
+  attribute, but embeds already in place stay blind in Chromium until their
+  owner adds it. The SDK logs one console warning when it finds itself loaded
+  this way. Unhandled rejections from the page's own code are unaffected.
 - Two different errors that share their top stack frames — for example two
   different failing API calls, where the top frames are all inside axios — can be
   grouped into one bug. In this evaluation 9 unrelated pairs of errors were

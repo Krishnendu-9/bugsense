@@ -16,6 +16,9 @@ export default function SDKPlayground() {
   useEffect(() => {
     const script = document.createElement('script');
     script.src = `${getApiOrigin()}/sdk/bugsense.js`;
+    // The API is usually another origin; without this, Chromium reports
+    // nothing for unhandled fetch rejections on this page.
+    script.crossOrigin = 'anonymous';
     script.setAttribute('data-api-url', getApiOrigin());
     script.setAttribute('data-project', 'Storefront Demo');
     // Must match the server's TELEMETRY_INGEST_KEY when one is set. Like any

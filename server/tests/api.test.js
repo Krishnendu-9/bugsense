@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import supertest from 'supertest';
 import { io as ioClient } from 'socket.io-client';
 import { startTestServer, stopTestServer, createUser, Bug } from './helpers.js';
+import { getPrimaryClientUrl } from '../utils/clientOrigins.js';
 
 let server;
 let port;
@@ -831,6 +832,39 @@ describe('telemetry', () => {
       .set('Access-Control-Request-Headers', 'content-type,x-bugsense-key');
     assert.equal(res.status, 204);
     assert.equal(res.headers['access-control-allow-origin'], 'https://customer-site.example');
+  });
+});
+
+describe('SDK script CORS', () => {
+  const customer = 'https://customer-site.example';
+
+  it('serves the SDK to any origin, without credentials', async () => {
+    const res = await request.get('/sdk/bugsense.js').set('Origin', customer);
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'], /javascript/);
+    assert.equal(res.headers['access-control-allow-origin'], '*');
+    assert.equal(res.headers['access-control-allow-credentials'], undefined);
+  });
+
+  it('gives the dashboard origin the same header, not its credentialed policy', async () => {
+    const res = await request.get('/sdk/bugsense.js').set('Origin', getPrimaryClientUrl());
+    assert.equal(res.headers['access-control-allow-origin'], '*');
+    assert.equal(res.headers['access-control-allow-credentials'], undefined);
+  });
+
+  it('does not widen CORS on the API', async () => {
+    const foreign = await request.get('/api/health').set('Origin', customer);
+    assert.equal(foreign.status, 200);
+    assert.equal(foreign.headers['access-control-allow-origin'], undefined);
+
+    const dashboard = await request.get('/api/health').set('Origin', getPrimaryClientUrl());
+    assert.equal(dashboard.headers['access-control-allow-origin'], getPrimaryClientUrl());
+    assert.equal(dashboard.headers['access-control-allow-credentials'], 'true');
+  });
+
+  it('does not widen CORS on uploads', async () => {
+    const res = await request.get('/uploads/missing.png').set('Origin', customer);
+    assert.equal(res.headers['access-control-allow-origin'], undefined);
   });
 });
 

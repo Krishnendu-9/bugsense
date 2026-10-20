@@ -139,3 +139,64 @@ describe('BugSense SDK', () => {
     expect(document.getElementById('bugsense-floating-pill')).toBeNull();
   });
 });
+
+describe('BugSense SDK cross-origin embed warning', () => {
+  let warn;
+
+  // Runs the SDK as if from a <script> tag with these attributes. jsdom does
+  // not load the src; document.currentScript is pointed at the tag the way a
+  // browser does while a classic script executes.
+  const loadFromTag = (attrs) => {
+    const tag = document.createElement('script');
+    Object.entries(attrs).forEach(([name, value]) => tag.setAttribute(name, value));
+    document.body.appendChild(tag);
+    Object.defineProperty(document, 'currentScript', { configurable: true, get: () => tag });
+    return loadSdk();
+  };
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    delete document.currentScript;
+    warn.mockRestore();
+  });
+
+  it('warns once when loaded cross-origin without the crossorigin attribute', () => {
+    loadFromTag({ src: 'https://bugsense.example/sdk/bugsense.js' });
+    loadFromTag({ src: 'https://bugsense.example/sdk/bugsense.js' }); // second copy is ignored
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('https://bugsense.example');
+    expect(warn.mock.calls[0][0]).toContain('crossorigin="anonymous"');
+  });
+
+  it('stays quiet when the crossorigin attribute is present', () => {
+    loadFromTag({ src: 'https://bugsense.example/sdk/bugsense.js', crossorigin: 'anonymous' });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('stays quiet when loaded from the page origin', () => {
+    loadFromTag({ src: `${window.location.origin}/sdk/bugsense.js` });
+    window.BugSense.destroy();
+    loadFromTag({ src: '/sdk/bugsense.js' });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('stays quiet for data: sources, which are not opaque', () => {
+    loadFromTag({ src: 'data:text/javascript,void 0' });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('never guesses from other script tags when currentScript is unavailable', () => {
+    // As for a module script or a loader that evaluates the source itself.
+    const other = document.createElement('script');
+    other.setAttribute('src', 'https://cdn.example/other.js');
+    document.body.appendChild(other);
+
+    loadSdk();
+    expect(warn).not.toHaveBeenCalled();
+    expect(window.BugSense).toBeDefined();
+  });
+});
