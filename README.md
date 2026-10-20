@@ -75,9 +75,9 @@ MongoDB, local or Atlas. See
 
 ## Screenshots
 
-| Dashboard | Bug Detail |
+| Overview | Bug Detail |
 |---|---|
-| ![Dashboard with incident counts and charts](docs/screenshots/dashboard.png) | ![A recurring SDK crash: occurrence count, flight recorder timeline, labelled analysis and comments](docs/screenshots/bug-detail.png) |
+| ![Overview with bug and project counts, charts and a table of recent bugs](docs/screenshots/dashboard.png) | ![A recurring SDK crash: occurrence count, error log, an analysis labelled Heuristic and the flight recorder timeline](docs/screenshots/bug-detail.png) |
 
 | Kanban Board | SDK Sandbox |
 |---|---|
