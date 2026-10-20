@@ -15,6 +15,12 @@ const getClient = () => {
   return client;
 };
 
+// Lets tests run the Claude path against a stub client, with no network call.
+// Pass undefined to go back to the real client.
+export const setAIClientForTests = (stub) => {
+  client = stub;
+};
+
 export const isAIConfigured = () => Boolean(process.env.ANTHROPIC_API_KEY);
 
 const stripHtml = (html = '') => String(html).replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
@@ -77,28 +83,38 @@ export const getHeuristicAnalysis = (errorLog = '') => {
 };
 
 /**
+ * How a saved analysis is attributed wherever it leaves the bug page, by its
+ * recorded source. Only 'claude' is called AI. A missing or unknown source is
+ * said to be unrecorded rather than assumed: analyses saved before `source`
+ * existed include unlabelled fallback text.
+ */
+const analysisAttribution = (insights) => {
+  if (insights?.source === 'claude') {
+    return { label: 'AI Analysis (Claude)' };
+  }
+  if (insights?.source === 'heuristic') {
+    return {
+      label: 'Heuristic Analysis',
+      note: 'Matched from keywords in the error log by BugSense rules. This is not a model diagnosis.',
+    };
+  }
+  return {
+    label: 'Analysis (source not recorded)',
+    note: 'BugSense has no record of what produced this analysis, so it is not presented as model output.',
+  };
+};
+
+/**
  * A saved analysis as a Markdown section for text that leaves BugSense (the
- * GitHub issue body), attributed by its recorded source. Only 'claude' is
- * called AI. A missing or unknown source is said to be unrecorded rather than
- * assumed: analyses saved before `source` existed include unlabelled fallback
- * text. Returns '' when there is no analysis.
+ * GitHub issue body), attributed by its recorded source. Returns '' when there
+ * is no analysis.
  */
 export const analysisMarkdown = (insights) => {
   if (!insights?.possibleCause) return '';
-  let heading;
-  let note;
-  if (insights.source === 'claude') {
-    heading = 'AI Analysis (Claude)';
-  } else if (insights.source === 'heuristic') {
-    heading = 'Heuristic Analysis';
-    note = '_Matched from keywords in the error log by BugSense rules. This is not a model diagnosis._';
-  } else {
-    heading = 'Analysis (source not recorded)';
-    note = '_BugSense has no record of what produced this analysis, so it is not presented as model output._';
-  }
+  const { label, note } = analysisAttribution(insights);
   return [
-    `### ${heading}`,
-    ...(note ? [note, ''] : []),
+    `### ${label}`,
+    ...(note ? [`_${note}_`, ''] : []),
     `**Possible Cause:** ${insights.possibleCause}`,
     '',
     '**Suggested Fix:**',
@@ -106,6 +122,28 @@ export const analysisMarkdown = (insights) => {
     '',
   ].join('\n');
 };
+
+// The saved analysis as post-mortem prompt lines. Source says who produced it;
+// Status says nobody has confirmed it.
+//
+// Every analysis is UNVERIFIED, Claude's included, and that is deliberate:
+// nothing in BugSense confirms an analysis -- there is no human-confirmation
+// state anywhere -- so "verified" can never be true today. A flag that is true
+// for Claude and false for heuristics would record provenance, not
+// confirmation, and the Source line already records provenance. Only drop the
+// UNVERIFIED line once a person can actually confirm an analysis.
+const analysisPromptLines = (insights) => {
+  if (!insights?.possibleCause) return 'Saved Analysis: None';
+  const { label, note } = analysisAttribution(insights);
+  return [
+    `Saved Analysis Source: ${label}${note ? ` -- ${note}` : ''}`,
+    'Saved Analysis Status: UNVERIFIED',
+    `Saved Possible Cause: ${insights.possibleCause}`,
+    `Saved Suggested Fix: ${insights.suggestedFix || 'None'}`,
+  ].join('\n');
+};
+
+const OWNER_TODO = '_To be completed by the incident owner._';
 
 /**
  * Service: Analyze an error log using Claude AI (with automatic heuristic fallback).
@@ -201,6 +239,9 @@ export const generatePostMortem = async (bug) => {
     .join('\n');
 
   const description = stripHtml(bug.description);
+  const insights = bug.aiInsights;
+  const hasAnalysis = Boolean(insights?.possibleCause);
+  const { label: analysisLabel, note: analysisNote } = analysisAttribution(insights);
 
   const context = `
 Incident Title: ${bug.title}
@@ -209,8 +250,7 @@ First Seen: ${bug.firstSeenAt || bug.createdAt}
 Last Seen: ${bug.lastSeenAt || bug.updatedAt}
 Description: ${description.slice(0, MAX_CONTEXT_CHARS)}
 Error Log: ${(bug.errorLog || 'None recorded').slice(0, MAX_ERROR_LOG_CHARS)}
-AI Insights: ${bug.aiInsights?.possibleCause || 'None'}
-Suggested Fix: ${bug.aiInsights?.suggestedFix || 'None'}
+${analysisPromptLines(insights)}
 Telemetry Flight Recorder Breadcrumbs:
 ${breadcrumbsSummary || 'None captured'}
 `;
@@ -238,12 +278,12 @@ ${breadcrumbsSummary || '- *No interactive breadcrumbs recorded prior to crash.*
 ---
 
 ## Root Cause Analysis (RCA)
-${bug.aiInsights?.possibleCause || '_To be completed by the incident owner._'}
+${hasAnalysis ? `_Source: ${analysisLabel}.${analysisNote ? ` ${analysisNote}` : ''}_\n\n${insights.possibleCause}` : OWNER_TODO}
 
 ---
 
 ## Resolution & Mitigations
-${bug.aiInsights?.suggestedFix || '_To be completed by the incident owner._'}
+${hasAnalysis && insights.suggestedFix ? `_Suggested by: ${analysisLabel}. Not confirmed as the applied fix._\n\n${insights.suggestedFix}` : OWNER_TODO}
 
 ---
 
@@ -262,7 +302,7 @@ ${bug.aiInsights?.suggestedFix || '_To be completed by the incident owner._'}
       model: MODEL,
       max_tokens: 2000,
       system:
-        'You are a senior site reliability engineer. Given the incident details, write a clear, factual Incident Post-Mortem in professional GitHub-flavored Markdown. Include sections: Executive Summary, Impact & Scope, Timeline of Events, Root Cause Analysis, Resolution, and Action Items. Return ONLY the markdown document without additional conversational filler.',
+        'You are a senior site reliability engineer. Given the incident details, write a clear, factual Incident Post-Mortem in professional GitHub-flavored Markdown. Include sections: Executive Summary, Impact & Scope, Timeline of Events, Root Cause Analysis, Resolution, and Action Items. The Saved Analysis Source line says what produced the saved cause and fix; attribute them accordingly, and call them AI or model output only when that source is Claude. If the saved analysis is marked UNVERIFIED, present its cause and fix as hypotheses still to be confirmed, never as the established root cause or as the fix that was applied. Return ONLY the markdown document without additional conversational filler.',
       messages: [{ role: 'user', content: context }],
     });
 

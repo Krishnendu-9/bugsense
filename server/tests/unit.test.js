@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isAllowedWebhookUrl } from '../utils/webhookUrl.js';
 import { generateFingerprint, topFrameOf } from '../utils/fingerprint.util.js';
@@ -7,7 +7,7 @@ import { checkJwtSecret } from '../services/token.service.js';
 import { cloudinaryPublicId } from '../services/storage.service.js';
 import { getClientOrigins, getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { parseTrustProxy } from '../utils/trustProxy.js';
-import { analysisMarkdown } from '../services/ai.service.js';
+import { analysisMarkdown, generatePostMortem, setAIClientForTests } from '../services/ai.service.js';
 import { errorHandler } from '../middleware/error.middleware.js';
 import {
   countResolvedSince,
@@ -323,5 +323,175 @@ describe('analysisMarkdown', () => {
   it('returns nothing without an analysis', () => {
     assert.equal(analysisMarkdown(undefined), '');
     assert.equal(analysisMarkdown({ possibleCause: '', source: 'claude' }), '');
+  });
+});
+
+describe('generatePostMortem', () => {
+  const insights = { possibleCause: 'Null reference in render', suggestedFix: 'Guard the access' };
+  const bugWith = (aiInsights) => ({
+    title: 'Checkout crashes',
+    description: '<p>Clicking Pay crashes the page</p>',
+    priority: 'high',
+    severity: 'major',
+    status: 'open',
+    errorLog: 'TypeError: Cannot read properties of undefined',
+    createdAt: new Date('2026-10-01T10:00:00Z'),
+    updatedAt: new Date('2026-10-02T10:00:00Z'),
+    aiInsights,
+  });
+  const unrecordedSources = [undefined, null, '', 'template', 'something-new'];
+  const savedKey = process.env.ANTHROPIC_API_KEY;
+  const restoreKey = () => {
+    if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedKey;
+  };
+
+  describe('prompt sent to Claude', () => {
+    let requests;
+
+    beforeEach(() => {
+      requests = [];
+      // The stub goes in before the key is set, so a real client is never built.
+      setAIClientForTests({
+        messages: {
+          create: async (params) => {
+            requests.push(params);
+            return { content: [{ type: 'text', text: '# Incident Post-Mortem' }] };
+          },
+        },
+      });
+      process.env.ANTHROPIC_API_KEY = 'test-key-not-used';
+    });
+
+    afterEach(() => {
+      setAIClientForTests(undefined);
+      restoreKey();
+    });
+
+    const promptFor = async (aiInsights) => {
+      const result = await generatePostMortem(bugWith(aiInsights));
+      assert.equal(result.source, 'claude');
+      assert.equal(requests.length, 1);
+      return requests[0].messages[0].content;
+    };
+
+    // Nothing in BugSense confirms an analysis, so a Claude one is unverified too.
+    it('labels a Claude analysis as model output, still unverified', async () => {
+      const prompt = await promptFor({ ...insights, source: 'claude' });
+      assert.match(prompt, /^Saved Analysis Source: AI Analysis \(Claude\)$/m);
+      assert.match(prompt, /^Saved Analysis Status: UNVERIFIED$/m);
+      assert.match(prompt, /^Saved Possible Cause: Null reference in render$/m);
+      assert.match(prompt, /^Saved Suggested Fix: Guard the access$/m);
+      assert.doesNotMatch(prompt, /AI Insights/);
+    });
+
+    it('labels a keyword match as heuristic and unverified', async () => {
+      const prompt = await promptFor({ ...insights, source: 'heuristic' });
+      assert.match(prompt, /^Saved Analysis Source: Heuristic Analysis -- .*not a model diagnosis\.$/m);
+      assert.match(prompt, /^Saved Analysis Status: UNVERIFIED$/m);
+      assert.match(prompt, /^Saved Possible Cause: Null reference in render$/m);
+      assert.doesNotMatch(prompt, /AI Insights|AI Analysis|Claude/);
+    });
+
+    it('labels a missing or unknown source as unrecorded and unverified', async () => {
+      for (const source of unrecordedSources) {
+        requests.length = 0;
+        const prompt = await promptFor({ ...insights, source });
+        assert.match(prompt, /^Saved Analysis Source: Analysis \(source not recorded\) -- /m, `source=${source}`);
+        assert.match(prompt, /^Saved Analysis Status: UNVERIFIED$/m, `source=${source}`);
+        assert.doesNotMatch(prompt, /AI Insights|AI Analysis|Claude/, `source=${source}`);
+      }
+    });
+
+    it('says there is no saved analysis when there is none', async () => {
+      const prompt = await promptFor(undefined);
+      assert.match(prompt, /^Saved Analysis: None$/m);
+      assert.doesNotMatch(prompt, /Saved Analysis Source|UNVERIFIED/);
+    });
+
+    it('tells the model to treat an unverified analysis as a hypothesis', async () => {
+      await promptFor({ ...insights, source: 'heuristic' });
+      const { system } = requests[0];
+      assert.match(system, /Saved Analysis Source/);
+      assert.match(system, /UNVERIFIED/);
+      assert.match(system, /hypothes[ie]s/);
+      assert.match(system, /never as the established root cause or as the fix that was applied/);
+    });
+
+    it('tells the model to call the analysis AI output only when Claude produced it', async () => {
+      await promptFor({ ...insights, source: 'claude' });
+      assert.match(requests[0].system, /call them AI or model output only when that source is Claude/);
+    });
+
+    it('falls back to the attributed template when the call fails', async () => {
+      setAIClientForTests({ messages: { create: async () => { throw new Error('offline'); } } });
+      const original = console.warn;
+      console.warn = () => {};
+      try {
+        const result = await generatePostMortem(bugWith({ ...insights, source: 'heuristic' }));
+        assert.equal(result.source, 'template');
+        assert.match(result.markdown, /_Source: Heuristic Analysis\. .*not a model diagnosis\._/);
+      } finally {
+        console.warn = original;
+      }
+    });
+  });
+
+  describe('template without the API', () => {
+    beforeEach(() => {
+      delete process.env.ANTHROPIC_API_KEY;
+    });
+
+    afterEach(restoreKey);
+
+    // The body of one "## heading" section, up to the next rule.
+    const section = (markdown, heading) => {
+      const start = markdown.indexOf(`## ${heading}\n`);
+      assert.notEqual(start, -1, `missing section ${heading}`);
+      const body = markdown.slice(start + heading.length + 4);
+      return body.slice(0, body.indexOf('\n---')).trim();
+    };
+
+    const templateFor = async (aiInsights) => {
+      const result = await generatePostMortem(bugWith(aiInsights));
+      assert.equal(result.source, 'template');
+      return {
+        markdown: result.markdown,
+        rca: section(result.markdown, 'Root Cause Analysis (RCA)'),
+        resolution: section(result.markdown, 'Resolution & Mitigations'),
+      };
+    };
+
+    it('attributes a Claude analysis and does not claim its fix was applied', async () => {
+      const { rca, resolution } = await templateFor({ ...insights, source: 'claude' });
+      assert.equal(rca, '_Source: AI Analysis (Claude)._\n\nNull reference in render');
+      assert.equal(resolution, '_Suggested by: AI Analysis (Claude). Not confirmed as the applied fix._\n\nGuard the access');
+    });
+
+    it('attributes a keyword match as heuristic, never as AI', async () => {
+      const { markdown, rca, resolution } = await templateFor({ ...insights, source: 'heuristic' });
+      assert.equal(
+        rca,
+        '_Source: Heuristic Analysis. Matched from keywords in the error log by BugSense rules. This is not a model diagnosis._\n\nNull reference in render'
+      );
+      assert.equal(resolution, '_Suggested by: Heuristic Analysis. Not confirmed as the applied fix._\n\nGuard the access');
+      assert.doesNotMatch(markdown, /\bAI\b|Claude/);
+    });
+
+    it('attributes a missing or unknown source as unrecorded, never as AI', async () => {
+      for (const source of unrecordedSources) {
+        const { markdown, rca, resolution } = await templateFor({ ...insights, source });
+        assert.match(rca, /^_Source: Analysis \(source not recorded\)\. BugSense has no record/, `source=${source}`);
+        assert.match(rca, /\n\nNull reference in render$/, `source=${source}`);
+        assert.match(resolution, /^_Suggested by: Analysis \(source not recorded\)\. Not confirmed as the applied fix\._/, `source=${source}`);
+        assert.doesNotMatch(markdown, /\bAI\b|Claude/, `source=${source}`);
+      }
+    });
+
+    it('leaves both sections to the incident owner without an analysis', async () => {
+      const { rca, resolution } = await templateFor(undefined);
+      assert.equal(rca, '_To be completed by the incident owner._');
+      assert.equal(resolution, '_To be completed by the incident owner._');
+    });
   });
 });
