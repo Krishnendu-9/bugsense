@@ -160,6 +160,8 @@ runs all of it, with coverage, on every push. Set `MONGO_URI_TEST` to run the
 server tests against an existing MongoDB instead — use a dedicated database, as
 the suite drops it.
 
+`npm audit` in `client/` is not clean; why each remaining advisory is accepted is in [known limitations](docs/ARCHITECTURE.md#known-limitations).
+
 ---
 
 ## Documentation
