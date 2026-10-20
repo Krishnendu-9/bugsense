@@ -126,11 +126,15 @@ are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ```html
 <script
   src="https://your-bugsense-host/sdk/bugsense.js"
+  crossorigin="anonymous"
   data-api-url="https://your-bugsense-host"
   data-project="My Client App"
   data-key="your-ingest-key"
 ></script>
 ```
+
+Keep `crossorigin="anonymous"`: without it, Chromium reports nothing for
+unhandled fetch rejections.
 
 That one tag auto-reports uncaught errors and unhandled rejections, records the
 last fifteen user actions before each crash, and injects a floating "Report Bug"
