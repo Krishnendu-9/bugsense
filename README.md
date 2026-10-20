@@ -71,9 +71,9 @@ MongoDB, local or Atlas. See
 
 ---
 
-<!-- TODO: add a short walkthrough GIF above the screenshots once the UI work lands -->
-
 ## Screenshots
+
+![A crash triggered on the SDK sandbox arrives in the live feed and as a new bug at the top of the Bugs list; its page then scrolls to the flight recorder breadcrumbs that end in the crash](docs/images/demo.gif)
 
 | Overview | Bug Detail |
 |---|---|
