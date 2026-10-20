@@ -168,6 +168,22 @@ tests run the real middleware stack against an in-memory MongoDB.
   them would mean recording arrivals, e.g. a per-incident daily bucket
   incremented alongside `occurrences`, and would only cover crashes received
   after that change.
+- `npm audit` in `client/` reports 9 vulnerabilities (2 low, 2 moderate, 5 high,
+  as of October 2026). They come from three advisories; the other entries are the
+  packages that depend on them. They are accepted rather than cleared with
+  `npm audit fix --force`:
+  - **braces** (high, stack-exhaustion DoS) and **postcss-selector-parser**
+    (moderate, CPU exhaustion), both pulled in by Tailwind CSS 3: 7 of the 9
+    entries. Build-time only: they read our own Tailwind config and CSS, never
+    user input, and are not in the shipped bundle. braces has no fixed release,
+    and clearing either means Tailwind 4, which moves configuration into CSS,
+    where the design tokens are mapped.
+  - **quill** (low, XSS in its HTML export), through react-quill-new: 2 entries.
+    It ships and runs in the editor, but no fixed version exists; the `--force`
+    suggestion downgrades react-quill-new, which only moves quill to a release
+    the advisory does not list. Editor output is sanitized on the server before
+    it is stored and again by DOMPurify before it is rendered, so exported HTML
+    never reaches the page unsanitized.
 - Two different errors that share their top stack frames — for example two
   different failing API calls, where the top frames are all inside axios — can be
   grouped into one bug. In this evaluation 9 unrelated pairs of errors were
