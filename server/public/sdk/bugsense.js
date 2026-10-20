@@ -1,7 +1,8 @@
 /**
- * BugSense Client SDK (v1.2.0): crash reporting, breadcrumbs and a feedback widget
+ * BugSense Client SDK (v1.3.0): crash reporting, breadcrumbs and a feedback widget
  * Embed in any website:
  * <script src="https://your-bugsense-host/sdk/bugsense.js"
+ *         crossorigin="anonymous"
  *         data-api-url="https://your-bugsense-host"
  *         data-project="My Client App"
  *         data-key="optional-ingest-key"></script>
@@ -14,6 +15,28 @@
 
   // Loading the script twice would wrap fetch/console twice and double-report.
   if (window.BugSense && window.BugSense.__initialized) return;
+
+  // Loaded from another origin without crossorigin="anonymous", this script is
+  // opaque to the page, and Chromium then dispatches no unhandledrejection at
+  // all for fetch failures that pass through the SDK's fetch wrapper. Say so
+  // once, and only when certain: currentScript is null for module scripts and
+  // anything run later, and data:/blob: sources are not opaque.
+  function warnIfOpaqueEmbed(script) {
+    try {
+      if (!script || !script.src || script.hasAttribute('crossorigin')) return;
+      const src = new URL(script.src, window.location.href);
+      if (!/^https?:$/.test(src.protocol) || src.origin === window.location.origin) return;
+      console.warn(
+        '[BugSense SDK] Loaded from ' + src.origin + ' without crossorigin="anonymous", so Chromium ' +
+          'browsers will not report unhandled fetch failures on this page. Add crossorigin="anonymous" ' +
+          'to the <script> tag; the BugSense server must send Access-Control-Allow-Origin for /sdk/ ' +
+          '(current versions do), or the script will not load.'
+      );
+    } catch (err) {
+      // The check is advisory; it must never stop the SDK starting.
+    }
+  }
+  warnIfOpaqueEmbed(document.currentScript);
 
   // Read configuration from current script tag
   const currentScript = document.currentScript || Array.from(document.querySelectorAll('script')).pop();
