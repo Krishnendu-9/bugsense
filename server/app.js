@@ -49,6 +49,20 @@ export const createApp = () => {
   // from other origins and gets its own, much smaller, body limit.
   app.use('/api/telemetry', telemetryRoutes);
 
+  // The embeddable SDK is a public script with no credentials. It is loaded
+  // with crossorigin="anonymous" so Chromium dispatches unhandled rejections
+  // that pass through it, and that needs this header. Mounted before the
+  // dashboard CORS policy so that policy never applies to it, and scoped to
+  // /sdk so it never widens CORS for the API.
+  app.use(
+    '/sdk',
+    (_req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      next();
+    },
+    express.static(path.join(__dirname, 'public/sdk'))
+  );
+
   app.use(cors({
     origin: getClientOrigins(),
     credentials: true,
@@ -57,7 +71,6 @@ export const createApp = () => {
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   app.use('/uploads', express.static(UPLOADS_DIR));
-  app.use('/sdk', express.static(path.join(__dirname, 'public/sdk')));
 
   // Apply global rate limiting to all API endpoints
   app.use('/api', globalLimiter);
