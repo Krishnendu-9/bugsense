@@ -71,13 +71,13 @@ MongoDB, local or Atlas. See
 
 ---
 
-<!-- TODO: add a short walkthrough GIF above the screenshots once the UI work lands -->
-
 ## Screenshots
 
-| Dashboard | Bug Detail |
+![A crash triggered on the SDK sandbox arrives in the live feed and as a new bug at the top of the Bugs list; its page then scrolls to the flight recorder breadcrumbs that end in the crash](docs/images/demo.gif)
+
+| Overview | Bug Detail |
 |---|---|
-| ![Dashboard with incident counts and charts](docs/screenshots/dashboard.png) | ![A recurring SDK crash: occurrence count, flight recorder timeline, labelled analysis and comments](docs/screenshots/bug-detail.png) |
+| ![Overview with bug and project counts, charts and a table of recent bugs](docs/screenshots/dashboard.png) | ![A recurring SDK crash: occurrence count, error log, an analysis labelled Heuristic and the flight recorder timeline](docs/screenshots/bug-detail.png) |
 
 | Kanban Board | SDK Sandbox |
 |---|---|
