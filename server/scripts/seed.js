@@ -6,7 +6,7 @@ import User from '../models/User.model.js';
 import Bug from '../models/Bug.model.js';
 import Comment from '../models/Comment.model.js';
 import AuditLog from '../models/AuditLog.model.js';
-import { generateFingerprint } from '../utils/fingerprint.util.js';
+import { generateFingerprintV2, manualKeyInputs } from '../utils/fingerprint.util.js';
 import { getHeuristicAnalysis } from '../services/ai.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -84,7 +84,17 @@ const seed = async () => {
   at handleAutofill (Login.jsx:34)
   at HTMLInputElement.<anonymous> (Login.jsx:28)`;
 
-  const bugs = await Bug.insertMany([
+  // Manual reports carry the v2 fingerprint the API gives them (for the
+  // similar-report hint), so a freshly seeded database has nothing to migrate
+  // (docs/fingerprint-eval-v2.md, Amendment 1, P21).
+  const withManualFingerprint = (list) =>
+    list.map((bug) => ({
+      ...bug,
+      fingerprint: generateFingerprintV2(manualKeyInputs({ project: bug.project, title: bug.title, errorLog: bug.errorLog })),
+      fingerprintVersion: 2,
+    }));
+
+  const bugs = await Bug.insertMany(withManualFingerprint([
     {
       title: 'Login page crashes on Safari 17',
       description: '<p>The login page throws a white screen on Safari 17 when autofill is triggered. Works fine on Chrome and Firefox.</p>',
@@ -186,7 +196,7 @@ const seed = async () => {
       createdAt: daysAgo(4, 8),
       updatedAt: daysAgo(3, 14),
     },
-  ]);
+  ]));
 
   const comment = await Comment.create({
     bug: bugs[0]._id,
@@ -206,7 +216,7 @@ const seed = async () => {
    * each is one bug standing for many crashes, grouped by fingerprint. They
    * are written with the same shape the telemetry endpoint writes (source
    * 'sdk', no reporter, occurrences, first/last seen, breadcrumbs, browser
-   * info), and the fingerprint is computed by the real generateFingerprint()
+   * info), and the fingerprint is computed by the real generateFingerprintV2()
    * from the real-looking stack trace, scoped by project as live capture
    * does -- so the fingerprint and top frame the Bugs list shows are genuine.
    * The repeat counts, dates and traces are invented.
@@ -249,7 +259,9 @@ const seed = async () => {
       project,
       source: 'sdk',
       reporter: null,
-      fingerprint: generateFingerprint(errorLog, title, project),
+      // The key the telemetry endpoint computes for the same report.
+      fingerprint: generateFingerprintV2({ project, title, errorLog, breadcrumbs: rest.breadcrumbs }),
+      fingerprintVersion: 2,
       firstSeenAt: createdAt,
       lastSeenAt,
       createdAt,

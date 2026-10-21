@@ -41,22 +41,6 @@ export const generateFingerprint = (errorLog = '', title = '', scope = '') => {
   return crypto.createHash('sha256').update(rawKey).digest('hex').slice(0, 32);
 };
 
-/**
- * The top stack frame of an error log, chosen by the same rule the fingerprint
- * uses (the first trimmed line starting with "at "), so the frame a list shows
- * beside an SDK bug is the one that actually drove its grouping. Returns null
- * when there is no such line -- Firefox and Safari write frames as
- * "fn@file:line:col", which the fingerprint does not use either.
- */
-export const topFrameOf = (errorLog = '') => {
-  if (!errorLog) return null;
-  const frame = errorLog
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.startsWith('at '));
-  return frame ? frame.slice(0, 160) : null;
-};
-
 /** The v1 key under an explicit name, for the migration and the regression check. */
 export const generateFingerprintV1 = generateFingerprint;
 
@@ -187,7 +171,8 @@ export function parseStack(errorLog = '') {
   for (const line of String(errorLog || '').split('\n')) {
     if (!line.trim()) continue;
     const frame = parseFrame(line);
-    if (frame) frames.push(frame);
+    // `raw` is the line as written, for display (topFrameOf); the key never reads it.
+    if (frame) frames.push({ ...frame, raw: line.trim() });
     else unparsed += 1;
   }
   if (frames.some((f) => f.kind === 'app' && !/^(file|node):/.test(f.file))) {
@@ -201,13 +186,30 @@ export function parseStack(errorLog = '') {
 const SDK_TITLE_PREFIX = /^(?:Uncaught |Unhandled Promise Rejection: )/;
 const ERROR_NAME_PREFIX = /^(?:[A-Z]\w*)?(?:Error|Exception):\s*/;
 
+const stripPrefixes = (text) => text.replace(SDK_TITLE_PREFIX, '').replace(ERROR_NAME_PREFIX, '').trim();
+
+// V8's header line of a stack, without the error name; empty when the first
+// line is a frame (Firefox and Safari stacks have no header).
+function headerMessage(errorLog) {
+  const head = String(errorLog || '').split('\n')[0] || '';
+  return /^\s*at |@/.test(head) ? '' : stripPrefixes(head);
+}
+
 function messageFromTitle(title, errorLog) {
-  let t = title || '';
-  if (/^\s/.test(t) || /^at /.test(t)) {
-    const head = String(errorLog || '').split('\n')[0] || '';
-    t = /^\s*at |@/.test(head) ? '' : head;
-  }
-  return t.replace(SDK_TITLE_PREFIX, '').replace(ERROR_NAME_PREFIX, '').trim();
+  const t = title || '';
+  if (/^\s/.test(t) || /^at /.test(t)) return headerMessage(errorLog);
+  return stripPrefixes(t);
+}
+
+/**
+ * Key inputs for a manual (or 'api') report (Amendment 1, P34): its title is
+ * what a person typed, not the error message, so the message comes from the
+ * pasted error log's V8 header; the title is read only when there is no log.
+ */
+export function manualKeyInputs({ project, title, errorLog } = {}) {
+  const log = String(errorLog || '');
+  if (!log.trim()) return { project, title, errorLog: log };
+  return { project, title, errorLog: log, error: { name: null, message: headerMessage(log) } };
 }
 
 function reportMessage({ error, title, errorLog }) {
@@ -312,23 +314,39 @@ export function buildKeyV2(report = {}) {
 
   const { frames } = parseStack(errorLog);
   const neutral = normaliseMessage(message, frames);
-
-  // 2.3: top app frame; library frames only when there is no app frame.
-  let usable = frames.filter((f) => f.kind === 'app' || f.kind === 'library');
-  if (usable.some((f) => f.kind === 'app')) usable = usable.filter((f) => f.kind === 'app');
+  const top = topUsableFrame(frames);
 
   // 2.5: only HTTP and network failures carry a request.
   const request = /^(network|http )/.test(neutral) ? reportRequest(report) : '';
 
-  if (!usable.length) {
+  if (!top) {
     if (/^Script error\.?/.test(message)) return `fp2::${project}::script-error::${scriptPath({ source: report.source, errorLog })}`;
     return `fp2::${project}::nostack::${neutral}::${request}::`;
   }
   if (request) return `fp2::${project}::${neutral}::::${request}::`;
   // P8: an HTTP or network failure with no request found falls through to frames.
-  const top = usable[0];
   return `fp2::${project}::${neutral}::${top.fn}@${top.file}::${request}::`;
 }
+
+// 2.3: the first app frame; a library frame only when the stack has no app frame.
+function topUsableFrame(frames) {
+  let usable = frames.filter((f) => f.kind === 'app' || f.kind === 'library');
+  if (usable.some((f) => f.kind === 'app')) usable = usable.filter((f) => f.kind === 'app');
+  return usable[0] || null;
+}
+
+/**
+ * The top stack frame of an error log, as the Bugs list shows it beside an SDK
+ * bug: the original line of the frame the v2 key's selection picks (2.3), in
+ * any engine's format, up to 160 characters; null when the stack has no usable
+ * frame. For HTTP and network failures the key uses the request instead, but
+ * the frame is still shown (Amendment 1, P22).
+ */
+export const topFrameOf = (errorLog = '') => {
+  if (!errorLog) return null;
+  const top = topUsableFrame(parseStack(errorLog).frames);
+  return top ? top.raw.slice(0, 160) : null;
+};
 
 /** The v2 fingerprint: SHA-256 of the v2 key, truncated to 32 hex characters as in v1. */
 export function generateFingerprintV2(report = {}) {

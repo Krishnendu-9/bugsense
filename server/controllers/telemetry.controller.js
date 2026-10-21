@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import Bug from '../models/Bug.model.js';
-import { generateFingerprint } from '../utils/fingerprint.util.js';
+import { generateFingerprintV2 } from '../utils/fingerprint.util.js';
 import { clampString, toSafeText } from '../utils/sanitize.js';
 import { tryConsumeTelemetryAIBudget } from '../utils/aiBudget.js';
 import { dispatchWebhookAlert } from '../services/webhook.service.js';
@@ -209,7 +209,10 @@ export const reportTelemetry = async (req, res, next) => {
 
   try {
     const report = normalizeReport(req.body);
-    const fingerprint = generateFingerprint(report.errorLog, report.title, report.project);
+    // The v2 key (docs/fingerprint-eval-v2.md, section 2). It reads project,
+    // title, errorLog, breadcrumbs and, from SDK 1.4.0, error, request and
+    // source; older SDKs' reports go through its fallbacks.
+    const fingerprint = generateFingerprintV2(report);
 
     const repeat = await recordRepeat(fingerprint, report.breadcrumbs);
     if (repeat) return respondWithRepeat(res, repeat);
@@ -231,6 +234,7 @@ export const reportTelemetry = async (req, res, next) => {
         description: report.description || '',
         source: 'sdk',
         fingerprint,
+        fingerprintVersion: 2,
         occurrences: 1,
         firstSeenAt: now,
         lastSeenAt: now,

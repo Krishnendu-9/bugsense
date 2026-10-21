@@ -8,6 +8,7 @@ import {
   generateFingerprint,
   generateFingerprintV1,
   generateFingerprintV2,
+  manualKeyInputs,
   normaliseMessage,
   parseFrame,
   parseStack,
@@ -484,6 +485,31 @@ describe('generateFingerprintV2: older SDK and SDK 1.4.0 reports of the same err
     const old = { project: 'Shop', title: `Unhandled Promise Rejection: ${message.slice(0, 150)}`, errorLog: message };
     const v2 = { ...old, errorLog: '', error: { name: null, message } };
     assert.notEqual(generateFingerprintV2(v2), generateFingerprintV2(old));
+  });
+});
+
+describe('manualKeyInputs: a manual report keys on its pasted log, not its title (P34)', () => {
+  const chromiumLog = `TypeError: Cannot read properties of undefined (reading 'map')\n    at Gi (${BUNDLE}:17:9933)`;
+  const manual = (title, errorLog) => generateFingerprintV2(manualKeyInputs({ project: 'Shop', title, errorLog }));
+
+  it('gives one pasted stack the same key under any typed title', () => {
+    assert.equal(manual('Reviews tab is blank', chromiumLog), manual('Crash when opening reviews', chromiumLog));
+  });
+
+  it('matches an SDK report of the same error, old SDK or v2', () => {
+    const oldSdk = { project: 'Shop', title: "Uncaught TypeError: Cannot read properties of undefined (reading 'map')", errorLog: chromiumLog };
+    const v2Sdk = { ...oldSdk, error: { name: 'TypeError', message: "Cannot read properties of undefined (reading 'map')" } };
+    assert.equal(manual('Reviews tab is blank', chromiumLog), generateFingerprintV2(oldSdk));
+    assert.equal(manual('Reviews tab is blank', chromiumLog), generateFingerprintV2(v2Sdk));
+  });
+
+  it('keys a pasted Firefox stack, which has no header, on its top frame', () => {
+    assert.equal(buildKeyV2(manualKeyInputs({ project: 'Shop', title: 'Anything', errorLog: `Gi@${BUNDLE}:17:9923` })), 'fp2::Shop::::Gi@/assets/index.js::::');
+  });
+
+  it('uses the title only when there is no error log, as v1 did', () => {
+    assert.equal(buildKeyV2(manualKeyInputs({ project: 'Shop', title: 'Checkout is slow', errorLog: '' })), 'fp2::Shop::nostack::Checkout is slow::::');
+    assert.equal(buildKeyV2(manualKeyInputs({ project: 'Shop', title: 'Checkout is slow', errorLog: '  \n ' })), buildKeyV2(manualKeyInputs({ project: 'Shop', title: 'Checkout is slow' })));
   });
 });
 

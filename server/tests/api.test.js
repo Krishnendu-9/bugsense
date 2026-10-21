@@ -5,6 +5,7 @@ import supertest from 'supertest';
 import { io as ioClient } from 'socket.io-client';
 import { startTestServer, stopTestServer, createUser, Bug } from './helpers.js';
 import { getPrimaryClientUrl } from '../utils/clientOrigins.js';
+import { generateFingerprintV2 } from '../utils/fingerprint.util.js';
 
 let server;
 let port;
@@ -537,6 +538,20 @@ describe('manual reports', () => {
     assert.equal(second.body.description, '<p>Mine</p>');
     assert.equal(second.body.possibleDuplicateOf._id, first.body._id);
   });
+
+  it('keys a manual report with v2 and hints at an SDK bug of the pasted error (P21, P34)', async () => {
+    const tag = `hint${Date.now()}`;
+    const errorLog = `TypeError: Cannot read properties of undefined (reading '${tag}')\n    at renderReviews (https://shop.example/assets/index-BOtVUl4o.js:17:9933)`;
+    // Keys are scoped by project, so both reports name the same one.
+    const sdk = await request.post('/api/telemetry/report').send({ project: 'Storefront', title: `Uncaught TypeError: Cannot read properties of undefined (reading '${tag}')`, errorLog });
+    const manual = await createBug(reporter, { project: 'Storefront', title: 'The reviews tab is blank for me', errorLog });
+
+    assert.equal(manual.status, 201);
+    assert.equal(manual.body.possibleDuplicateOf._id, sdk.body.bugId);
+    const stored = await Bug.findById(manual.body._id);
+    assert.equal(stored.fingerprintVersion, 2);
+    assert.equal(stored.source, 'manual');
+  });
 });
 
 describe('staff-only endpoints', () => {
@@ -818,6 +833,37 @@ describe('telemetry', () => {
     assert.equal(bug.breadcrumbs.length, 30);
     assert.equal(bug.breadcrumbs[0].category, 'console');
     assert.deepEqual(bug.breadcrumbs[0].data, {});
+  });
+
+  it('keys new reports with v2, so one error from Chromium and Firefox is one bug', async () => {
+    const tag = `engines${Date.now()}`;
+    const chromium = {
+      project: tag,
+      title: "Uncaught TypeError: Cannot read properties of undefined (reading 'price')",
+      errorLog: "TypeError: Cannot read properties of undefined (reading 'price')\n    at formatPrice (https://shop.example/app.js:2:54)",
+    };
+    const firefox = { project: tag, title: 'TypeError: can\'t access property "price", product is undefined', errorLog: 'formatPrice@https://shop.example/app.js:2:46' };
+
+    const first = await report(chromium);
+    const second = await report(firefox);
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 200);
+    assert.equal(second.body.bugId, first.body.bugId);
+
+    const bug = await Bug.findById(first.body.bugId);
+    assert.equal(bug.fingerprintVersion, 2);
+    assert.equal(bug.fingerprint, generateFingerprintV2({ ...chromium, breadcrumbs: [] }));
+    assert.equal(bug.occurrences, 2);
+  });
+
+  it('leaves bugs the migration merged out of the deduplication metrics (P33)', async () => {
+    const telemetry = async () => (await request.get('/api/health/metrics').set(auth(developer))).body.telemetry;
+    const created = await report({ title: `Merged away ${Date.now()}`, errorLog: 'Error: merged away', project: 'metrics-merged' });
+    const before = await telemetry();
+    await Bug.updateOne({ _id: created.body.bugId }, { mergedInto: new mongoose.Types.ObjectId() });
+    const after = await telemetry();
+    assert.equal(before.sdkIncidents - after.sdkIncidents, 1);
+    assert.equal(before.sdkCrashesReceived - after.sdkCrashesReceived, 1);
   });
 
   // SDK 1.4.0 fields: docs/fingerprint-eval-v2.md, Amendment 1, P15-P16.

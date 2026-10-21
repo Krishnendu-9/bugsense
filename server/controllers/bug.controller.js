@@ -3,7 +3,7 @@ import { validationResult } from 'express-validator';
 import Bug from '../models/Bug.model.js';
 import Comment from '../models/Comment.model.js';
 import User from '../models/User.model.js';
-import { generateFingerprint } from '../utils/fingerprint.util.js';
+import { generateFingerprintV2, manualKeyInputs } from '../utils/fingerprint.util.js';
 import { sanitizeRichText } from '../utils/sanitize.js';
 import { canModifyBug, canSetStatus, isStaff } from '../utils/permissions.js';
 import { removeUpload } from '../utils/uploads.js';
@@ -215,7 +215,12 @@ export const createBug = async (req, res, next) => {
       return badRequest(res, 'Bugs can only be assigned to developers or admins');
     }
 
-    const fingerprint = generateFingerprint(payload.errorLog, payload.title, payload.project);
+    // The v2 key, so the hint can match a migrated or newly reported SDK bug
+    // (docs/fingerprint-eval-v2.md, 8.2). Its message comes from the pasted
+    // error log, not the typed title (Amendment 1, P21, P34).
+    const fingerprint = generateFingerprintV2(
+      manualKeyInputs({ project: payload.project, title: payload.title, errorLog: payload.errorLog })
+    );
 
     // Manual reports are never folded into an existing incident: that would
     // silently discard the reporter's description and steps. A matching
@@ -228,6 +233,7 @@ export const createBug = async (req, res, next) => {
     const bug = await Bug.create({
       ...payload,
       fingerprint,
+      fingerprintVersion: 2,
       occurrences: 1,
       firstSeenAt: now,
       lastSeenAt: now,

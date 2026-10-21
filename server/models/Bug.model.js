@@ -118,6 +118,15 @@ const bugSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Which key produced `fingerprint`: 2 for the v2 key
+    // (docs/fingerprint-eval-v2.md, 8.2). No default, on purpose (Amendment 1,
+    // P29): Mongoose fills defaults in when reading, so a bug stored before v2
+    // must read as missing, which the migration treats as version 1.
+    fingerprintVersion: { type: Number },
+    // The key a bug had before the migration re-keyed it (8.3).
+    legacyFingerprint: { type: String, default: null },
+    // Set on a bug the migration merged into another (8.3).
+    mergedInto: { type: mongoose.Schema.Types.ObjectId, ref: 'Bug', default: null },
     occurrences: {
       type: Number,
       default: 1,
