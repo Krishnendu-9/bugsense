@@ -1182,3 +1182,27 @@ The SDK also strips query strings and fragments from `error.message` and
 `componentStack`, as it already did for the title and the stack. For fetch
 failures it records the request in a `WeakMap` keyed by the error, so nothing
 is added to the host's error objects.
+
+#### Wiring and migration (sections 8.2 and 8.3): points P20–P33
+
+Added 2026-10-21, before the wiring and the migration were written. They
+concern the server and stored data only, and change nothing in any key or in
+the v1 regression oracle.
+
+| # | Point | Resolution |
+|---|---|---|
+| P20 | The migration's inputs | 8.3 says the key is recomputed "using the fallback paths of 2.1". A bug that stores the SDK 1.4.0 fields (P16) is keyed from them instead: `errorName` / `errorMessage` as `error`, `request` as `request`, and `errorLocation` as `source`. Bugs without them use the fallbacks, as 8.3 says. This is 8.2's stated reason for storing them: a migrated bug then gets the key its next report will get, including messages longer than the old title (P19). |
+| P21 | What moves to v2 now | Besides the telemetry endpoint: the similar-report hint for manual reports, `topFrameOf`, and the seed script, as 8.2 says ("everywhere it is used"). The hint has to move with the migration, because once stored keys are v2 a v1 key never matches. The seed gives its manual bugs a v2 fingerprint too, as the API does for every manual report, so a freshly seeded database has nothing to migrate. |
+| P22 | What the Bugs list shows as an SDK bug's top frame | The original text of the frame that 2.3's selection picks, in whatever engine format, up to 160 characters. It is null when the stack has no usable frame. For HTTP and network failures the frame is still shown, although their key uses the request (2.5). |
+| P23 | The survivor's record | The survivor keeps its own title, `errorLog` and breadcrumbs. When the triage rule of 8.3 changes its status, that change gets its own status-history entry naming the merged bugs. |
+| P24 | Audit entry of a merge | Written before any of that merge's other writes, directly rather than through the app's audit helper (which swallows failures, as is right for requests). If it cannot be written, the migration stops before touching the merge. |
+| P25 | Run-level audit entry | One entry per `--apply` run, with the counts. The dry run writes nothing, so it writes no entry. |
+| P26 | `source: 'api'` | Allowed by the schema but created by nothing. Treated like manual reports: re-keyed, never merged. |
+| P27 | A bug whose v2 key would be null (no title, `errorLog` or message; P11) | Left untouched and listed in the dry run. |
+| P28 | When the ingest check runs | The check of 8.3 runs before the first write and again before each collision group. A run it aborts is completed by running it again (it is idempotent). Within a merge, the other members are written first and the survivor last, which is what P31's second check relies on. |
+| P29 | `fingerprintVersion` default | No schema default, because Mongoose fills in defaults when it reads a document that lacks the field. An unmigrated bug therefore reads as missing, which means version 1. Every path that creates a bug sets 2 explicitly. |
+| P30 | The dry run writes nothing at all | It connects with Mongoose's automatic index building and collection creation turned off, and only reads. |
+| P31 | Leftovers of an interrupted run or of live ingest | Two cases: a recomputed key already held by a migrated SDK bug, or a migrated bug whose `mergedInto` points at an unmigrated one. Each is listed in the dry run, with the audit entry of the interrupted merge where there is one. `--apply` refuses to run until they are resolved by hand. Nothing is repaired automatically. MongoDB here runs without multi-document transactions, so a merge is several separate writes, and an automatic repair could sum a count twice. |
+| P32 | `updatedAt` | No migration write changes it. The Bugs list is ordered by last activity, and re-keying is not activity on a bug. Merges are recorded in status history and in the audit trail. |
+| P33 | Merged bugs' own counts, and the metrics | A merged (non-survivor) bug keeps its own `occurrences`, so its page still shows its history and a wrong merge can be undone by hand. The survivor holds the sum (8.3). The health metrics count only SDK bugs with no `mergedInto`, so each crash is counted once and a merged bug is not counted as an incident. |
+| P34 | A manual report's message (found while writing the wiring, when an existing test of the similar-report hint failed) | The fallback of 2.1 reads the title. For an SDK report the title is the error message; for a manual report it is whatever the person typed. So the key of a manual (or `api`) report takes its message from the pasted error log's V8 header line instead, found and stripped by P5's rule, exactly as if it were a component-stack title. The title is used only when there is no error log, as in v1. A pasted Chromium stack then matches an SDK bug of the same error, and other pastes of it under any title. A pasted Firefox or Safari stack has no header, so its message is empty and it keys on its top frame. The migration re-keys manual bugs by the same rule. SDK reports are unaffected. |
