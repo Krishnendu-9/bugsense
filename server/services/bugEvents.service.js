@@ -15,7 +15,16 @@ export const BUG_POPULATE = [
 // render. GET /bugs leaves them out, and so do events broadcast to everyone:
 // a crash loop re-sends its bug on every occurrence, and each copy would
 // otherwise carry the error log and breadcrumbs to every connected client.
-export const LIST_EXCLUDED_FIELDS = ['breadcrumbs', 'gitPatch', 'statusHistory', 'aiInsights', 'errorLog', 'browserInfo'];
+export const LIST_EXCLUDED_FIELDS = [
+  'breadcrumbs',
+  'gitPatch',
+  'statusHistory',
+  'aiInsights',
+  'errorLog',
+  'browserInfo',
+  'componentStack',
+  'errorMessage',
+];
 
 export const populateBug = (bug) => bug.populate(BUG_POPULATE);
 

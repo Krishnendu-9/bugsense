@@ -1,5 +1,16 @@
 import mongoose from 'mongoose';
 
+// Sent by SDK 1.4.0 and later (docs/fingerprint-eval-v2.md, 8.1-8.2 and
+// Amendment 1, P13-P16). Older SDKs send neither, and the fields stay null.
+const failedRequestSchema = new mongoose.Schema(
+  { method: String, url: String, status: Number },
+  { _id: false }
+);
+const errorLocationSchema = new mongoose.Schema(
+  { filename: String, lineno: Number, colno: Number },
+  { _id: false }
+);
+
 const bugSchema = new mongoose.Schema(
   {
     title: {
@@ -107,6 +118,15 @@ const bugSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Which key produced `fingerprint`: 2 for the v2 key
+    // (docs/fingerprint-eval-v2.md, 8.2). No default, on purpose (Amendment 1,
+    // P29): Mongoose fills defaults in when reading, so a bug stored before v2
+    // must read as missing, which the migration treats as version 1.
+    fingerprintVersion: { type: Number },
+    // The key a bug had before the migration re-keyed it (8.3).
+    legacyFingerprint: { type: String, default: null },
+    // Set on a bug the migration merged into another (8.3).
+    mergedInto: { type: mongoose.Schema.Types.ObjectId, ref: 'Bug', default: null },
     occurrences: {
       type: Number,
       default: 1,
@@ -124,6 +144,13 @@ const bugSchema = new mongoose.Schema(
       enum: ['manual', 'sdk', 'api'],
       default: 'manual',
     },
+    // From the SDK's error, request, source and componentStack fields. The
+    // server sets these; no route lets a client write them.
+    errorName: { type: String, default: null },
+    errorMessage: { type: String, default: null },
+    request: { type: failedRequestSchema, default: null },
+    errorLocation: { type: errorLocationSchema, default: null },
+    componentStack: { type: String, default: '' },
     breadcrumbs: [
       {
         timestamp: { type: Date, default: Date.now },

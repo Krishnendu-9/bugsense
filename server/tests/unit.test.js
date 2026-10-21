@@ -276,19 +276,32 @@ describe('bug history statistics', () => {
   });
 });
 
+// topFrameOf shows the frame the v2 key selects (docs/fingerprint-eval-v2.md,
+// 2.3; Amendment 1, P22).
 describe('topFrameOf', () => {
-  it('takes the first "at" line, the same frame the fingerprint starts from', () => {
+  it('shows the top app frame as written, the frame the v2 key selects', () => {
     const log = 'TypeError: x is undefined\n    at render (App.jsx:12:3)\n    at commit (react.js:1:1)';
     assert.equal(topFrameOf(log), 'at render (App.jsx:12:3)');
-    // Changing anything below the top frame, or its line numbers, must not
-    // change the frame shown -- consistent with what the fingerprint keys on.
+    // The v1 key is kept for the migration and still ignores line numbers.
     assert.equal(generateFingerprint(log, '', 'p'), generateFingerprint(log.replace(':12:3', ':99:9'), '', 'p'));
   });
 
-  it('returns null when there is no V8-style frame to show', () => {
+  it('reads Firefox and Safari frames too, and skips native, SDK and library frames', () => {
+    assert.equal(topFrameOf('render@App.jsx:12:3'), 'render@App.jsx:12:3');
+    const log = [
+      'json@[native code]',
+      'window.fetch@https://bugsense.example/sdk/bugsense.js:185:20',
+      'settle@http://localhost:7120/node_modules/.vite/deps/axios.js:1203:12',
+      'placeOrder@http://localhost:7120/src/checkout/placeOrder.js:22:9',
+    ].join('\n');
+    assert.equal(topFrameOf(log), 'placeOrder@http://localhost:7120/src/checkout/placeOrder.js:22:9');
+  });
+
+  it('returns null when there is no usable frame to show', () => {
     assert.equal(topFrameOf(''), null);
     assert.equal(topFrameOf(undefined), null);
-    assert.equal(topFrameOf('render@App.jsx:12:3'), null);
+    assert.equal(topFrameOf('Script error. at /products/reviews-widget:0:0'), null);
+    assert.equal(topFrameOf('at JSON.parse (<anonymous>)'), null);
   });
 
   it('caps a very long frame', () => {

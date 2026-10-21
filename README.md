@@ -100,6 +100,18 @@ does this is measured in
 group reliably, grouping across minified production builds does not. See
 [`fingerprint.util.js`](server/utils/fingerprint.util.js).
 
+**The grouping fix (v2), not yet measured.** The v1 key read stack frames only
+in Chromium's format. Firefox and Safari reports were keyed on their top frame
+with no error message, so a Chromium report with a stack could never group with
+them. v2 parses all three engines' stacks and reduces each engine's wording of
+the same error to one form. Failed HTTP requests are keyed on the endpoint.
+
+The design, thresholds and predictions were committed before the code. v2
+reproduces its predictions on the v1 corpus, but that is the corpus it was
+designed against. No measurement on held-out data has been made.
+[docs/fingerprint-results-v2.md](docs/fingerprint-results-v2.md) separates what
+was verified from what was not.
+
 **The public telemetry endpoint is treated as hostile.**
 `/api/telemetry/report` has to accept unauthenticated traffic from other
 origins, so it gets its own CORS policy, a 64 KB body limit, per-field length

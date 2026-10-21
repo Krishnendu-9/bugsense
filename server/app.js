@@ -96,7 +96,10 @@ export const createApp = () => {
       // never merge and always hold occurrences: 1 -- so counting them in
       // either half dilutes the rate with bugs that could not have been
       // deduplicated in the first place.
-      const SDK = { source: 'sdk' };
+      // A bug the fingerprint migration merged into another is neither an
+      // incident nor a source of crashes of its own: its survivor holds its
+      // count (docs/fingerprint-eval-v2.md, Amendment 1, P33).
+      const SDK = { source: 'sdk', mergedInto: null };
       const [sdkIncidents, receivedAgg] = await Promise.all([
         Bug.countDocuments(SDK),
         Bug.aggregate([{ $match: SDK }, { $group: { _id: null, total: { $sum: '$occurrences' } } }]),
