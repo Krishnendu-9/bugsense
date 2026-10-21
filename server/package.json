@@ -9,9 +9,10 @@
     "dev": "nodemon server.js",
     "seed": "node scripts/seed.js",
     "seed:reset": "node scripts/seed.js --force",
+    "migrate:fingerprints": "node scripts/migrate-fingerprints.js",
     "lint": "eslint .",
-    "test": "node --test --test-concurrency=1 tests/unit.test.js tests/fingerprint-v2.test.js tests/api.test.js",
-    "test:coverage": "node --test --experimental-test-coverage --test-concurrency=1 tests/unit.test.js tests/fingerprint-v2.test.js tests/api.test.js"
+    "test": "node --test --test-concurrency=1 tests/unit.test.js tests/fingerprint-v2.test.js tests/migration.test.js tests/api.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-concurrency=1 tests/unit.test.js tests/fingerprint-v2.test.js tests/migration.test.js tests/api.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
