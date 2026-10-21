@@ -1430,6 +1430,123 @@ behind or created again. Nothing else changed.
 `denyRead` works only inside the sandbox. If the lock test shows that the
 sandbox has to be disabled, the capture does not go ahead.
 
+#### Revision: the capture runs without the sandbox
+
+Added 2026-10-21, after the lock test and before any capture.
+
+**This is a weakening, decided after the lock test result was known.** The
+section above says that if the lock test shows the sandbox has to be disabled,
+the capture does not go ahead. The lock test showed exactly that. The capture
+goes ahead anyway, under the weaker measures below. No threshold, gate,
+prediction or key changes.
+
+**Why the sandbox cannot be used.** Claude Code's sandbox is unavailable on
+native Windows, which is what this machine runs. With
+`sandbox.failIfUnavailable` set to `true`, as in the registered settings file,
+the CLI exits cleanly at startup. A builder session cannot be started with the
+file as written.
+
+**What this revises.** The following statements in this amendment no longer
+hold. They are left as registered, and this section replaces them:
+- Measure 2: the file "runs Bash in the sandbox, with reads of the quarantined
+  locations denied and unsandboxed commands disallowed".
+- "The handover files": "Disabling the sandbox is not a permitted change."
+- "Change to the settings file and the quarantine": that "a `denyRead` entry
+  covers everything below" the quarantine folder, and all of "The sandbox is
+  now required".
+
+**What is lost.** With the sandbox off, the settings file's `sandbox` block
+has no effect:
+- `filesystem.denyRead`. Nothing stops a shell command from reading a
+  quarantined location. Measure 1 left the quarantined material on this disk
+  because `denyRead` would stop such reads.
+- `network.deniedDomains`. Nothing stops a shell command, or a script the
+  builder writes, from reaching GitHub. The `WebFetch` deny rules cover only
+  the WebFetch tool.
+- `filesystem.allowWrite`. Shell commands can write anywhere the user can.
+
+What remains is the permission rules, which govern the tools but not what a
+shell command does, and approval prompts, which depend on the operator.
+
+**The lock test, with the sandbox off.** Run 2026-10-21 on Claude Code
+v2.1.306.
+
+| # | Action | Result |
+|---|---|---|
+| 1 | `npm install` | succeeded |
+| 2 | a Node server on port 7300 | succeeded |
+| 3 | Playwright launches of Chromium, Firefox and WebKit | succeeded |
+| 4 | the Read tool on `E:\professional\corpus-v2-handoff\SPECIFICATION.md` | refused by `permissions.blockReadsOutsideWorkingDirectories` |
+| 5 | the Glob tool under the handoff folder | refused by the same rule |
+| 6 | WebFetch to `github.com` | refused |
+| 7 | `docker ps` | refused |
+| 8 | web search | the tool is not available at all |
+| 9 | shell `cat` on the handoff folder | **not refused by any rule**: an approval prompt naming the path |
+| 10 | shell `ls` on the handoff folder | **not refused by any rule**: an approval prompt naming the path |
+
+Rows 9 and 10 are the gap the sandbox would have closed. The lock test did not
+try a shell command that reaches GitHub, which is now in the same position.
+
+**The mitigation: the quarantine is compressed.** The folder
+`E:\professional\corpus-v2-handoff\quarantine\` was compressed to
+`E:\professional\corpus-v2-handoff\quarantine.zip`, and the plaintext folder
+was deleted. An approved shell read of the archive returns compressed binary,
+not text. Checked 2026-10-21: 4,755 entries; every non-empty file is
+deflated, none is stored uncompressed, and none is encrypted.
+
+This is weaker than the sandbox, and weaker than encryption:
+- **Extraction is one command.** The archive has no password. `tar -xf` or
+  `unzip` recovers everything, so a determined extraction is still possible.
+- **Entry names are plain text: a known weakness.** 2,537 of the 4,755
+  entries have names containing `fingerprint`, `bugsense-eval` or
+  `builder-categories`, so even an approved read without extraction shows
+  them. Header encryption (a `.7z` archive with encrypted headers) would have
+  hidden them. It was not done, because no 7-Zip is available on this machine.
+- **It relies on the operator declining prompts.** Every prompt, and the
+  answer to it, is in the transcript, so the audit can check each one.
+
+**What the audit catches.** The audit searches every line of the transcript,
+tool inputs and tool results included, for the quarantined strings, and the
+handoff folder's name is one of them. A shell command that names the folder is
+therefore a breach whether its prompt was approved or declined. The prompt for
+a script the builder wrote (for example `node capture.mjs`) does not show what
+the script reads or contacts. A script that spells out a quarantined path or
+repository name is caught when it is written. One that builds them without
+writing them out is caught by neither the operator nor the audit.
+
+**The operator rule for the capture.** The operator declines every approval
+prompt that reads outside the builder's own folder,
+`E:\professional\Projects\grouping-corpus-v2`, and every prompt that would
+contact a GitHub domain.
+
+**Pre-capture step: remove the amendment clone and its session files.** The
+repository was cloned again to write these amendments. These three locations
+are outside the archive and outside the settings file's lists, and the
+transcripts sit in the builder's own config folder. All three are removed after
+the last commit here is pushed and before the capture starts:
+1. the clone, `E:\professional\amend\bugsense`;
+2. its session transcripts and memory,
+   `C:\Users\User\.claude\projects\E--professional-amend-bugsense`;
+3. its scratchpad,
+   `C:\Users\User\AppData\Local\Temp\claude\E--professional-amend-bugsense`.
+
+**One folder remains at the deleted repository's path.**
+`E:\professional\Projects\bugsense\server\uploads` exists, empty. It was
+recreated on purpose after the repository was deleted, because the running
+`bugsense-server` container bind-mounts it and does not start without it. The
+repository itself is gone. The folder holds no quarantined material, and it is
+not removed.
+
+**The settings change needed to run at all.** One value changed:
+`sandbox.failIfUnavailable`, from `true` to `false`. Nothing else changed. The
+rest of the `sandbox` block is left in place and has no effect on this
+machine.
+
+| `builder-settings.json` | SHA-256 |
+|---|---|
+| before (as recorded above, checked 2026-10-21) | `18ebc9c24aac09c548c04755198cb2651afee619aa460722b132eba9ce81701b` |
+| after (computed with `certutil -hashfile … SHA256`) | `c7afc89c66337f6ecb31131f1d17b4d1bfddd10f3c5c7509d9321d6170e6ccad` |
+
 #### The second permitted change to the scoring tool
 
 Added 2026-10-21, before the measurement. It was found when the full HTTP
