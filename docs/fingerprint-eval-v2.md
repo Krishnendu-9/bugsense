@@ -1206,3 +1206,190 @@ the v1 regression oracle.
 | P32 | `updatedAt` | No migration write changes it. The Bugs list is ordered by last activity, and re-keying is not activity on a bug. Merges are recorded in status history and in the audit trail. |
 | P33 | Merged bugs' own counts, and the metrics | A merged (non-survivor) bug keeps its own `occurrences`, so its page still shows its history and a wrong merge can be undone by hand. The survivor holds the sum (8.3). The health metrics count only SDK bugs with no `mergedInto`, so each crash is counted once and a merged bug is not counted as an incident. |
 | P34 | A manual report's message (found while writing the wiring, when an existing test of the similar-report hint failed) | The fallback of 2.1 reads the title. For an SDK report the title is the error message; for a manual report it is whatever the person typed. So the key of a manual (or `api`) report takes its message from the pasted error log's V8 header line instead, found and stripped by P5's rule, exactly as if it were a component-stack title. The title is used only when there is no error log, as in v1. A pasted Chromium stack then matches an SDK bug of the same error, and other pastes of it under any title. A pasted Firefox or Safari stack has no header, so its message is empty and it keys on its top frame. The migration re-keys manual bugs by the same rule. SDK reports are unaffected. |
+
+### Amendment 2 — 2026-10-21: the builder's handover text and isolation
+
+Written before the handover package was prepared and before any capture
+(section 7, step 4). No threshold, gate or prediction changes, and no key
+changes. This amendment changes what the builder receives (Appendix B) and how
+the builder is isolated (6.1).
+
+#### Why: the registered Appendix B leaked the key's design
+
+Appendix B was checked for what a builder could infer about the key from what
+it is asked to capture.
+
+**Removed: the "What makes it hard" column of table B.1.** I wrote it knowing
+the key. Many entries describe a hard case by which report fields coincide:
+"identical message and top frame(s)", "frames carry the page URL", "numbered
+wasm frames", "multi-line message with stack-like lines", "the stack is
+captured where the error was created". Read together, they say the grouping
+works from the message and the top stack frame, and roughly how stacks are
+read. That is the kind of leak v1's capture plan had.
+
+**Rewritten: the routes-and-labels rule.** As written, it singled out page
+routes and clicked labels, which hints that the key ignores them (2.1). It is
+restated as a general rule about context incidental to the defect.
+
+**Kept, because the builder cannot capture without them, and they describe
+the SDK or the measurement rather than the key:**
+- the embed tag and its `crossorigin` attribute;
+- the repeat block's spacing, which follows from the SDK suppressing repeats
+  within 10 seconds;
+- the cell plan;
+- which kinds are variants and which are hard-negative pairs.
+
+The last two are the measurement. Removing them would change what the gates
+mean.
+
+**Added: the SDK call the builder needs.** The registered spec said an
+error boundary reports "through the SDK's documented capture call", but that
+documentation is in the quarantined repository, so the builder could not know
+the call. The spec now states it. That is the SDK's public usage, not
+anything about the key.
+
+**Pinned: the browser builds.** The engine-wording rules of 2.4 were written
+against the output of v1's builds, so a newer engine would mix an engine
+change into the measurement. The builds are pinned to v1's: Playwright 1.64.1,
+which installs Chromium 156.0.8078.4, Firefox 157.0 and WebKit 27.2. The cost
+is that the held-out corpus does not test newer engines' wording.
+
+#### The handover text, as amended
+
+The brief (Appendix B, first text) is unchanged. The corpus specification is
+the registered second text with the four changes below. Everything else is
+handed over word for word.
+
+1. **Browsers** is replaced by:
+   > **Browsers.** Playwright 1.64.1 and the Chromium, Firefox and WebKit builds
+   > it installs (Chromium 156.0.8078.4, Firefox 157.0, WebKit 27.2). Do not
+   > upgrade them. Record the versions. Run each trigger in a fresh browser
+   > context.
+2. **SDK** gains, after its tag:
+   > The SDK reports uncaught errors and unhandled promise rejections by itself.
+   > Its one call for an error the page has caught is
+   > `window.BugSense.captureError(error, info)`, where `info` is what a React
+   > error boundary receives as its second argument (`{ componentStack }`). A
+   > string in place of `info` is taken as the report's title.
+3. **Routes and labels** is replaced by:
+   > **Incidental context.** No incident may be identifiable from anything
+   > incidental to its defect: the page it fired on, the element clicked, the
+   > page title, or anything else that differs between triggers without being
+   > part of the bug.
+   > - Every route, clicked element's label and page title used by a trigger is
+   >   shared by at least two incidents.
+   > - At least 10 incidents fire from two or more routes, with the route for
+   >   each report chosen by a seeded draw.
+   >
+   > Record each report's route and label in the metadata.
+4. **Table B.1** is replaced by the following. The kinds, the pairs and the
+   variants are unchanged; only the descriptions of what makes each one hard
+   are gone. The pairs remain listed after the table.
+
+   > | Kind | What it is | Variant or pair |
+   > |---|---|---|
+   > | K-A1 | an event handler reads a property of `undefined` | — |
+   > | K-A2 | a `ReferenceError` inside a lazily loaded, code-split module | — |
+   > | K-A3 / K-A4 | two different sites throw `new Error` with the same literal message | hard-negative pair |
+   > | K-A5 | unbounded recursion in application code | hard-negative pair with K-G30 |
+   > | K-A6 | `JSON.parse` of a corrupt stored value | data variant: the stored value |
+   > | K-A7 | the app throws an `Error` whose message interpolates an ID | data variant: the ID |
+   > | K-A8a / K-A8b | a shared helper is called with a bad argument from two different callers; the bug is in each caller, fixed separately | hard-negative pair |
+   > | K-A9 | a shared helper is itself wrong, and is reached from two call paths | call-path variant: the caller |
+   > | K-B1 | a render `TypeError` caught by a React error boundary, which reports it with `captureError(error, info)` | — |
+   > | K-B2 / K-B3 | the same React invariant in two different components, both caught by boundaries | hard-negative pair |
+   > | K-B4 | a React hook-order error with no boundary | — |
+   > | K-C1 / K-C2 | axios requests to two different endpoints fail with the same HTTP status, from different components | hard-negative pair |
+   > | K-C3 | an axios request to a parameterised route fails with 404 | data variant: the ID in the route |
+   > | K-C4 / K-C5 | `fetch` to two different endpoints fails at the network level | hard-negative pair |
+   > | K-C6 | `response.json()` on an HTML error page | — |
+   > | K-D1 | an `Error` thrown inside an async function, unhandled | — |
+   > | K-D2 / K-D3 | unhandled rejections with two different string reasons | hard-negative pair |
+   > | K-D4 | an unhandled rejection with a plain-object reason | — |
+   > | K-D5 | an `Error` thrown in a timer callback | — |
+   > | K-E1 / K-E2 | errors in two different cross-origin scripts served without CORS | hard-negative pair |
+   > | K-G1 | a message that embeds a locale-formatted amount | data variant: the locale |
+   > | K-G2 | the same property read on a value that is sometimes `undefined`, sometimes `null` | data variant: `undefined` or `null` |
+   > | K-G3 | a call to a method missing from a stub object | — |
+   > | K-G4 | a shared method installed on two classes | call-path variant: the class |
+   > | K-G5 | the same defect reached synchronously (uncaught) and from an async function (unhandled rejection) | call-path variant: sync or async |
+   > | K-G6 / K-G7 | two different defects inside functions wrapped by one shared retry wrapper that rethrows a generic message | hard-negative pair |
+   > | K-G8 | a recursive walk over data whose depth varies | data variant: the data |
+   > | K-G9 | a message that embeds a whole response payload | data variant: the payload |
+   > | K-G10 | an inline script in an HTML page whose URL embeds an ID | data variant: the ID |
+   > | K-G11 | code compiled with `new Function` or `eval` | — |
+   > | K-G12 | code loaded from a `blob:` URL | — |
+   > | K-G13 | a dynamic import of a missing module, with no fallback | data variant: the module |
+   > | K-G14 | an error object created in another realm (a same-origin iframe) | — |
+   > | K-G15 | a message changed after it is created (for example, a retry count appended) | data variant: the count |
+   > | K-G16 / K-G17 | two different sites throw `new Error()` with an empty message | hard-negative pair |
+   > | K-G18 | a bare string thrown synchronously | — |
+   > | K-G19 / K-G20 | two different defects in the same function, reached from the same caller, reading different property paths | hard-negative pair |
+   > | K-G21 / K-G22 | two different call sites throw one shared, pre-constructed `Error` object | hard-negative pair |
+   > | K-G23 | a browser-generated error with no error object | — |
+   > | K-G24 / K-G25 | two different WebAssembly functions trap | hard-negative pair |
+   > | K-G26 / K-G27 | a function copy-pasted into two files, with the same name and message | hard-negative pair |
+   > | K-G28 / K-G29 | two different defects that reach the same server failure through a shared request helper; the server's stack is embedded in the message | hard-negative pair |
+   > | K-G30 | a second unbounded recursion, in a different function | hard-negative pair with K-A5 |
+
+#### Isolation, strengthened beyond 6.1
+
+These four things were outside 6.1's list, and any of them would let a builder
+session reach quarantined material on this machine:
+- **The claude.ai connectors** (Google Drive and Claude Docs).
+- **The Artifact tools**, which can read the owner's published pages.
+- **Cross-session messaging**, which can reach the designer's session.
+- **`docker`**, which can copy the server's code out of the running stack's
+  container.
+
+In addition, web search can surface the public evaluation repository's
+results, and the designer's session transcripts sit next to the project's
+memory directory. Two measures cover all of this.
+
+**1. The quarantined material is off this disk while the builder runs**, as
+in v1:
+- both repositories;
+- the designer's scratchpad;
+- the designer's session transcripts and memory
+  (`<config dir>/projects/e--professional-Projects-bugsense/`).
+
+The stack runs from images built beforehand.
+
+**2. The builder session starts with an external settings file** (`claude
+--settings <file>`), kept outside its folder. The file:
+- blocks file-tool reads outside the builder's folder;
+- runs Bash in the sandbox, with reads of the quarantined locations denied
+  and unsandboxed commands disallowed;
+- denies the PowerShell tool, which the sandbox does not cover;
+- denies WebSearch, and WebFetch to the GitHub domains of 6.1;
+- denies `docker` and `gh`, the claude.ai connectors, the Artifact tools and
+  cross-session messaging;
+- turns off auto-memory.
+
+The transcript audit of 6.1 also checks every tool call's paths and URLs, and
+the order of the two handover messages. Bare file names that a builder would
+create itself, such as `builder-categories.md`, are matched as quarantined
+paths rather than as names.
+
+#### The handover files
+
+Prepared outside both repositories. SHA-256:
+
+| File | SHA-256 |
+|---|---|
+| `E:\professional\Projects\grouping-corpus-v2\BRIEF.md` (the brief, unchanged) | `3970e10c6d322aa0736e7738b666455a0c90dad97c13b64ec75341fb2fa69475` |
+| `E:\professional\corpus-v2-handoff\SPECIFICATION.md` (as amended above) | `a72a81eb98b319cec289bd3331438e3ee2fc223528fa880a9f41680d31706d97` |
+| `E:\professional\corpus-v2-handoff\builder-settings.json` | `caa8e158598bcd04b9b49a28255ec840ed21f4aae4b8eb0dc266c6d7dde1c02e` |
+| `E:\professional\corpus-v2-handoff\audit-transcript.mjs` | `9e56bba1acb9ce8777870fc47d5f9a113e3054abc55080c44efbd9c951f60460` |
+
+How the audit treats the word "fingerprint": it is ordinary vocabulary for
+error grouping, so a builder may write it unprompted. Written by the builder,
+the audit lists it for the owner to read in context. Arriving in a message or
+a tool result, it is a breach. Every other quarantined string is a breach
+wherever it appears.
+
+`OWNER-VALUES.md` is not hashed here. Its SDK URL and stack commit are filled
+in at the freeze, and the filled-in copy is recorded in the builder's
+repository (6.1). If the lock test of the owner's checklist forces a change to
+the settings file (the sandbox may not run builds on native Windows), the
+change and its new hash are added here before capture.
