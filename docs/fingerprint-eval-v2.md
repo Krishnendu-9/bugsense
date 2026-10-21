@@ -1355,6 +1355,9 @@ in v1:
 
 The stack runs from images built beforehand.
 
+No external drive was available, so this measure is carried out on this disk
+instead: see "Change to the settings file and the quarantine" below.
+
 **2. The builder session starts with an external settings file** (`claude
 --settings <file>`), kept outside its folder. The file:
 - blocks file-tool reads outside the builder's folder;
@@ -1379,7 +1382,7 @@ Prepared outside both repositories. SHA-256:
 |---|---|
 | `E:\professional\Projects\grouping-corpus-v2\BRIEF.md` (the brief, unchanged) | `3970e10c6d322aa0736e7738b666455a0c90dad97c13b64ec75341fb2fa69475` |
 | `E:\professional\corpus-v2-handoff\SPECIFICATION.md` (as amended above) | `a72a81eb98b319cec289bd3331438e3ee2fc223528fa880a9f41680d31706d97` |
-| `E:\professional\corpus-v2-handoff\builder-settings.json` | `caa8e158598bcd04b9b49a28255ec840ed21f4aae4b8eb0dc266c6d7dde1c02e` |
+| `E:\professional\corpus-v2-handoff\builder-settings.json` (as changed below) | `18ebc9c24aac09c548c04755198cb2651afee619aa460722b132eba9ce81701b` |
 | `E:\professional\corpus-v2-handoff\audit-transcript.mjs` | `9e56bba1acb9ce8777870fc47d5f9a113e3054abc55080c44efbd9c951f60460` |
 
 How the audit treats the word "fingerprint": it is ordinary vocabulary for
@@ -1390,9 +1393,42 @@ wherever it appears.
 
 `OWNER-VALUES.md` is not hashed here. Its SDK URL and stack commit are filled
 in at the freeze, and the filled-in copy is recorded in the builder's
-repository (6.1). If the lock test of the owner's checklist forces a change to
-the settings file (the sandbox may not run builds on native Windows), the
-change and its new hash are added here before capture.
+repository (6.1). Any change to the settings file is recorded here, with its
+new hash, before capture. Disabling the sandbox is not a permitted change (see
+below).
+
+#### Change to the settings file and the quarantine
+
+Made 2026-10-21, before the lock test and before any capture.
+
+**Where the quarantined material goes.** Measure 1 is carried out on this
+disk. Both repositories are deleted; every branch, commit and tag is on
+GitHub, and the ignored files are saved first. The designer's scratchpad and
+transcripts, and the saved files, are moved into
+`E:\professional\corpus-v2-handoff\quarantine\`. The settings file already
+denies that folder, and a `denyRead` entry covers everything below it. Two
+more locations were found, and they are quarantined the same way:
+- `C:\Users\User\.claude\projects\E--professional-Projects-bugsense-eval`: the
+  evaluation repository's session transcripts and memory, in the builder's own
+  config folder;
+- `E:\professional\Projects\bugsense-review.zip`: a September copy of the
+  server source.
+
+**What changed in the settings file.** One path was added to
+`sandbox.filesystem.denyRead`:
+`C:/Users/User/.claude/projects/E--professional-Projects-bugsense-eval`. That
+folder is moved into the quarantine anyway. The entry denies any copy left
+behind or created again. Nothing else changed.
+
+| `builder-settings.json` | SHA-256 |
+|---|---|
+| before | `caa8e158598bcd04b9b49a28255ec840ed21f4aae4b8eb0dc266c6d7dde1c02e` |
+| after | `18ebc9c24aac09c548c04755198cb2651afee619aa460722b132eba9ce81701b` |
+
+**The sandbox is now required.** With the quarantined material on this disk,
+`denyRead` is the only thing that stops a Bash command from reading it, and
+`denyRead` works only inside the sandbox. If the lock test shows that the
+sandbox has to be disabled, the capture does not go ahead.
 
 #### The second permitted change to the scoring tool
 
