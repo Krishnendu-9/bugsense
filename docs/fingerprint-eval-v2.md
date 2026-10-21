@@ -1393,3 +1393,49 @@ in at the freeze, and the filled-in copy is recorded in the builder's
 repository (6.1). If the lock test of the owner's checklist forces a change to
 the settings file (the sandbox may not run builds on native Windows), the
 change and its new hash are added here before capture.
+
+#### The second permitted change to the scoring tool
+
+Added 2026-10-21, before the measurement. It was found when the full HTTP
+regression check of section 7, step 3 was run against commit
+`17c71b29145a5128d378c55b0b1d457f22c96294`.
+
+**Why it is needed.** v1's `score.mjs` voids a run unless exactly 4 bugs
+existed before the replay: "four seeded bugs recorded before the replay". 4
+was the number v1's seed created. The seed has since gained 3 SDK incidents,
+and at the frozen commit it reports `Bugs: 7 (3 captured by the SDK)`. So the
+unchanged scorer would void the v2 measurement on that line alone, as it
+voided both regression runs. Every other validity check passed in both runs.
+
+**What changed.**
+- `score.mjs` takes a new option, `--seeded-bugs <n>`: the number of bugs the
+  seed script reported creating.
+- With the option given, the check passes only when exactly that many bugs
+  were recorded before the replay. It is always shown in the output, pass or
+  fail, and `n` is written into `results.json` as `seededBugsCreatedBySeed`.
+- Without the option, the scorer behaves exactly as before, with 4.
+- Nothing else in the tool changed.
+
+**This is the second change section 3 permits.** Section 3 allowed one change
+to the scorer: skipping the Node section if it cannot run without one. That
+change has not been needed so far; if it is, it is made in the same way and
+recorded here before the measurement. This amendment permits a second, and no
+other change to either tool is allowed.
+
+**It alters no gate value.** The option changes only whether a run counts as
+void, never any count, recall or band. Checked two ways:
+- On v1's two runs, without the option, the old and new scorers produce
+  byte-identical `results.json` and `results.md`.
+- On the two HTTP regression runs, the old scorer and the new one with
+  `--seeded-bugs 7` produce identical output in everything except validity
+  and the declared count. The verdict changes from "VOID: nothing is graded"
+  to "Change the code", the verdict line (a) of 5.2 predicted.
+
+**For the v2 measurement**, the scorer is run with `--seeded-bugs` set to the
+count the seed reports on the measurement's fresh volume: 7 at the frozen
+commit. That number is written down before the replay.
+
+| `score.mjs` | SHA-256 |
+|---|---|
+| before, as named in section 3 | `08b4e12f52ec41188fe20d2558a9e821016e37e6185f972fdab7cc762d45465a` |
+| after this change | `810727bc9d6aeaf66f9666713c3b6f2b4473d87b5f79454befe5d67674dea92d` |
