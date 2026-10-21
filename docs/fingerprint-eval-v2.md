@@ -1108,3 +1108,55 @@ Every change is listed here with its date and reason. Section 2 may be amended
 only before the implementation freeze (section 7, step 2), and every amendment
 is listed. Section 3's thresholds never change. Section 5's predictions are
 never edited. A later note may explain a prediction but does not replace it.
+
+### Amendment 1 — 2026-10-21: twelve points section 2 left open
+
+Written before any implementation code, after section 2 was compared line by
+line with the registered prediction model (`v2model.mjs`, hash in 5.1). In
+twelve places the text was silent, or the text and the model disagreed. Each is
+resolved below. Sections 2 and 5 are left as written, and this amendment
+records how the implementation reads them.
+
+**No threshold changes, and no prediction changes.** For P1–P9, the two
+readings were compared on the v1 corpus by flipping each one in a copy of the
+model and comparing the result with the registered model's partition. The last
+column of the table gives the difference between the two readings. Results:
+- **No point's choice of reading changes any grouping decision between
+  browser reports**, so line (a) of 5.2 stands as the regression oracle
+  unchanged.
+- For P2, P4 and P5, the two readings give different key text for some
+  browser reports, with the same grouping.
+- For P7 and P8, the two readings group some Node reports differently. Node
+  reports are not graded, and the readings adopted are the model's.
+
+P10–P12 have no alternative in the model to flip. Their effect is the
+implementation's own: P10 changes the key text of 13 Node reports, with no
+change in grouping. P11 and P12 change nothing, because v1 has no empty
+reports and no unnamed Firefox eval frames.
+
+**The rule used to resolve them:**
+- Where section 2 is explicit and the model is wrong, section 2 wins.
+- Where section 2 is silent, or its text contradicts its own stated aim, the
+  model wins.
+- Where both are wrong or silent, the point is stated as a new rule (P10,
+  P11).
+
+| # | Point | Reading adopted | Follows | Difference between the readings, on v1 |
+|---|---|---|---|---|
+| P1 | V8 `X.<anonymous>` (receiver plus anonymous) | The empty-name check of 2.2 step 5 is applied **after** step 6, so `X.<anonymous>` becomes the empty name. This is the stated aim of 2.2, that engines agree: Firefox writes these as empty. | model | none |
+| P2 | V8 eval frame: the file | The file is the inner URL with its own line and column removed. With nested evals it is the innermost location in parentheses. The model glues the line and column onto the URL, which turns the last path segment into `<id>`: a model bug. | section 2 | key text of 4 G11 reports; no grouping change |
+| P3 | "Last segment" of an expression that ends in a call | A trailing `(…)` is removed first, so `a.b()` gives `b`. | model | none |
+| P4 | Extent of a `{…}` or `[…]` span in step 2 | Spans are found left to right. Each starts at a `{` or `[` and runs, across lines, to the **last** closing bracket of the same kind in the message (the regular expression `\{.*\}\|\[.*\]` with the dot matching newlines). | model | key text of 14 G9 reports; no grouping change |
+| P5 | V8 header used in place of a component-stack title | The header is the first line of `errorLog` unless that line starts with `at ` (after optional whitespace) or contains `@`; otherwise there is no header and the message is empty. The same `Uncaught ` / `Unhandled Promise Rejection: ` / `Name: ` removal as for the title is applied to the header. Without it, no engine wording rule can match a header. | model | key text of 6 B1–B3 reports; no grouping change |
+| P6 | The JavaScriptCore JSON rule: "a native frame named `json` is present" | Any native frame named `json`, anywhere in the stack. The model checks only the first native frame. | section 2 | none |
+| P7 | Foreign-frame rule: "an app frame with a web URL" | Read as **any app frame** (2.2 kinds). App frames are never at `file:` or `node:` locations. Only a stack with no app frame at all has its foreign frames treated as app frames. The literal http(s)-only reading would key Node reports on `node:internal` frames. | model | Node reports only |
+| P8 | HTTP or network failure where no request can be found | The frames case of 2.8 applies, with an empty REQUEST field. | model | Node reports only |
+| P9 | `Script error.`: "the script's path" | Normalised with the file rules of 2.2: hash stripped, digit-bearing segments become `<id>`. | model | none |
+| P10 | V8 `at async LOC`, with no function name | `async ` is a marker, not part of the location. It is removed, and the function name is empty. The model keeps `async ` inside the file name: a model bug. | new rule | key text of 13 Node reports; no grouping change |
+| P11 | No input: `errorLog`, the message and the title are all empty | There is no key (`null`), as in v1. The telemetry endpoint already rejects such reports. | new rule | none |
+| P12 | Firefox eval or `Function` frame with no function name (found while implementing) | The function name is `eval`, as for V8. Section 2 says this only for V8. | model | none |
+
+**How the implementation and the model now differ.** They differ only at P2,
+P6 and P10, and in the `fp2::` prefix of 2.8. On the v1 corpus these change
+key text, never which browser reports share a key. The regression check of
+section 7, step 3 therefore compares partitions, not key strings.
