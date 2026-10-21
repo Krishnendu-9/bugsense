@@ -1109,7 +1109,7 @@ only before the implementation freeze (section 7, step 2), and every amendment
 is listed. Section 3's thresholds never change. Section 5's predictions are
 never edited. A later note may explain a prediction but does not replace it.
 
-### Amendment 1 — 2026-10-21: twelve points section 2 left open
+### Amendment 1 — 2026-10-21: points sections 2 and 8 left open
 
 Written before any implementation code, after section 2 was compared line by
 line with the registered prediction model (`v2model.mjs`, hash in 5.1). In
@@ -1160,3 +1160,25 @@ reports and no unnamed Firefox eval frames.
 P6 and P10, and in the `fp2::` prefix of 2.8. On the v1 corpus these change
 key text, never which browser reports share a key. The regression check of
 section 7, step 3 therefore compares partitions, not key strings.
+
+#### SDK payload (section 8.1) and server storage (8.2): points P13–P19
+
+Added 2026-10-21, before the SDK changes were written. These points concern
+what the v2 SDK sends, and so what a v2 corpus will contain. None of them
+affects v1 payloads, which carry none of the new fields and go through the
+fallbacks of 2.1 unchanged. The v1 regression oracle is therefore untouched.
+
+| # | Point | Resolution |
+|---|---|---|
+| P13 | `error` when there is no Error object | **Nothing thrown** (a window `error` event with no error value, such as `Script error.` or a ResizeObserver loop; a rejection with an undefined or null reason): `error` is `null`, so the key reads the title, as for old SDKs. This keeps old and new keys equal, because Chromium's `event.message` carries an `Uncaught ` prefix. **A non-Error value thrown or rejected:** `{ name: null, message }`, the message being the string, or JSON for an object, as 8.1 already said for rejections. An object counts as an Error when it is an `Error` or has string `name` and `message` properties, so errors from another realm (an iframe) and DOMExceptions count. |
+| P14 | axios: where the request comes from | The method and URL the SDK's own XHR wrapper recorded for the request the error carries (`error.request`). That is the same value as the old SDK's breadcrumb, `baseURL` included. Only if no recorded XHR exists: `config.method` and `config.url` joined with `config.baseURL` as axios joins them. Status: `response.status`, else the XHR's, else `null`. |
+| P15 | Length caps on the new fields (server) | `error.name` 100, `error.message` **1,000**, `request.method` 16, `request.url` 2,000, `request.status` an integer 100–599 or `null`, `source.filename` 2,000, `source.lineno` / `source.colno` non-negative integers or `null`, `componentStack` 5,000, `sdkVersion` 32. Values of the wrong type become `null` or empty; the report is never rejected for them, as with the existing fields. The message cap bounds the normaliser of 2.4. On adversarial input of 1,000 characters its worst case measured about 4 ms (about 1 ms at 200, 16 ms at 2,000). |
+| P16 | What is stored | `errorName`, `errorMessage`, `request` (as 8.2 says), plus the SDK's `source` and `componentStack`, which 8.2 did not mention. `componentStack` was visible before only because it became the title. `source` is stored as `errorLocation`, because a bug's `source` field already records where the report came from (`manual`, `sdk`, `api`). `componentStack` and `errorMessage` are left out of list rows and broadcasts, like `errorLog`. |
+| P17 | `captureError`'s second argument | A string keeps its current meaning, the title, so existing calls are unchanged. An object is read as options, of which only `componentStack` is used (8.1). React's error-boundary `info` object can be passed as it is. A caller that passes the component stack as a string still gets it as the title, as before, and the key still reads it through P5. |
+| P18 | `source.filename` when the browser gives none | Empty, never the page URL. The old SDK wrote the page path there. That is how the route reached v1's keys for `Script error.` (section 1). A filename that is given is redacted like every URL the SDK reports. |
+| P19 | **Correction to 8.1:** "an old-SDK and a new-SDK report of the same error must produce the same key" | This holds only when the message is non-empty and fits whole in the old SDK's title (150 characters for rejections; about 190 for uncaught errors after the engine's prefix). The old SDK truncated longer messages into the title, while the new one sends them whole, up to 1,000 characters. So long messages, and empty-message rejections (for which the old SDK put the stack in the title), can get different keys from old and new SDKs: at most one extra bug per such error while both are in use. The server tests check equality where it holds. |
+
+The SDK also strips query strings and fragments from `error.message` and
+`componentStack`, as it already did for the title and the stack. For fetch
+failures it records the request in a `WeakMap` keyed by the error, so nothing
+is added to the host's error objects.
