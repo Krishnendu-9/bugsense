@@ -194,6 +194,21 @@ tests run the real middleware stack against an in-memory MongoDB.
   attribute, but embeds already in place stay blind in Chromium until their
   owner adds it. The SDK logs one console warning when it finds itself loaded
   this way. Unhandled rejections from the page's own code are unaffected.
+- Chromium reports nothing for a rejection whose error object the browser itself
+  created. For example, `response.json()` on an HTML error page rejects with a
+  `SyntaxError`, and Chromium fires no `unhandledrejection` event for it, with
+  or without the SDK on the page. The same `SyntaxError` thrown by `JSON.parse`
+  in the page's own code is reported. Firefox and WebKit report both. No
+  reporter that listens for `unhandledrejection` can see this class of error in
+  Chromium, and the `crossorigin` attribute does not change it. Observed in
+  Chromium 156: see
+  [docs/fingerprint-results-v2.md](fingerprint-results-v2.md#61-chromium-dispatches-no-unhandledrejection-for-errors-the-browser-itself-creates).
+- React 18 development builds report a render error caught by an error
+  boundary twice. React dispatches a window `error` event as well as the
+  boundary's `captureError` call. This happens identically in Chromium, Firefox
+  and WebKit, so it is the build, not the engine. Occurrence counts for these
+  errors are doubled in development and unaffected in production builds. See
+  [docs/fingerprint-results-v2.md](fingerprint-results-v2.md#62-react-18-development-builds-report-one-error-twice).
 - Two different errors that share their top stack frames — for example two
   different failing API calls, where the top frames are all inside axios — can be
   grouped into one bug. In this evaluation 9 unrelated pairs of errors were
@@ -208,6 +223,14 @@ tests run the real middleware stack against an in-memory MongoDB.
   produce a separate bug per value: 12 of 20 such pairs were not grouped.
 - In Chrome, unhandled `fetch()` network failures are not reported at all, so they
   never reach grouping.
+  - *Note, 2026-10-21:* PR #6 (merged 2026-10-21) added
+    `crossorigin="anonymous"` to the embed snippet and made the server send
+    `Access-Control-Allow-Origin: *` for the SDK script. This changes the
+    behaviour for the reports that fix covers: fetch network failures that pass
+    through the SDK's fetch wrapper are reported in Chromium when the SDK is
+    embedded with the attribute. Errors the browser creates itself are not
+    covered (see the `response.json()` limitation above). The bullet's original
+    text is kept because it records what the v1 measurement found at the time.
 
 The last five come from a pre-registered measurement: see
 [docs/fingerprint-results.md](fingerprint-results.md). The corpus and
