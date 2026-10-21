@@ -24,6 +24,51 @@ const LIMITS = {
   breadcrumbs: 30,
   breadcrumbMessage: 500,
   breadcrumbData: 2000,
+  // Fields from SDK 1.4.0 (docs/fingerprint-eval-v2.md, Amendment 1, P15).
+  // error.message feeds the v2 key's normaliser, whose worst case grows with
+  // the square of its length; 1,000 characters keeps it to a few milliseconds.
+  errorName: 100,
+  errorMessage: 1000,
+  requestMethod: 16,
+  requestUrl: 2000,
+  filename: 2000,
+  componentStack: 5000,
+  sdkVersion: 32,
+};
+
+// The SDK 1.4.0 fields arrive from a public endpoint, so each is shape-checked:
+// a value of the wrong type becomes null or empty, and never fails the report.
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const stringOrEmpty = (value, max) => (typeof value === 'string' ? clampString(value, max) : '');
+const positionOrNull = (value) => (Number.isInteger(value) && value >= 0 && value <= 1e9 ? value : null);
+
+// { name, message }; null when absent or when message is not a string, so the
+// key falls back to the title as it does for older SDKs.
+const normalizeError = (error) => {
+  if (!isPlainObject(error) || typeof error.message !== 'string') return null;
+  return {
+    name: typeof error.name === 'string' ? clampString(error.name, LIMITS.errorName) : null,
+    message: clampString(error.message, LIMITS.errorMessage),
+  };
+};
+
+const normalizeRequest = (request) => {
+  if (!isPlainObject(request) || typeof request.url !== 'string') return null;
+  const { status } = request;
+  return {
+    method: stringOrEmpty(request.method, LIMITS.requestMethod),
+    url: clampString(request.url, LIMITS.requestUrl),
+    status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+  };
+};
+
+const normalizeSource = (source) => {
+  if (!isPlainObject(source)) return null;
+  return {
+    filename: stringOrEmpty(source.filename, LIMITS.filename),
+    lineno: positionOrNull(source.lineno),
+    colno: positionOrNull(source.colno),
+  };
 };
 
 /**
@@ -94,6 +139,12 @@ const normalizeReport = (body = {}) => {
       screenSize: clampString(browserInfo.screenSize, LIMITS.browserField),
       userAgent: clampString(browserInfo.userAgent, LIMITS.browserField),
     },
+    // Absent from older SDKs' reports, which therefore read as before.
+    sdkVersion: stringOrEmpty(body.sdkVersion, LIMITS.sdkVersion),
+    error: normalizeError(body.error),
+    request: normalizeRequest(body.request),
+    source: normalizeSource(body.source),
+    componentStack: stringOrEmpty(body.componentStack, LIMITS.componentStack),
   };
 };
 
@@ -166,8 +217,15 @@ export const reportTelemetry = async (req, res, next) => {
     let newBug;
     try {
       const now = new Date();
+      // sdkVersion is read, not stored; error is stored as its two fields; and
+      // the SDK's `source` (where in a script the error was thrown) is stored
+      // as errorLocation, since a bug's `source` says where the report came from.
+      const { sdkVersion: _sdkVersion, error, source: errorLocation, ...stored } = report;
       newBug = await Bug.create({
-        ...report,
+        ...stored,
+        errorName: error ? error.name : null,
+        errorMessage: error ? error.message : null,
+        errorLocation,
         // Empty when the SDK sent none. (Records created before this change
         // hold the old placeholder sentence; the client hides that one too.)
         description: report.description || '',

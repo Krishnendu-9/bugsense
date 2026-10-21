@@ -414,6 +414,79 @@ describe('generateFingerprintV2: stackless reports', () => {
   });
 });
 
+// The same error reported by an older SDK and by SDK 1.4.0, in the payload
+// shapes each produces (8.1; Amendment 1, P13-P19).
+describe('generateFingerprintV2: older SDK and SDK 1.4.0 reports of the same error', () => {
+  const same = (oldReport, newReport) => {
+    assert.equal(generateFingerprintV2(newReport), generateFingerprintV2(oldReport));
+  };
+
+  it('an uncaught TypeError, in each engine', () => {
+    const engines = [
+      ["Uncaught TypeError: Cannot read properties of undefined (reading 'map')", "Cannot read properties of undefined (reading 'map')", `TypeError: Cannot read properties of undefined (reading 'map')\n    at Gi (${BUNDLE}:17:9933)`],
+      ['TypeError: can\'t access property "map", e is undefined', 'can\'t access property "map", e is undefined', `Gi@${BUNDLE}:17:9923`],
+      ["TypeError: undefined is not an object (evaluating 'e.map')", "undefined is not an object (evaluating 'e.map')", `Gi@${BUNDLE}:17:9925`],
+    ];
+    const keys = engines.map(([title, message, errorLog]) => {
+      const old = { project: 'Shop', title, errorLog };
+      const v2 = { ...old, error: { name: 'TypeError', message }, source: { filename: '/assets/index.js', lineno: 17, colno: 9933 } };
+      same(old, v2);
+      return generateFingerprintV2(v2);
+    });
+    assert.equal(new Set(keys).size, 1, 'the three engines should share one key');
+  });
+
+  it('a rejection with an Error, and with a string reason', () => {
+    const stack = `Error: loadCart failed\n    at loadCart (${BUNDLE}:9:400)`;
+    same(
+      { project: 'Shop', title: 'Unhandled Promise Rejection: loadCart failed', errorLog: stack },
+      { project: 'Shop', title: 'Unhandled Promise Rejection: loadCart failed', errorLog: stack, error: { name: 'Error', message: 'loadCart failed' } }
+    );
+    same(
+      { project: 'Shop', title: 'Unhandled Promise Rejection: timeout', errorLog: 'timeout' },
+      { project: 'Shop', title: 'Unhandled Promise Rejection: timeout', errorLog: '', error: { name: null, message: 'timeout' } }
+    );
+  });
+
+  it('a cross-origin Script error, with and without a script URL (P18)', () => {
+    same(
+      { project: 'Shop', title: 'Script error.', errorLog: 'Script error. at /products/reviews-widget:0:0' },
+      { project: 'Shop', title: 'Script error.', errorLog: '', error: null, source: { filename: '', lineno: 0, colno: 0 } }
+    );
+    same(
+      { project: 'Shop', title: 'Script error.', errorLog: 'Script error. at http://localhost:7104/reviews-widget.js:0:0' },
+      { project: 'Shop', title: 'Script error.', errorLog: '', error: null, source: { filename: 'http://localhost:7104/reviews-widget.js', lineno: 0, colno: 0 } }
+    );
+  });
+
+  it('a fetch network failure, with the SDK wrapper frame on top', () => {
+    const stack = 'TypeError: Failed to fetch\n    at window.fetch (https://bugsense.example/sdk/bugsense.js:185:20)\n    at send (http://localhost:7120/src/analytics.js:12:3)';
+    const old = {
+      project: 'Shop',
+      title: 'Unhandled Promise Rejection: Failed to fetch',
+      errorLog: stack,
+      breadcrumbs: [{ category: 'xhr', message: 'API [POST] http://localhost:7199/collect (FAILED)' }],
+    };
+    same(old, { ...old, error: { name: 'TypeError', message: 'Failed to fetch' }, request: { method: 'POST', url: 'http://localhost:7199/collect', status: null } });
+    assert.equal(buildKeyV2(old), 'fp2::Shop::network::::POST /collect::');
+  });
+
+  it('a non-Error value thrown synchronously keys alike across engines (P13)', () => {
+    const titles = ['Uncaught Invalid quantity', 'uncaught exception: Invalid quantity', 'Invalid quantity'];
+    const keys = titles.map((title) =>
+      generateFingerprintV2({ project: 'Shop', title, errorLog: '', error: { name: null, message: 'Invalid quantity' }, source: { filename: '/assets/index.js', lineno: 1, colno: 1 } })
+    );
+    assert.equal(new Set(keys).size, 1);
+  });
+
+  it('a long rejection message: the old SDK cut it into the title, so the keys differ (P19)', () => {
+    const message = `Quota exceeded for ${'bucket-alpha '.repeat(20)}`.trim();
+    const old = { project: 'Shop', title: `Unhandled Promise Rejection: ${message.slice(0, 150)}`, errorLog: message };
+    const v2 = { ...old, errorLog: '', error: { name: null, message } };
+    assert.notEqual(generateFingerprintV2(v2), generateFingerprintV2(old));
+  });
+});
+
 describe('v1 key kept alongside v2', () => {
   it('exports the v1 key unchanged under its own name', () => {
     assert.equal(generateFingerprintV1, generateFingerprint);

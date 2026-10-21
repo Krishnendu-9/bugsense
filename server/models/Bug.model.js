@@ -1,5 +1,16 @@
 import mongoose from 'mongoose';
 
+// Sent by SDK 1.4.0 and later (docs/fingerprint-eval-v2.md, 8.1-8.2 and
+// Amendment 1, P13-P16). Older SDKs send neither, and the fields stay null.
+const failedRequestSchema = new mongoose.Schema(
+  { method: String, url: String, status: Number },
+  { _id: false }
+);
+const errorLocationSchema = new mongoose.Schema(
+  { filename: String, lineno: Number, colno: Number },
+  { _id: false }
+);
+
 const bugSchema = new mongoose.Schema(
   {
     title: {
@@ -124,6 +135,13 @@ const bugSchema = new mongoose.Schema(
       enum: ['manual', 'sdk', 'api'],
       default: 'manual',
     },
+    // From the SDK's error, request, source and componentStack fields. The
+    // server sets these; no route lets a client write them.
+    errorName: { type: String, default: null },
+    errorMessage: { type: String, default: null },
+    request: { type: failedRequestSchema, default: null },
+    errorLocation: { type: errorLocationSchema, default: null },
+    componentStack: { type: String, default: '' },
     breadcrumbs: [
       {
         timestamp: { type: Date, default: Date.now },

@@ -725,6 +725,20 @@ describe('bug list', () => {
     assert.equal(manualRow.topFrame, null);
     for (const row of bugs) assert.equal('errorLog' in row, false, 'a list row carried its error log');
   });
+
+  it('leaves the SDK 1.4.0 message and component stack out of list rows', async () => {
+    const tag = `slim${Date.now()}`;
+    await sdkReport({
+      title: `Slim fixture ${tag}`,
+      errorLog: `TypeError: ${tag}\n    at render (app.js:3:3)`,
+      error: { name: 'TypeError', message: tag },
+      componentStack: '\n    at Table\n    at Page',
+    });
+    const { bugs } = await list(`search=${tag}`);
+    assert.equal(bugs.length, 1);
+    assert.equal('componentStack' in bugs[0], false, 'a list row carried its component stack');
+    assert.equal('errorMessage' in bugs[0], false, 'a list row carried its error message');
+  });
 });
 
 describe('webhooks', () => {
@@ -804,6 +818,77 @@ describe('telemetry', () => {
     assert.equal(bug.breadcrumbs.length, 30);
     assert.equal(bug.breadcrumbs[0].category, 'console');
     assert.deepEqual(bug.breadcrumbs[0].data, {});
+  });
+
+  // SDK 1.4.0 fields: docs/fingerprint-eval-v2.md, Amendment 1, P15-P16.
+  it('stores the SDK 1.4.0 fields, clamped to their caps', async () => {
+    const res = await report({
+      title: 'v2 SDK report',
+      errorLog: 'TypeError: big\n    at f (https://shop.example/app.js:1:1)',
+      sdkVersion: '1.4.0'.repeat(20),
+      error: { name: 'N'.repeat(500), message: 'm'.repeat(5000) },
+      request: { method: 'G'.repeat(40), url: `/api/${'u'.repeat(3000)}`, status: 404 },
+      source: { filename: `https://cdn.example/${'f'.repeat(3000)}.js`, lineno: 12, colno: 5 },
+      componentStack: 'c'.repeat(10000),
+    });
+    assert.equal(res.status, 201);
+
+    const bug = await Bug.findById(res.body.bugId);
+    assert.equal(bug.source, 'sdk');
+    assert.equal(bug.errorName.length, 100);
+    assert.equal(bug.errorMessage.length, 1000);
+    assert.equal(bug.request.method.length, 16);
+    assert.equal(bug.request.url.length, 2000);
+    assert.equal(bug.request.status, 404);
+    assert.equal(bug.errorLocation.filename.length, 2000);
+    assert.equal(bug.errorLocation.lineno, 12);
+    assert.equal(bug.errorLocation.colno, 5);
+    assert.equal(bug.componentStack.length, 5000);
+    assert.equal('sdkVersion' in bug.toObject(), false);
+  });
+
+  it('turns SDK 1.4.0 fields of the wrong shape into nulls instead of failing', async () => {
+    const res = await report({
+      title: 'Hostile v2 fields',
+      errorLog: 'Error: hostile',
+      error: { name: 7, message: 'kept' },
+      request: { method: ['GET'], url: '/api/x', status: '404' },
+      source: { filename: { $gt: '' }, lineno: -1, colno: 1.5 },
+      componentStack: { $where: 'sleep(1000)' },
+    });
+    assert.equal(res.status, 201);
+
+    const bug = await Bug.findById(res.body.bugId);
+    assert.equal(bug.errorName, null);
+    assert.equal(bug.errorMessage, 'kept');
+    assert.deepEqual(bug.request.toObject(), { method: '', url: '/api/x', status: null });
+    assert.deepEqual(bug.errorLocation.toObject(), { filename: '', lineno: null, colno: null });
+    assert.equal(bug.componentStack, '');
+
+    const shapes = [{ error: 'boom' }, { error: { message: 42 } }, { request: ['x'] }, { request: { url: 5 } }, { source: 42 }];
+    for (const [i, body] of shapes.entries()) {
+      // A distinct error each time, so none is grouped as a repeat of another
+      // (in letters: the key in use normalises digits away).
+      const name = 'abcde'[i];
+      const r = await report({ title: `Wrong shape ${name}`, errorLog: `Error: shape ${name}`, ...body });
+      assert.equal(r.status, 201, JSON.stringify(body));
+      const b = await Bug.findById(r.body.bugId);
+      assert.equal(b.errorMessage, null);
+      assert.equal(b.request, null);
+      assert.equal(b.errorLocation, null);
+    }
+  });
+
+  it('stores an older SDK report exactly as before, with the new fields empty', async () => {
+    const res = await report({ title: 'Old SDK shape', errorLog: 'Error: old\n    at o (o.js:1:1)', project: 'old-sdk' });
+    const bug = await Bug.findById(res.body.bugId);
+    assert.equal(bug.title, 'Old SDK shape');
+    assert.equal(bug.errorLog, 'Error: old\n    at o (o.js:1:1)');
+    assert.equal(bug.errorName, null);
+    assert.equal(bug.errorMessage, null);
+    assert.equal(bug.request, null);
+    assert.equal(bug.errorLocation, null);
+    assert.equal(bug.componentStack, '');
   });
 
   it('never lets a public report claim critical priority or blocker severity', async () => {

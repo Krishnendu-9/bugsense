@@ -37,6 +37,25 @@ window.BugSense.addBreadcrumb('click', 'User opened the cart drawer');
 window.BugSense.destroy(); // restore patched globals and remove the widget
 ```
 
+`captureError`'s second argument is the report's title when it is a string,
+as in every version. From 1.4.0 it can instead be an options object, of which
+`componentStack` is read. That lets a React error boundary pass its `info`
+object as it is:
+
+```js
+componentDidCatch(error, info) {
+  window.BugSense.captureError(error, info); // title: error.message; component stack kept separately
+}
+```
+
+From 1.4.0, reports also carry, alongside the title and stack:
+- the error's name and message;
+- for failed `fetch` and axios requests, the method, URL (without its query)
+  and status;
+- for uncaught errors, the script file, line and column;
+- the component stack, if one was given;
+- the SDK version.
+
 **Privacy:** the SDK never records form field values or text from inputs,
 textareas, selects, contenteditable regions, or anything inside an element
 marked `data-bugsense-mask`. Query strings and fragments are stripped from every

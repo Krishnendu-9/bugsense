@@ -1,5 +1,5 @@
 /**
- * BugSense Client SDK (v1.3.0): crash reporting, breadcrumbs and a feedback widget
+ * BugSense Client SDK (v1.4.0): crash reporting, breadcrumbs and a feedback widget
  * Embed in any website:
  * <script src="https://your-bugsense-host/sdk/bugsense.js"
  *         crossorigin="anonymous"
@@ -45,8 +45,13 @@
   const ingestKey = currentScript?.getAttribute('data-key') || '';
   const enableWidget = currentScript?.getAttribute('data-widget') !== 'false';
 
+  const SDK_VERSION = '1.4.0';
   const MAX_BREADCRUMBS = 15;
   const MAX_TITLE_LENGTH = 200;
+  // The server caps these too (docs/fingerprint-eval-v2.md, Amendment 1, P15).
+  const MAX_ERROR_NAME_LENGTH = 100;
+  const MAX_ERROR_MESSAGE_LENGTH = 1000;
+  const MAX_COMPONENT_STACK_LENGTH = 5000;
   const MAX_REPORTS_PER_SESSION = 20;
   const REPEAT_SUPPRESSION_MS = 10000;
 
@@ -100,6 +105,36 @@
   function clamp(text, max) {
     const str = String(text || '');
     return str.length > max ? str.slice(0, max) : str;
+  }
+
+  // An Error, or anything shaped like one: errors from another realm (an
+  // iframe) fail instanceof, and DOMExceptions carry name and message too.
+  function isErrorLike(value) {
+    return (
+      value instanceof Error ||
+      (value !== null && typeof value === 'object' && typeof value.name === 'string' && typeof value.message === 'string')
+    );
+  }
+
+  // The `error` field and the stack for a thrown or rejected value. Nothing
+  // thrown: no error, so the server reads the title as it does for older SDKs.
+  // A value that is not an Error: { name: null, message } with the value as
+  // text (JSON for an object).
+  function describeThrown(value) {
+    if (value === undefined || value === null) return { error: null, errorLog: '' };
+    if (isErrorLike(value)) {
+      return {
+        error: { name: String(value.name), message: String(value.message) },
+        errorLog: typeof value.stack === 'string' ? value.stack : '',
+      };
+    }
+    return { error: { name: null, message: typeof value === 'string' ? value : describeArg(value) }, errorLog: '' };
+  }
+
+  // axios's own rule for combining baseURL with a relative request URL.
+  function joinUrl(baseURL, url) {
+    if (!baseURL || /^([a-z][a-z\d+\-.]*:)?\/\//i.test(url)) return url;
+    return String(baseURL).replace(/\/?\/$/, '') + '/' + String(url).replace(/^\/+/, '');
   }
 
   // Elements whose visible text or value may be something the user typed.
@@ -197,6 +232,35 @@
     addBreadcrumb('navigation', 'Browser back/forward to ' + url, { url });
   });
 
+  // Requests the wrappers below have seen, for the `request` field of a report
+  // about a failed one. WeakMaps, so nothing is added to the host's objects.
+  const xhrInfo = new WeakMap();
+  const failedFetches = new WeakMap();
+
+  // The failed request behind an error, for HTTP and network failures: a fetch
+  // the wrapper saw fail, or an axios error. For axios, the URL is the one the
+  // XHR wrapper recorded (so baseURL is included and it matches the
+  // breadcrumb); config is the fallback when no XHR was recorded.
+  function requestOf(value) {
+    if (!value || typeof value !== 'object') return null;
+    const fetched = failedFetches.get(value);
+    if (fetched) return { method: fetched.method, url: fetched.url, status: null };
+    if (value.isAxiosError !== true) return null;
+
+    const response = value.response;
+    const status = response && Number.isInteger(response.status) ? response.status : null;
+    const recorded = value.request && typeof value.request === 'object' ? xhrInfo.get(value.request) : null;
+    if (recorded) return { method: recorded.method, url: recorded.url, status: status ?? (recorded.status || null) };
+
+    const config = value.config && typeof value.config === 'object' ? value.config : {};
+    if (typeof config.url !== 'string') return null;
+    return {
+      method: String(config.method || 'GET').toUpperCase(),
+      url: redactUrl(joinUrl(config.baseURL, config.url)),
+      status,
+    };
+  }
+
   // 3. Fetch API calls
   const originalFetch = window.fetch;
   if (originalFetch) {
@@ -215,6 +279,7 @@
           return response;
         },
         function (err) {
+          if (err && typeof err === 'object') failedFetches.set(err, { method, url });
           addBreadcrumb('xhr', 'API [' + method + '] ' + url + ' (FAILED)', {
             method,
             error: err?.message,
@@ -234,7 +299,6 @@
   // details live in a WeakMap instead of on the host's XHR objects.
   const XHR = window.XMLHttpRequest;
   if (XHR && XHR.prototype) {
-    const xhrInfo = new WeakMap();
     const originalOpen = XHR.prototype.open;
     const originalSend = XHR.prototype.send;
 
@@ -253,6 +317,7 @@
         const xhr = this;
         xhr.addEventListener('loadend', function () {
           try {
+            info.status = xhr.status;
             const outcome = xhr.status ? '(HTTP ' + xhr.status + ')' : '(FAILED)';
             addBreadcrumb('xhr', 'API [' + info.method + '] ' + info.url + ' ' + outcome, {
               method: info.method,
@@ -323,10 +388,21 @@
   function sendTelemetry(payload) {
     if (!shouldSend(payload)) return Promise.resolve(false);
 
+    const error = payload.error;
     const fullPayload = Object.assign({}, payload, {
+      sdkVersion: SDK_VERSION,
       title: clamp(scrubUrls(payload.title), MAX_TITLE_LENGTH),
       errorLog: payload.errorLog ? scrubUrls(payload.errorLog) : payload.errorLog,
       description: payload.description ? scrubUrls(payload.description) : payload.description,
+      error: error
+        ? {
+            name: error.name === null ? null : clamp(error.name, MAX_ERROR_NAME_LENGTH),
+            message: clamp(scrubUrls(error.message), MAX_ERROR_MESSAGE_LENGTH),
+          }
+        : null,
+      componentStack: payload.componentStack
+        ? clamp(scrubUrls(payload.componentStack), MAX_COMPONENT_STACK_LENGTH)
+        : undefined,
       project,
       breadcrumbs: breadcrumbs.slice(),
       browserInfo: {
@@ -360,15 +436,29 @@
   }
 
   // 5. Global error handlers (auto-telemetry on unhandled crashes)
+  // A non-negative integer position from an ErrorEvent, else null.
+  function position(value) {
+    return Number.isInteger(value) && value >= 0 ? value : null;
+  }
+
   listen(window, 'error', function (event) {
     // Resource load errors (img/script 404s) bubble here without an Error.
     if (!event.message && !event.error) return;
-    const errorLog = event.error?.stack || event.message + ' at ' + redactUrl(event.filename) + ':' + event.lineno + ':' + event.colno;
+    const thrown = describeThrown(event.error);
     addBreadcrumb('error', 'Crash: ' + event.message, {});
 
     sendTelemetry({
       title: event.message || 'Uncaught JavaScript Error',
-      errorLog,
+      errorLog: thrown.errorLog,
+      error: thrown.error,
+      request: requestOf(event.error),
+      // No filename means the browser withheld it (a cross-origin script):
+      // send none, never the page URL in its place.
+      source: {
+        filename: event.filename ? redactUrl(event.filename) : '',
+        lineno: position(event.lineno),
+        colno: position(event.colno),
+      },
       description: 'Auto-captured crash on ' + redactUrl(window.location.href),
       severity: 'major',
       priority: 'high',
@@ -377,13 +467,15 @@
 
   listen(window, 'unhandledrejection', function (event) {
     const reason = event.reason;
-    const errorLog = reason?.stack || describeArg(reason);
+    const thrown = describeThrown(reason);
     const title = 'Unhandled Promise Rejection: ' + clamp(reason?.message || describeArg(reason), 150);
     addBreadcrumb('error', title, {});
 
     sendTelemetry({
       title,
-      errorLog,
+      errorLog: thrown.errorLog,
+      error: thrown.error,
+      request: requestOf(reason),
       description: 'Unhandled async promise failure on ' + redactUrl(window.location.href),
       severity: 'major',
       priority: 'high',
@@ -557,10 +649,21 @@
     addBreadcrumb: function (category, message, data) {
       addBreadcrumb(category, message, data);
     },
-    captureError: function (error, customTitle) {
+    // The second argument is the title when it is a string (or any other
+    // non-object), exactly as in earlier versions. An object is options, of
+    // which `componentStack` is read, so a React error boundary can pass its
+    // `info` object as it is: captureError(error, info).
+    captureError: function (error, titleOrOptions) {
+      const isOptions = titleOrOptions !== null && typeof titleOrOptions === 'object';
+      const customTitle = titleOrOptions && !isOptions ? String(titleOrOptions) : '';
+      const componentStack = isOptions && typeof titleOrOptions.componentStack === 'string' ? titleOrOptions.componentStack : '';
+      const thrown = describeThrown(error);
       return sendTelemetry({
         title: customTitle || error?.message || 'Manual Error Capture',
-        errorLog: error?.stack || String(error),
+        errorLog: thrown.errorLog,
+        error: thrown.error,
+        request: requestOf(error),
+        componentStack,
         severity: 'major',
         priority: 'high',
       });
