@@ -5,8 +5,52 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  # New advisories are published against lockfiles nobody has touched, so a
+  # push-only audit would never see them. Weekly, Monday 06:00 UTC.
+  schedule:
+    - cron: '0 6 * * 1'
 
 jobs:
+  # Dependency advisories. Two thresholds, because the two halves of the tree
+  # carry different risk:
+  #   - Runtime dependencies (what ships in the server process and the browser
+  #     bundle) fail at moderate. The sanitize-html XSS bypasses that the
+  #     rich-text defence depends on were rated moderate, so a high-only gate
+  #     would have let them through.
+  #   - Dev-only dependencies (build, lint, test tooling) fail only at critical,
+  #     which is also how npm rates malware advisories: that tooling runs on CI
+  #     runners and developer machines. Lower dev advisories are mostly DoS on
+  #     inputs we write ourselves; they are printed in the log but do not block.
+  # Accepted advisories, and why, are listed in docs/ARCHITECTURE.md.
+  # npm audit reads package-lock.json, so this job needs no install.
+  audit:
+    name: npm audit (${{ matrix.package }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [server, client]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+
+      - name: Runtime dependencies (fail on moderate or above)
+        working-directory: ${{ matrix.package }}
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: All dependencies (fail on critical, report the rest)
+        if: always()
+        working-directory: ${{ matrix.package }}
+        run: npm audit --audit-level=critical
+
+
   server:
     name: Server (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest

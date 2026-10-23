@@ -168,22 +168,57 @@ tests run the real middleware stack against an in-memory MongoDB.
   them would mean recording arrivals, e.g. a per-incident daily bucket
   incremented alongside `occurrences`, and would only cover crashes received
   after that change.
-- `npm audit` in `client/` reports 9 vulnerabilities (2 low, 2 moderate, 5 high,
-  as of October 2026). They come from three advisories; the other entries are the
-  packages that depend on them. They are accepted rather than cleared with
-  `npm audit fix --force`:
-  - **braces** (high, stack-exhaustion DoS) and **postcss-selector-parser**
-    (moderate, CPU exhaustion), both pulled in by Tailwind CSS 3: 7 of the 9
-    entries. Build-time only: they read our own Tailwind config and CSS, never
-    user input, and are not in the shipped bundle. braces has no fixed release,
-    and clearing either means Tailwind 4, which moves configuration into CSS,
-    where the design tokens are mapped.
-  - **quill** (low, XSS in its HTML export), through react-quill-new: 2 entries.
-    It ships and runs in the editor, but no fixed version exists; the `--force`
-    suggestion downgrades react-quill-new, which only moves quill to a release
-    the advisory does not list. Editor output is sanitized on the server before
-    it is stored and again by DOMPurify before it is rendered, so exported HTML
-    never reaches the page unsanitized.
+- **Dependency advisories (reviewed 2026-10-23).** `npm audit` reports 3 entries
+  in `server/` and 9 in `client/`. Runtime dependencies (what runs in the server
+  process or ships in the browser bundle) have no advisory above low. Each count
+  covers fewer root advisories: the other entries are packages that only depend
+  on a vulnerable one. CI runs `npm audit` on every push and weekly; see
+  `.github/workflows/ci.yml` for the thresholds.
+  - *Fixed on 2026-10-23*, all within existing semver ranges:
+    - Server runtime: **proxy-addr** 2.0.8 (critical, IP spoofing through a
+      mis-written IPv6 trust subnet), **engine.io** 6.6.11 (high, an
+      unauthenticated client could crash the process during the Socket.io
+      transport upgrade), **sanitize-html** 2.18.1 (moderate, three XSS
+      bypasses), **ip-address** 10.7.4 (moderate, DoS and a cross-family subnet
+      check, reached through express-rate-limit) and **source-map-js** 1.2.2
+      (high, DoS, reached through sanitize-html's CSS parser).
+    - Of these, only engine.io was exploitable in the shipped configuration. The
+      proxy-addr bug needs `TRUST_PROXY` set to a subnet list containing an
+      IPv4-mapped or zero-prefix IPv6 range; the default is a hop count, which
+      never uses subnet matching. The sanitize-html bypasses, and the
+      source-map-js path, need a `noscript`, `svg`, `meta` or `style` that our
+      allowlist strips; a unit test (`neutralises the 2026 advisory payloads`)
+      pins that. express-rate-limit checks `net.isIPv6()` before it parses an
+      address, which rejects the oversized and multi-`%` inputs.
+    - Dev-only: **vite** 8.3.5 (dev-server file exposure and `launch-editor`
+      command injection on Windows), **vitest** and **@vitest/coverage-v8**
+      5.0.5 (mock-registration code injection), **brace-expansion** 1.1.21
+      (DoS, via ESLint).
+    - Not reachable either way: **follow-redirects** 1.16.1 (high, credential
+      headers kept across cross-origin redirects). The server copy is dev-only,
+      used by mongodb-memory-server to download the test database. The client
+      copy is a runtime dependency of axios but is used only by axios's Node
+      adapter, which Vite leaves out of the browser bundle.
+  - *Accepted.* Each one needs a breaking change to clear:
+    - **braces** (high, stack-exhaustion DoS). Server: through nodemon's
+      chokidar 3, all 3 server entries. Client: through Tailwind CSS 3. Dev-only.
+      Its input is glob patterns from our own nodemon and Tailwind config, never
+      request data. No fixed release exists (3.0.3 is the latest and is
+      affected). On the server, `--force` would downgrade nodemon to 1.14.10, a
+      2017 release; replacing nodemon with Node's built-in `node --watch` would
+      clear it instead. On the client, it means Tailwind 4.
+    - **postcss-selector-parser** (moderate, CPU exhaustion), also through
+      Tailwind 3. Together with braces this accounts for 7 of the client's 9
+      entries. Build-time only: it parses our own CSS. The fix is in 7.1.6, and
+      Tailwind 3 requires `^6`. Tailwind 4 moves configuration from
+      `tailwind.config.cjs` into CSS, where the design tokens are mapped, so it
+      is a migration, not a bump.
+    - **quill** (low, XSS in its HTML export), through react-quill-new: 2
+      entries. It ships and runs in the editor, but no fixed version exists; the
+      `--force` suggestion downgrades react-quill-new to 3.7.0, which only moves
+      quill to a release the advisory does not list. Editor output is sanitized
+      on the server before it is stored and again by DOMPurify before it is
+      rendered, so exported HTML never reaches the page unsanitized.
 - An SDK embedded from another origin without `crossorigin="anonymous"` misses
   unhandled fetch failures in Chromium-based browsers. The SDK calls the native
   `fetch` for the page, so the error is created inside the SDK's script; when

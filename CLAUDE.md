@@ -340,6 +340,10 @@ ALL BUILD PHASES 1 THROUGH 5 ARE NOW COMPLETE!
 Deploy readiness:
   Backend  → Railway/Render (add env vars: PORT, MONGO_URI, JWT_SECRET, ANTHROPIC_API_KEY, CLIENT_URL)
   Frontend → Vercel (add env var: VITE_API_URL = deployed backend)
+  REQUIRED on first deploy: verify TRUST_PROXY with the spoof test in
+  docs/CONFIGURATION.md ("Before the first deploy: verify TRUST_PROXY").
+  Rate limits are per IP; a hop count higher than the real proxies (or 1 with
+  Node reachable directly) lets clients spoof X-Forwarded-For past all of them.
 
 =============================================================
 SESSION 3 — NEW/MODIFIED FILES SO FAR

@@ -18,7 +18,7 @@ of Docker, and how to deploy it. For the Docker quick start, see the
 | `ALLOW_INSECURE_JWT_SECRET` | no | `true` lets production start with a weak `JWT_SECRET` (with a warning banner). Only the Docker local demo sets this |
 | `NODE_ENV` | no | Set to `production` to enforce the JWT check, production rate limits and the developer sign-up default |
 | `CLIENT_URL` | no | Dashboard origin(s), comma-separated (e.g. production plus a Vercel preview). All pass CORS and the socket handshake; the first is used for links in alerts and GitHub issues |
-| `TRUST_PROXY` | no | Express `trust proxy`: number of proxy hops (default `1`), `true`/`false`, or addresses. Use `0` when the API is reached directly, otherwise clients can spoof their IP past the rate limits |
+| `TRUST_PROXY` | **verify before deploying** | Express `trust proxy`: number of proxy hops (default `1`), `false`, or proxy addresses. Must match what is really in front of the server: too high, or `1` while Node is reachable directly, lets clients spoof their IP past every rate limit. See [Before the first deploy](#before-the-first-deploy-verify-trust_proxy) |
 | `ANTHROPIC_API_KEY` | no | Anthropic API key. Without it, AI features fall back to clearly labelled heuristics and templates |
 | `REPORT_AI_HOURLY_BUDGET` | no | Max background analyses of new manual reports per hour (default: 100) |
 | `ALLOW_DEVELOPER_SIGNUP` | no | `true`/`false`: may visitors sign up as developers? Unset = allowed in development, refused in production (admins promote people on the Team page) |
@@ -148,6 +148,86 @@ wipe and reseed deliberately.
 
 ## 4. Deploying (API on Render/Railway, client on Vercel)
 
+### Before the first deploy: verify TRUST_PROXY
+
+**This is a required check, not an optional setting.** Do it on the first deploy
+and again whenever anything changes in front of the API: a new host, a CDN, a
+second load balancer, a published port.
+
+Every rate limit counts requests per client IP: sign-in (50 per 15 minutes), AI
+analysis, SDK ingestion and the global API limit. Failed sign-ins are recorded in
+the audit log under the same address. Express takes that address from the
+`X-Forwarded-For` header, trusting as many entries, counted from the right, as
+`TRUST_PROXY` says. The header is written by proxies, but a client can send one
+too, so the setting must match what is really in front of the server.
+
+**When it is dangerous.** `TRUST_PROXY` is larger than the number of proxies a
+request actually passes through. The usual way this happens is the default `1`
+while the Node process can also be reached directly: a VPS with port 5000 open,
+`docker run -p 5000:5000`, or a compose override that publishes the server's
+port. A client then writes any address it likes into `X-Forwarded-For` and the
+server believes it. Every request can claim a new address and get a fresh
+rate-limit bucket. Password guessing on sign-in becomes unlimited, any signed-in
+account can make unlimited on-demand AI calls (analyze, patch, post-mortem), and
+the public SDK endpoint accepts unlimited reports. The audit log records invented
+addresses. The hourly budgets for *background* AI analysis are global, not
+per-IP, so those still hold. Nothing fails and nothing is logged as an error; the
+per-IP limits simply stop applying.
+
+The opposite mistake is not a spoofing risk but still breaks the limits: too few
+hops (`0` behind a proxy, or `1` behind a CDN *and* a platform load balancer)
+puts every user behind the same proxy into one bucket, so 50 failed sign-ins from
+anyone lock everyone out of signing in for 15 minutes.
+
+**How to verify**, against the deployed API, from your own machine:
+
+1. *The proxy is the only way in.* On a platform such as Render or Railway the
+   container port is not publicly routable; only the platform's hostname is. On a
+   host you run yourself, a direct request from outside must fail to connect:
+
+   ```bash
+   curl -m 5 http://<server-public-ip>:5000/api/health   # must time out or be refused
+   ```
+
+2. *Spoofed addresses are ignored.* Send three requests that each claim a
+   different address, and read the rate-limit header the API returns:
+
+   ```bash
+   for ip in 203.0.113.1 203.0.113.2 203.0.113.3; do
+     curl -s -o /dev/null -D - -H "X-Forwarded-For: $ip" \
+       https://<api-host>/api/health | grep -i '^ratelimit:'
+   done
+   ```
+
+   - **Safe:** `remaining` goes down on each request (for example 1999, 1998,
+     1997). The server is counting your real address and ignoring the header.
+   - **Spoofable, do not ship:** `remaining` is the same every time. Each made-up
+     address got its own bucket. The platform's access log will also show
+     `203.0.113.x` as the client address.
+
+3. *Users are not sharing one bucket.* Send one more request from a different
+   network (a phone hotspot, say). Its `remaining` should be near the limit, not
+   one less than your last result from step 2. If it carries on from your count,
+   all users share a bucket: the hop count is too low.
+
+**What to set**:
+
+| What is in front of the Node process | `TRUST_PROXY` |
+|---|---|
+| Nothing: clients connect to Node directly | `0` |
+| Exactly one proxy, and it is the only way in (the bundled `docker compose` nginx; a single platform load balancer) | `1` |
+| N proxies, each appending to `X-Forwarded-For` (for example a CDN in front of the platform's load balancer) | `N` |
+| Fixed, known proxy addresses | the addresses or subnets, comma-separated (`loopback, 10.0.0.0/8`). Write IPv4 ranges in plain IPv4 notation, not as `::ffff:` IPv6 |
+
+Never use `true`: it trusts every hop, so it is always spoofable.
+
+If step 2 fails while a proxy is supposed to be in front, close the direct
+route (firewall the port, stop publishing it) rather than lowering
+`TRUST_PROXY` to `0`: with `0` behind a proxy, every user shares one bucket.
+After any change, run steps 2 and 3 again.
+
+### Environment
+
 **API** — deploy `server/` (the Dockerfile works as-is, or `npm start`) and set:
 
 | Variable | Value |
@@ -157,7 +237,7 @@ wipe and reseed deliberately.
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `CLIENT_URL` | your Vercel URL(s), comma-separated |
 | `CLOUDINARY_URL` | needed: these hosts wipe local disk on every deploy |
-| `TRUST_PROXY` | `1` (one platform proxy in front) |
+| `TRUST_PROXY` | the measured hop count; **verify it first** ([above](#before-the-first-deploy-verify-trust_proxy)) |
 | `ALLOW_DEVELOPER_SIGNUP` | `true` only if visitors should be able to try staff features |
 
 Optional: `ANTHROPIC_API_KEY`, `TELEMETRY_ALLOWED_ORIGINS`, `GITHUB_TOKEN` with

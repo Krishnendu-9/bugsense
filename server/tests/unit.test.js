@@ -64,6 +64,23 @@ describe('sanitizeRichText', () => {
       '<a href="https://x.dev" target="_blank" rel="noopener noreferrer">x</a>'
     );
   });
+
+  // The sanitize-html advisories fixed in 2.18.0 (GHSA-x3q4-9hxx-gx8m,
+  // GHSA-374f-7chj-9948, GHSA-cv27-6wvh-8x7j) and the source-map-js one reached
+  // through its CSS parser (GHSA-68fv-2mgg-jv7q) all need a tag or attribute this
+  // allowlist leaves out: noscript, svg, meta or style. If this test fails, the
+  // allowlist was widened and docs/ARCHITECTURE.md needs revisiting.
+  it('neutralises the 2026 advisory payloads under our allowlist', () => {
+    for (const html of [
+      '<p><noscript></p><a href="javascript:alert(1)">x</a><img src="http://evil.test/t.gif"></noscript>',
+      '<svg><a href="#safe"><svg:animate attributeName="href" values="#safe;javascript:alert(1)" dur=".01s"/></a></svg>',
+      '<meta http-equiv="refresh" content="0;url=javascript:alert(1)">',
+      '<span style="color:red /*# sourceMappingURL=data:application/json;base64,e30= */">x</span>',
+    ]) {
+      const out = sanitizeRichText(html);
+      assert.doesNotMatch(out, /javascript:|<img|<svg|<meta|<noscript|style=/i, out);
+    }
+  });
 });
 
 describe('checkJwtSecret', () => {

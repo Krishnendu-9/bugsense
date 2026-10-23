@@ -46,6 +46,9 @@ docker compose exec server npm run seed
 The server log opens with a `WARNING` that `JWT_SECRET` is a published example
 value. That is expected for this local demo; set a real secret before exposing
 the stack anywhere ([details](docs/CONFIGURATION.md#docker-the-details)).
+Before a real deployment, also verify `TRUST_PROXY` against what sits in front of
+the API. A wrong value lets clients bypass every rate limit
+([pre-deploy check](docs/CONFIGURATION.md#before-the-first-deploy-verify-trust_proxy)).
 
 The MongoDB container prints its own startup log too, including warnings that
 access control is not enabled and hints about XFS and memory tuning; these are
