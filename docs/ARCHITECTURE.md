@@ -183,9 +183,12 @@ tests run the real middleware stack against an in-memory MongoDB.
       check, reached through express-rate-limit) and **source-map-js** 1.2.2
       (high, DoS, reached through sanitize-html's CSS parser).
     - Of these, only engine.io was exploitable in the shipped configuration. The
-      proxy-addr bug needs `TRUST_PROXY` set to a subnet list containing an
-      IPv4-mapped or zero-prefix IPv6 range; the default is a hop count, which
-      never uses subnet matching. The sanitize-html bypasses, and the
+      proxy-addr bug needs `TRUST_PROXY` set to an address list (a supported
+      option; see [CONFIGURATION.md](CONFIGURATION.md)) containing an
+      IPv4-mapped or zero-prefix IPv6 range such as `::ffff:10.0.0.0/8`. The
+      default hop count and correctly written lists were never affected, but
+      the parser does not validate lists, so a mis-written range would have
+      been exploitable before 2.0.8. The sanitize-html bypasses, and the
       source-map-js path, need a `noscript`, `svg`, `meta` or `style` that our
       allowlist strips; a unit test (`neutralises the 2026 advisory payloads`)
       pins that. express-rate-limit checks `net.isIPv6()` before it parses an
