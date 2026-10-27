@@ -15,7 +15,7 @@ import {
   getGitHubConfig,
 } from '../controllers/bug.controller.js';
 import { protect, adminOnly, authorize } from '../middleware/auth.middleware.js';
-import upload from '../middleware/upload.middleware.js';
+import upload, { verifyImageContent } from '../middleware/upload.middleware.js';
 
 const router = Router();
 
@@ -48,9 +48,9 @@ router.put('/:id', protect, updateBug);
 
 router.delete('/:id', protect, adminOnly, deleteBug);
 
-router.post('/:id/screenshot', protect, upload.single('screenshot'), uploadScreenshot);
+router.post('/:id/screenshot', protect, upload.single('screenshot'), verifyImageContent, uploadScreenshot);
 
-router.post('/:id/annotation', protect, upload.single('annotation'), uploadAnnotation);
+router.post('/:id/annotation', protect, upload.single('annotation'), verifyImageContent, uploadAnnotation);
 
 router.post('/:id/github', protect, authorize('developer', 'admin'), exportToGitHub);
 
