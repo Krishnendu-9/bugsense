@@ -10,8 +10,8 @@ import {
 /**
  * Holds the active theme and keeps <html data-theme> in step with it.
  *
- * The initial value comes from the same resolution the inline script in
- * index.html already ran, so mounting does not change the painted theme.
+ * The initial value comes from the same resolution public/theme-init.js
+ * already ran before first paint, so mounting does not change the painted theme.
  *
  * data-theme is written in the handler that changes the theme rather than in
  * an effect, which matters for correctness and not just for render counts:
