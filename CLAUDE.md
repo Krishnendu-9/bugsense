@@ -42,20 +42,23 @@ FOLDER STRUCTURE
 
 bugsense/
 ├── CLAUDE.md
-├── .gitignore
-├── .env.example              (docker-compose overrides)
+├── .gitignore / .gitattributes
+├── .env.example              (docker-compose overrides, incl. demo-mode flags)
 ├── docker-compose.yml
-├── .github/workflows/ci.yml  (lint + server tests + client build + docker)
-├── README.md
+├── .github/workflows/ci.yml  (audit + lint/tests/build per package + compose stack with e2e)
+├── README.md / LICENSE
+├── docs/                     (API, ARCHITECTURE, CONFIGURATION, SDK, fingerprint eval/results)
+├── e2e/                      (Playwright smoke test of the composed stack; own package.json)
 ├── client/
 │   ├── public/favicon.svg
+│   ├── public/theme-init.js   (sets data-theme before first paint; not inline, for the CSP)
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── tailwind.config.cjs    (CommonJS so the dev server reloads it)
 │   ├── postcss.config.js
 │   ├── eslint.config.js
-│   ├── nginx.conf / Dockerfile
-│   ├── vercel.json            (SPA rewrites for Vercel)
+│   ├── nginx.conf / Dockerfile (nginx sends the CSP and security headers)
+│   ├── vercel.json            (SPA rewrites + the same headers for Vercel)
 │   ├── .env.example
 │   ├── package.json
 │   └── src/
@@ -68,6 +71,9 @@ bugsense/
 │       │   ├── common/
 │       │   │   ├── Navbar.jsx
 │       │   │   ├── Sidebar.jsx
+│       │   │   ├── AccountBlock.jsx
+│       │   │   ├── Avatar.jsx          (image or initials)
+│       │   │   ├── ThemeToggle.jsx
 │       │   │   ├── Loader.jsx
 │       │   │   ├── ProtectedRoute.jsx
 │       │   │   ├── RoleRoute.jsx
@@ -83,26 +89,36 @@ bugsense/
 │       │   │   ├── BugFilters.jsx
 │       │   │   ├── StepsReproducer.jsx
 │       │   │   ├── BreadcrumbTimeline.jsx
+│       │   │   ├── CrashSummary.jsx       (bug page: occurrences, regression, fingerprint)
+│       │   │   ├── TriagePanel.jsx        (bug page: status / priority / assignee)
+│       │   │   ├── ScreenshotCard.jsx     (bug page: add, replace, annotate)
+│       │   │   ├── BugComments.jsx        (bug page: live comments)
+│       │   │   ├── BugSidebar.jsx         (bug page: people, browser, status history)
 │       │   │   ├── AnnotationCanvas.jsx   (lazy-loaded)
 │       │   │   ├── EditBugModal.jsx       (lazy-loaded, BugForm mode="edit")
 │       │   │   └── GitHubExportModal.jsx
 │       │   ├── dashboard/
 │       │   │   ├── StatsCard.jsx
 │       │   │   ├── BugChart.jsx
+│       │   │   ├── TrendStrip.jsx
+│       │   │   ├── DedupCard.jsx
 │       │   │   └── RecentBugs.jsx
 │       │   └── ai/
 │       │       ├── ErrorInsights.jsx
 │       │       ├── GitPatchModal.jsx
+│       │       ├── MarkdownView.jsx       (safe Markdown -> React elements, no HTML)
 │       │       └── PostMortemModal.jsx
 │       ├── context/
-│       │   ├── contexts.js       (AuthContext, SocketContext objects)
+│       │   ├── contexts.js       (AuthContext, SocketContext, ThemeContext objects)
 │       │   ├── AuthContext.jsx   (AuthProvider)
-│       │   └── SocketContext.jsx (SocketProvider)
+│       │   ├── SocketContext.jsx (SocketProvider)
+│       │   └── ThemeContext.jsx  (ThemeProvider)
 │       ├── hooks/
 │       │   ├── useAuth.js
 │       │   ├── useBugs.js
 │       │   ├── useAI.js
 │       │   ├── useSocket.js
+│       │   ├── useTheme.js
 │       │   └── useDebouncedValue.js
 │       ├── pages/
 │       │   ├── auth/ (Login.jsx, Register.jsx)
@@ -111,27 +127,28 @@ bugsense/
 │       │   ├── ai/AIAnalyzer.jsx
 │       │   ├── audit/AuditTrail.jsx        (staff only)
 │       │   ├── metrics/SystemMetrics.jsx   (staff only)
-│       │   ├── playground/SDKPlayground.jsx
+│       │   ├── playground/SDKPlayground.jsx (staff only: it files real SDK bugs)
 │       │   ├── profile/Profile.jsx
 │       │   └── admin/Team.jsx              (admin only)
 │       ├── test/                           (renderWithProviders, SDK jsdom tests)
 │       └── utils/
 │           ├── constants.js
-│           ├── helpers.js                  (incl. statusOptionsFor)
+│           ├── helpers.js                  (incl. statusOptionsFor, findRegressions, isDemoMode)
+│           ├── theme.js                    (token bridge for Recharts/Fabric)
 │           └── selfReport.js
 │
 └── server/
-    ├── server.js             (entry: dotenv, DB, http + socket, listen)
+    ├── server.js             (entry: dotenv, startup checks, DB, http + socket, listen)
     ├── app.js                (createApp() — Express app, used by tests)
     ├── package.json
     ├── eslint.config.js
     ├── .env / .env.example
     ├── Dockerfile / .dockerignore
     ├── uploads/
-    ├── public/sdk/bugsense.js   (embeddable SDK)
+    ├── public/sdk/bugsense.js   (embeddable SDK, v1.5.0)
     ├── config/
     │   ├── db.js
-    │   └── socket.js         (JWT-authenticated Socket.io, broadcast())
+    │   └── socket.js         (JWT-authenticated Socket.io, broadcast(), disconnectUser())
     ├── controllers/
     │   ├── auth.controller.js
     │   ├── bug.controller.js
@@ -142,14 +159,14 @@ bugsense/
     │   └── audit.controller.js
     ├── middleware/
     │   ├── auth.middleware.js     (protect, authorize(...roles), adminOnly)
-    │   ├── upload.middleware.js
-    │   ├── rateLimit.middleware.js
+    │   ├── upload.middleware.js   (Multer + verifyImageContent magic-byte check)
+    │   ├── rateLimit.middleware.js (AI limiter is per account)
     │   └── error.middleware.js    (maps Multer/Mongoose errors to 4xx)
     ├── models/
     │   ├── User.model.js
-    │   ├── Bug.model.js
+    │   ├── Bug.model.js           (MAX_STATUS_HISTORY; statusHistory.kind)
     │   ├── Comment.model.js
-    │   └── AuditLog.model.js
+    │   └── AuditLog.model.js      (TTL: AUDIT_RETENTION_DAYS)
     ├── routes/
     │   ├── auth.routes.js
     │   ├── bug.routes.js
@@ -162,24 +179,28 @@ bugsense/
     │   ├── ai.service.js          (Claude + labelled fallbacks)
     │   ├── token.service.js
     │   ├── audit.service.js
-    │   ├── webhook.service.js
+    │   ├── webhook.service.js     (Slack escaping, Discord allowed_mentions)
     │   ├── bugEvents.service.js   (full payload to bug room, slim to everyone)
     │   ├── autoAnalysis.service.js (background AI on new bugs)
+    │   ├── fingerprintMigration.service.js (v1 -> v2 re-key/merge)
     │   └── storage.service.js     (local disk / Cloudinary)
-    ├── scripts/seed.js
+    ├── scripts/seed.js, scripts/migrate-fingerprints.js
     ├── tests/                     (node:test + Supertest, mongodb-memory-server)
     └── utils/
         ├── fingerprint.util.js
-        ├── sanitize.js            (sanitize-html for rich text)
+        ├── sanitize.js            (sanitize-html for rich text, htmlToText)
         ├── permissions.js         (isStaff, canModifyBug, canSetStatus)
         ├── webhookUrl.js          (SSRF allowlist)
         ├── uploads.js             (safe file cleanup)
         ├── aiBudget.js            (telemetry + report AI hourly caps)
+        ├── bugStats.js            (trend replay from statusHistory)
+        ├── environment.js         (NODE_ENV / open-ingest startup warnings)
         ├── clientOrigins.js       (CLIENT_URL list)
         └── trustProxy.js          (TRUST_PROXY parsing)
 
     (utils/anthropic.js and utils/generateToken.js were removed in session 4 —
-     use services/ai.service.js and services/token.service.js)
+     use services/ai.service.js and services/token.service.js; config/socket.js
+     getIO() was removed in session 7 — use broadcast() / disconnectUser())
 
 =============================================================
 DATABASE MODELS
@@ -533,6 +554,59 @@ Tests: server 75 (npm test), client 70 incl. SDK jsdom tests (npm test).
 Not yet verified: a real `docker compose up` run (Docker Desktop was not running).
 
 =============================================================
+SESSION 7 — FULL-REVIEW FIXES (2026-10-27, branch review-fixes)
+=============================================================
+
+Owner decisions: priority is staff-only when filing too (staff escalation pages,
+a reporter's Blocker does not); the SDK widget is opt-in; the SDK sandbox is
+staff-only; migration-merged bugs stay listed with a "Merged into" banner.
+
+Security:
+  ✓ multer 2.5.0 + body-parser 1.20.9 (high DoS advisories); client dev advisories fixed
+  ✓ Alerts: only staff-set critical/blocker pages (new 'escalated' event); Slack text
+    escaped, Discord allowed_mentions: none
+  ✓ Demo credentials only with VITE_DEMO_MODE; seed refuses in production unless
+    ALLOW_DEMO_SEED=true (compose sets both)
+  ✓ CSP + security headers on the static app (nginx, vercel.json); theme script moved to
+    public/theme-init.js so script-src is 'self' only
+  ✓ Uploads: random UUID names, magic-byte check (verifyImageContent)
+  ✓ Stack traces only when NODE_ENV is development/test; startup warnings for unset
+    NODE_ENV and for open telemetry ingest in production (utils/environment.js)
+  ✓ AI: per-account rate limit; post-mortem needs edit rights; saved results use the
+    bug's stored data; 60s timeout, 1 retry; model claude-sonnet-5-5 with refusal fallback
+  ✓ Passwords 8-72 chars; admin grant/removal confirmed; sockets closed on role or
+    password change (disconnectUser) and the client reconnects; webhook flags boolean-only
+  ✓ SDK 1.5.0: widget opt-in + Escape closes it, click text only from buttons/links,
+    console messages URL-scrubbed, report size capped for keepalive
+
+Correctness:
+  ✓ Heuristics reordered (JSON parse errors no longer read as JWT failures)
+  ✓ Editing a manual bug re-keys its fingerprint; editing the log marks aiInsights.outdated
+  ✓ Widget feedback (kind: 'feedback') is never merged or flagged as a regression
+  ✓ statusHistory entries carry kind ('change' | 'regression' | 'migration');
+    findRegressions no longer mistakes migration entries for regressions
+  ✓ GitHub export: fence the log cannot close, plain-text description, 409 on re-export,
+    504/502 when GitHub is unreachable
+  ✓ Board loads each status column separately; list filters + page live in the URL
+  ✓ New screenshot retires the old annotation; screenshots can be added/replaced later
+  ✓ SDK bugs can be edited without a description; history capped at 200; trends sample
+    capped at 5,000; AuditLog TTL (AUDIT_RETENTION_DAYS, default 365)
+
+Client quality:
+  ✓ BugDetail split into CrashSummary, TriagePanel, ScreenshotCard, BugComments,
+    BugSidebar, common/Avatar (966 -> ~490 lines)
+  ✓ Post-mortems rendered by MarkdownView (React elements only); multi-line comments
+    (Ctrl/Cmd+Enter posts); Back falls back to an in-app page; danger token for form
+    errors; Lucide icons in every toast
+
+Ops:
+  ✓ CI: permissions: contents read; e2e audited; new `stack` job runs docker compose,
+    seeds, smoke-tests through nginx and runs the Playwright e2e/ suite
+
+Tests: server 232 (npm test), client 164 (npm test), e2e 3 (CI only).
+Not yet verified: the `stack` CI job and the e2e suite have not run (no Docker locally).
+
+=============================================================
 KEY TECHNICAL RULES — ALWAYS FOLLOW
 =============================================================
 
@@ -546,7 +620,9 @@ KEY TECHNICAL RULES — ALWAYS FOLLOW
 5. JWT stored in localStorage
 6. Axios instance reads base URL from VITE_API_URL env variable
 7. Axios interceptor attaches Authorization: Bearer token
-8. Anthropic model to use: claude-sonnet-5
+8. Anthropic model to use: claude-sonnet-5-5 (via requestText() in ai.service.js:
+   room for thinking in max_tokens, an explicit effort, the server-side refusal
+   fallback, and a stop_reason check before any reply is used)
 9. AI response must return strict JSON: { possibleCause, suggestedFix }
 10. All forms use React Hook Form
 11. All notifications use React Hot Toast
@@ -556,9 +632,15 @@ KEY TECHNICAL RULES — ALWAYS FOLLOW
 15. Every mutating route checks permissions (utils/permissions.js / authorize())
 16. AI output must report its source; never present a fallback as model output
 17. Status workflow, priority and assignment are staff-only; a reporter may only
-    close or reopen their own bug (canSetStatus server-side, statusOptionsFor client-side)
+    close or reopen their own bug (canSetStatus server-side, statusOptionsFor client-side).
+    This includes filing: a reporter's new bug starts at Medium priority, and only a
+    level staff set (on filing or by escalating) may page the alert channels
 18. Dialogs use components/common/Modal.jsx (or ConfirmDialog) — never window.confirm
-19. Uploads go through services/storage.service.js (storeUpload / removeStoredFile)
+19. Uploads go through services/storage.service.js (storeUpload / removeStoredFile),
+    behind upload.single() + verifyImageContent on the route
+20. AI results saved on a bug are computed from that bug's stored data, never from
+    request text (ai.controller.js)
+21. Form errors and destructive controls use the danger token, never priority-high
 
 =============================================================
 ENVIRONMENT VARIABLES
