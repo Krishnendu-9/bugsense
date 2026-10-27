@@ -29,7 +29,14 @@ export function SocketProvider({ children }) {
       setSocket(s);
       setConnected(true);
     });
-    s.on('disconnect', () => setConnected(false));
+    s.on('disconnect', (reason) => {
+      setConnected(false);
+      // The server closes an account's sockets when its role or password
+      // changes, and socket.io does not reconnect after that on its own.
+      // Reconnecting authenticates again: with a still-valid token (a role
+      // change) it succeeds, with a revoked one it is refused.
+      if (reason === 'io server disconnect') s.connect();
+    });
     s.on('connect_error', () => setConnected(false));
 
     return () => {

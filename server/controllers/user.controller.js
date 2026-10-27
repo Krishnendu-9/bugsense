@@ -6,6 +6,7 @@ import { logActivity } from '../services/audit.service.js';
 import { removeUpload } from '../utils/uploads.js';
 import { removeStoredFile, storeUpload } from '../services/storage.service.js';
 import { isAllowedWebhookUrl, WEBHOOK_URL_HINT } from '../utils/webhookUrl.js';
+import { disconnectUser } from '../config/socket.js';
 
 const toPublicUser = (user) => ({
   _id: user._id,
@@ -73,6 +74,8 @@ export const updateUserRole = async (req, res, next) => {
     if (previous !== role) {
       user.role = role;
       await user.save();
+      // Their open sockets authenticated under the old role.
+      disconnectUser(user._id);
       logActivity({
         action: 'ROLE_CHANGED',
         entityType: 'user',
@@ -125,6 +128,9 @@ export const updateUserProfile = async (req, res, next) => {
     // that made this request, so the caller receives a fresh one.
     if (newPassword) {
       body.token = generateToken(updatedUser);
+      // The old tokens no longer verify, so sockets opened with them close;
+      // this session reconnects with the new token, the others cannot.
+      disconnectUser(updatedUser._id);
       logActivity({
         action: 'PASSWORD_CHANGED',
         entityType: 'user',
@@ -179,6 +185,12 @@ export const updateWebhooks = async (req, res, next) => {
 
   const invalid = validateWebhookInput('discord', discordUrl) || validateWebhookInput('slack', slackUrl);
   if (invalid) return res.status(400).json({ message: invalid });
+  // Booleans only: the string "false" would otherwise read as true.
+  for (const [field, value] of [['alertOnCritical', alertOnCritical], ['alertOnRegression', alertOnRegression]]) {
+    if (value !== undefined && typeof value !== 'boolean') {
+      return res.status(400).json({ message: `${field} must be true or false` });
+    }
+  }
 
   try {
     const user = await User.findById(req.user._id);
