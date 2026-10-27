@@ -48,7 +48,7 @@ export default function StepsReproducer({ value = [], onChange }) {
           <button
             type="button"
             onClick={() => removeStep(index)}
-            className="flex-shrink-0 p-1.5 rounded-lg text-muted hover:text-priority-high hover:bg-priority-high/10 transition-colors duration-200 opacity-0 group-hover:opacity-100"
+            className="flex-shrink-0 p-1.5 rounded-lg text-muted hover:text-danger hover:bg-danger/10 transition-colors duration-200 opacity-0 group-hover:opacity-100"
           >
             <Trash2 size={14} />
           </button>
