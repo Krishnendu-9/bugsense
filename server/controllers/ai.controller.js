@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { validationResult } from 'express-validator';
 import { analyzeError, generateGitPatch, generatePostMortem } from '../services/ai.service.js';
 import { emitBugUpdated } from '../services/bugEvents.service.js';
 import { canModifyBug } from '../utils/permissions.js';
@@ -20,20 +19,24 @@ const loadBug = async (bugId, user, { requireWrite }) => {
 };
 
 export const analyzeErrorLog = async (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ message: errors.array()[0].msg });
-  }
-
   const { errorLog, bugContext, bugId } = req.body;
 
   try {
     const { bug, error } = await loadBug(bugId, req.user, { requireWrite: true });
     if (error) return res.status(error[0]).json({ message: error[1] });
 
+    // An analysis saved on a bug must describe that bug, so it is run on the
+    // bug's stored log and description, never on text from the request. The
+    // body is only read for a one-off analysis with no bug.
+    const log = bug ? bug.errorLog : errorLog;
+    const context = bug ? bug.description : typeof bugContext === 'string' ? bugContext : '';
+    if (typeof log !== 'string' || !log.trim()) {
+      return res.status(400).json({ message: bug ? 'This bug has no error log to analyze' : 'Error log is required' });
+    }
+
     // analyzeError never rethrows — it falls back to heuristics and says so
     // through `source`.
-    const insights = await analyzeError(errorLog, typeof bugContext === 'string' ? bugContext : '');
+    const insights = await analyzeError(log, context);
 
     if (bug) {
       bug.aiInsights = { ...insights, analyzedAt: new Date() };
@@ -54,9 +57,10 @@ export const createGitPatch = async (req, res, next) => {
     const { bug, error } = await loadBug(bugId, req.user, { requireWrite: true });
     if (error) return res.status(error[0]).json({ message: error[1] });
 
-    const errText = (typeof errorLog === 'string' && errorLog) || bug?.errorLog || '';
-    const descText = (typeof bugDescription === 'string' && bugDescription) || bug?.description || '';
-    const stepsArr = Array.isArray(steps) ? steps.map(String) : bug?.steps || [];
+    // As for analyses: a patch saved on a bug is generated from that bug.
+    const errText = bug ? bug.errorLog || '' : (typeof errorLog === 'string' && errorLog) || '';
+    const descText = bug ? bug.description || '' : (typeof bugDescription === 'string' && bugDescription) || '';
+    const stepsArr = bug ? bug.steps || [] : Array.isArray(steps) ? steps.map(String) : [];
 
     if (!errText && !descText) {
       return res.status(400).json({ message: 'Error log or bug description is required to generate a patch' });
@@ -84,7 +88,9 @@ export const createPostMortem = async (req, res, next) => {
   }
 
   try {
-    const { bug, error } = await loadBug(bugId, req.user, { requireWrite: false });
+    // A post-mortem is a paid model call about one bug, so it takes the same
+    // right as analysing or patching it: staff, or the bug's reporter.
+    const { bug, error } = await loadBug(bugId, req.user, { requireWrite: true });
     if (error) return res.status(error[0]).json({ message: error[1] });
 
     const postMortem = await generatePostMortem(bug);
