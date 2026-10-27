@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Bug, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import BugForm from '../../components/bugs/BugForm.jsx';
@@ -7,6 +7,7 @@ import useBugs from '../../hooks/useBugs.js';
 
 export default function ReportBug() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { createBug, uploadScreenshot } = useBugs();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -73,7 +74,9 @@ export default function ReportBug() {
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center gap-4">
         <button
-          onClick={() => navigate(-1)}
+          // Opened directly (a bookmark, a new tab) there is no in-app page to
+          // return to, and Back would leave BugSense.
+          onClick={() => (location.key === 'default' ? navigate('/dashboard') : navigate(-1))}
           aria-label="Go back"
           className="p-2 rounded-lg hover:bg-track text-muted hover:text-fg transition-colors duration-200"
         >
