@@ -3,9 +3,13 @@ import { Copy, Download, Check, ShieldAlert, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../common/Modal.jsx';
 import { downloadFile } from '../../utils/helpers.js';
+import MarkdownView from './MarkdownView.jsx';
 
 export default function PostMortemModal({ markdown, source, bugTitle, onClose }) {
   const [copied, setCopied] = useState(false);
+  // Rendered by default; the source is one click away, as it is what gets
+  // copied or downloaded.
+  const [view, setView] = useState('preview');
 
   if (!markdown) return null;
 
@@ -59,9 +63,29 @@ export default function PostMortemModal({ markdown, source, bugTitle, onClose })
           </span>
         </div>
       )}
-      <pre className="whitespace-pre-wrap font-sans text-sm text-fg leading-relaxed bg-canvas rounded-xl p-5 border border-hairline selection:bg-accent/30">
-        {markdown}
-      </pre>
+      <div className="flex justify-end mb-2">
+        {/* The same segmented switch as List / Board: the current option is bg-track. */}
+        <div role="group" aria-label="Post-mortem view" className="inline-flex rounded-lg border border-border p-0.5 text-xs">
+          {[['preview', 'Preview'], ['markdown', 'Markdown']].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setView(value)}
+              aria-pressed={view === value}
+              className={`px-2.5 py-1 rounded-md transition-colors duration-200 ${view === value ? 'bg-track text-fg' : 'text-muted hover:text-fg'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="bg-canvas rounded-xl p-5 border border-hairline selection:bg-accent/30">
+        {view === 'preview' ? (
+          <MarkdownView markdown={markdown} />
+        ) : (
+          <pre className="whitespace-pre-wrap font-mono text-xs text-fg leading-relaxed">{markdown}</pre>
+        )}
+      </div>
     </Modal>
   );
 }
