@@ -48,6 +48,11 @@ export const generateFingerprintV1 = generateFingerprint;
 // Fingerprint v2 -- specified in docs/fingerprint-eval-v2.md, section 2, as
 // read by its Amendment 1 (points P1-P12, cited below). The specification is
 // the source of truth: change it before changing this code.
+//
+// How to read the citations: "2.4" is a section of that document; "P10" is
+// point 10 of its Amendment 1, a numbered clarification of an edge case found
+// while implementing it. Every rule here also says in plain words what it does,
+// so the citations are for checking against the spec, not for understanding.
 // =============================================================================
 
 // A content hash before .js/.mjs at the end of a path (2.2, file rule 2).

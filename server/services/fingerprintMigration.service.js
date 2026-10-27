@@ -5,7 +5,9 @@ import { generateFingerprintV2, manualKeyInputs } from '../utils/fingerprint.uti
 
 /*
  * Re-keys stored bugs from the v1 fingerprint to v2: docs/fingerprint-eval-v2.md,
- * section 8.3, as read by Amendment 1 (P20, P23-P33).
+ * section 8.3, as read by Amendment 1 (P20, P23-P33). "8.3" is a section of
+ * that document and "P28" point 28 of its Amendment 1; each rule below also
+ * says in plain words what it does.
  *
  * planMigration() only reads. applyMigration() performs a plan. All writes go
  * to the raw collection, so no Mongoose middleware, timestamp (P32), webhook,
@@ -38,7 +40,8 @@ export class MigrationRefused extends Error {
  */
 export const keyInputsOf = (bug) => {
   const base = { project: bug.project ?? '', title: bug.title || '', errorLog: bug.errorLog || '' };
-  if (bug.source !== 'sdk') return manualKeyInputs(base); // P34
+  // Manual and api bugs: keyed exactly as the API keys a new manual report (P34).
+  if (bug.source !== 'sdk') return manualKeyInputs(base);
   const loc = bug.errorLocation;
   return {
     ...base,
@@ -88,7 +91,9 @@ export const planMigration = async () => {
   for (const bug of pending) {
     const newKey = generateFingerprintV2(keyInputsOf(bug));
     if (newKey === null) {
-      unkeyable.push({ id: bug._id, source: bug.source, title: bug.title }); // P27
+      // Nothing to key on (no log, title or message): left as it is and listed
+      // in the report, never guessed at (P27).
+      unkeyable.push({ id: bug._id, source: bug.source, title: bug.title });
       continue;
     }
     if (bug.source !== 'sdk') {
@@ -175,7 +180,11 @@ const assertNoIngest = async (plan) => {
   }
 };
 
-const historyEntry = (status, note, at) => ({ _id: new mongoose.Types.ObjectId(), status, changedBy: null, changedAt: at, note });
+// kind 'migration' tells these apart from telemetry regressions, which also
+// have no changedBy and can move a bug to in-progress.
+const historyEntry = (status, note, at) => ({
+  _id: new mongoose.Types.ObjectId(), status, changedBy: null, changedAt: at, note, kind: 'migration',
+});
 
 /**
  * Performs a plan from planMigration. Refuses, before any write, when the plan
@@ -230,7 +239,10 @@ export const applyMigration = async (plan, { now = new Date(), hooks = {} } = {}
       },
     });
 
-    // P28: the other members first, the survivor last.
+    // The other members first, the survivor last (P28): if the run stops
+    // part-way, the survivor is still unmigrated while a member already points
+    // at it, which the next plan detects as an incomplete merge (P31) instead
+    // of silently re-merging.
     for (const member of others) {
       await col.updateOne(
         { _id: member.id, fingerprintVersion: { $ne: 2 } },
