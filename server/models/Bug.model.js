@@ -78,6 +78,9 @@ const bugSchema = new mongoose.Schema(
       // carry model output.
       source: { type: String, enum: ['claude', 'heuristic'] },
       analyzedAt: { type: Date },
+      // Set when the error log is edited after this analysis ran; a new
+      // analysis replaces the whole object and so clears it.
+      outdated: { type: Boolean },
     },
     reporter: {
       type: mongoose.Schema.Types.ObjectId,
@@ -111,6 +114,12 @@ const bugSchema = new mongoose.Schema(
         changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         changedAt: { type: Date, default: Date.now },
         note: { type: String, default: '' },
+        // What wrote the entry: a person ('change'), the telemetry pipeline
+        // re-opening a fixed bug ('regression'), or the fingerprint migration
+        // ('migration'). No default on purpose: Mongoose fills defaults in on
+        // read, and entries written before this field must read as unknown so
+        // the client can still classify them by their old shape.
+        kind: { type: String, enum: ['change', 'regression', 'migration'] },
       },
     ],
     // Telemetry and deduplication fields (fingerprinting, occurrence counts, breadcrumbs)
@@ -187,6 +196,12 @@ bugSchema.index(
   { fingerprint: 1, source: 1 },
   { unique: true, partialFilterExpression: { fingerprint: { $type: 'string' }, source: 'sdk' } }
 );
+
+// A bug that flaps for years (resolved, regressed, resolved...) would grow its
+// history without end, and every read of the bug carries all of it. The newest
+// entries are what the page and the 7-day trend read, so writers drop the
+// oldest beyond this many.
+export const MAX_STATUS_HISTORY = 200;
 
 const Bug = mongoose.model('Bug', bugSchema);
 export default Bug;

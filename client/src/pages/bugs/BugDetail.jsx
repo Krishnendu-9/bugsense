@@ -1,10 +1,8 @@
 import { lazy, Suspense, useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
 import {
-  ArrowLeft, Trash2, Edit3, MessageSquare, Send, Monitor,
-  Tag, AlertTriangle, Cpu, X, Check, Pencil, History,
-  GitPullRequest, ExternalLink, Github, Zap, FileText, UserCheck, FileEdit, Copy, RotateCcw, RefreshCw,
+  ArrowLeft, Trash2, Edit3, Tag, AlertTriangle, Cpu, X, GitMerge,
+  GitPullRequest, ExternalLink, Github, FileText, FileEdit, RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
@@ -13,36 +11,24 @@ import useAuth from '../../hooks/useAuth.js';
 import useSocket, { useSocketEvent } from '../../hooks/useSocket.js';
 import { PriorityText, SeverityText, StatusMark } from '../../components/common/Badge.jsx';
 import ErrorInsights from '../../components/ai/ErrorInsights.jsx';
-import Modal from '../../components/common/Modal.jsx';
 import ConfirmDialog from '../../components/common/ConfirmDialog.jsx';
 import OverflowMenu from '../../components/common/OverflowMenu.jsx';
 import BreadcrumbTimeline from '../../components/bugs/BreadcrumbTimeline.jsx';
+import BugComments from '../../components/bugs/BugComments.jsx';
+import BugSidebar from '../../components/bugs/BugSidebar.jsx';
+import CrashSummary from '../../components/bugs/CrashSummary.jsx';
+import ScreenshotCard from '../../components/bugs/ScreenshotCard.jsx';
+import TriagePanel from '../../components/bugs/TriagePanel.jsx';
 import GitPatchModal from '../../components/ai/GitPatchModal.jsx';
 import PostMortemModal from '../../components/ai/PostMortemModal.jsx';
 import GitHubExportModal from '../../components/bugs/GitHubExportModal.jsx';
 import { BugDetailSkeleton } from '../../components/common/Loader.jsx';
 import {
-  timeAgo, getInitials, formatDate, getImageUrl, sanitizeHtml, isStaff, dataUrlToFile,
-  isBugReporter, statusOptionsFor, stripHtml, findRegressions,
+  timeAgo, formatDate, sanitizeHtml, isStaff, isBugReporter, statusOptionsFor, stripHtml,
 } from '../../utils/helpers.js';
-import { STATUS_OPTIONS, PRIORITY_OPTIONS, STATUS_MARK_COLORS } from '../../utils/constants.js';
 import api from '../../api/axios.js';
 
-function Avatar({ person, size = 'w-8 h-8', text = 'text-xs' }) {
-  return (
-    <div className={`${size} rounded-full bg-accent flex items-center justify-center text-on-accent ${text} font-bold flex-shrink-0 overflow-hidden`}>
-      {person?.avatar ? (
-        <img src={getImageUrl(person.avatar)} alt="" className="w-full h-full object-cover" />
-      ) : (
-        getInitials(person?.name)
-      )}
-    </div>
-  );
-}
-
-// Fabric (annotation) and Quill (editing) are large and only needed once their
-// dialogs open, so they load on demand.
-const AnnotationCanvas = lazy(() => import('../../components/bugs/AnnotationCanvas.jsx'));
+// Quill is large and only needed once the edit dialog opens.
 const EditBugModal = lazy(() => import('../../components/bugs/EditBugModal.jsx'));
 
 // How long to wait for a background analysis before refetching once and
@@ -54,15 +40,6 @@ const ANALYSIS_WAIT_MS = 30000;
 // this placeholder instead (it was the server's old default); matching it is
 // a fallback for those records only, not the mechanism.
 const SDK_PLACEHOLDER_DESCRIPTION = 'Crash reported automatically by the BugSense SDK.';
-
-function AnnotationSkeleton() {
-  return (
-    <div className="space-y-3" aria-busy="true" aria-label="Loading annotation tools">
-      <div className="skeleton h-9 w-2/3 rounded-lg" />
-      <div className="skeleton h-[360px] w-full rounded-xl" />
-    </div>
-  );
-}
 
 // One instance per bug: following a link from one bug to another remounts the
 // page, so comments, open dialogs, the triage panel and any pending analysis
@@ -80,27 +57,22 @@ function BugDetailView() {
   const [pendingAnalysisId, setPendingAnalysisId] = useState(() => (location.state?.analysisPending ? id : null));
   const { user } = useAuth();
   const { socket } = useSocket();
-  const { bug, setBug, loading, fetchBugById, updateBug, deleteBug, uploadAnnotation } = useBugs();
+  const { bug, setBug, loading, fetchBugById, updateBug, deleteBug } = useBugs();
   const { loading: aiLoading, analyze } = useAI();
-  const [comments, setComments] = useState([]);
-  const [commentLoading, setCommentLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [assignees, setAssignees] = useState([]);
-  const [showAnnotation, setShowAnnotation] = useState(false);
-  const [savingAnnotation, setSavingAnnotation] = useState(false);
   const [gitPatch, setGitPatch] = useState(null);
   const [patchLoading, setPatchLoading] = useState(false);
   const [showGithubModal, setShowGithubModal] = useState(false);
   const [showEditDetails, setShowEditDetails] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [commentToDelete, setCommentToDelete] = useState(null);
   const [postMortem, setPostMortem] = useState(null);
   const [postMortemLoading, setPostMortemLoading] = useState(false);
 
-  const { register, handleSubmit, reset } = useForm();
-  const { register: regEdit, handleSubmit: handleEditSubmit, reset: resetEdit } = useForm();
-
   const staff = isStaff(user);
+
+  // A page opened from a link or a new tab has no in-app history to go back
+  // to; Back would leave BugSense, so it goes to the bug list instead.
+  const goBack = () => (location.key === 'default' ? navigate('/bugs') : navigate(-1));
 
   useEffect(() => {
     fetchBugById(id);
@@ -123,17 +95,6 @@ function BugDetailView() {
     return () => clearTimeout(timer);
   }, [analysisPending, id, fetchBugById]);
 
-  // Comments load once per bug; live additions and deletions arrive over the
-  // socket, so they are not refetched every time the bug itself changes.
-  // (Each bug id gets a fresh component instance, so they start empty.)
-  useEffect(() => {
-    let cancelled = false;
-    api.get(`/comments/bug/${id}`)
-      .then((res) => { if (!cancelled) setComments(res.data); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [id]);
-
   useEffect(() => {
     if (!socket || !id) return undefined;
     // Rooms are per connection, so rejoin after every reconnect.
@@ -145,11 +106,6 @@ function BugDetailView() {
       socket.emit('leave:bug', id);
     };
   }, [socket, id]);
-
-  useEffect(() => {
-    if (!isEditing || !staff || assignees.length) return;
-    api.get('/users/assignable').then((res) => setAssignees(res.data)).catch(() => {});
-  }, [isEditing, staff, assignees.length]);
 
   useSocketEvent(
     'bug:detail:updated',
@@ -176,38 +132,6 @@ function BugDetailView() {
   );
 
   useSocketEvent(
-    'comment:added',
-    useCallback(
-      (newComment) => {
-        const commentBugId = newComment?.bug?._id ?? newComment?.bug;
-        if (commentBugId !== id) return;
-
-        setComments((prev) => {
-          if (prev.some((c) => c._id === newComment._id)) return prev;
-          if (newComment.author?._id !== user?._id) {
-            toast(`New comment from ${newComment.author?.name || 'team member'}`, { icon: <MessageSquare size={16} className="text-muted" aria-hidden="true" /> });
-          }
-          return [...prev, newComment];
-        });
-      },
-      [id, user]
-    )
-  );
-
-  useSocketEvent(
-    'comment:deleted',
-    useCallback(
-      ({ _id, bugId }) => {
-        if (bugId && bugId !== id) return;
-        setComments((prev) => prev.filter((c) => c._id !== _id));
-        // Deleted elsewhere while we were asking whether to delete it.
-        setCommentToDelete((pending) => (pending?._id === _id ? null : pending));
-      },
-      [id]
-    )
-  );
-
-  useSocketEvent(
     'bug:deleted',
     useCallback(
       ({ _id }) => {
@@ -221,17 +145,10 @@ function BugDetailView() {
 
   const safeDescription = useMemo(() => sanitizeHtml(bug?.description), [bug?.description]);
 
-  const openEditor = () => {
-    resetEdit({
-      status: bug.status,
-      statusNote: '',
-      ...(staff ? { priority: bug.priority, assignedTo: bug.assignedTo?._id || '' } : {}),
-    });
-    setIsEditing(true);
-  };
-
   const handleAnalyze = async () => {
     if (!bug?.errorLog) { toast.error('No error log to analyze'); return; }
+    // The server analyses the bug's stored log; these arguments only matter
+    // for a one-off analysis with no bug.
     const result = await analyze(bug.errorLog, bug.description, bug._id);
     if (!result) return;
     setBug((prev) => (prev ? { ...prev, aiInsights: result } : prev));
@@ -249,57 +166,13 @@ function BugDetailView() {
     }
   };
 
-  const handleAddComment = async (data) => {
-    if (!data.content?.trim()) return;
-    setCommentLoading(true);
-    try {
-      const res = await api.post('/comments', { bugId: id, content: data.content.trim() });
-      setComments((prev) => (prev.some((c) => c._id === res.data._id) ? prev : [...prev, res.data]));
-      reset();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to add comment');
-    } finally {
-      setCommentLoading(false);
-    }
-  };
-
-  // Runs from the confirmation dialog only. On failure the dialog stays open
-  // (with the error toast) so the person can retry or cancel.
-  const handleDeleteComment = async () => {
-    const commentId = commentToDelete?._id;
-    if (!commentId) return;
-    try {
-      await api.delete(`/comments/${commentId}`);
-      setComments((prev) => prev.filter((c) => c._id !== commentId));
-      setCommentToDelete(null);
-      toast.success('Comment deleted');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete comment');
-    }
-  };
-
-  const handleEditSubmitFn = async (data) => {
+  const handleTriageSave = async (data) => {
     try {
       await updateBug(id, data);
       toast.success('Bug updated');
       setIsEditing(false);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update bug');
-    }
-  };
-
-  const handleSaveAnnotation = async (dataUrl) => {
-    setSavingAnnotation(true);
-    try {
-      const file = await dataUrlToFile(dataUrl, `annotation-${Date.now()}.png`);
-      const { annotatedScreenshot } = await uploadAnnotation(id, file);
-      setBug((prev) => (prev ? { ...prev, annotatedScreenshot } : prev));
-      toast.success('Annotation saved');
-      setShowAnnotation(false);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save annotation');
-    } finally {
-      setSavingAnnotation(false);
     }
   };
 
@@ -361,25 +234,15 @@ function BugDetailView() {
   const canDelete = user?.role === 'admin';
   const canEdit = staff || isBugReporter(user, bug);
   const allowedStatuses = statusOptionsFor(user, bug);
-  const hasScreenshot = bug.screenshot || bug.annotatedScreenshot;
 
   const sdk = bug.source === 'sdk';
   const showCrashBanner = sdk || bug.occurrences > 1;
-  const regressions = findRegressions(bug.statusHistory);
-  const lastRegression = regressions.at(-1);
   // Empty -> no description card. The placeholder check covers older records.
   const descriptionText = stripHtml(bug.description || '').trim();
   const hasDescription = Boolean(descriptionText) && !(sdk && descriptionText === SDK_PLACEHOLDER_DESCRIPTION);
-
-  const copyFingerprint = async () => {
-    try {
-      // Absent outside secure contexts; the throw lands in the catch.
-      await navigator.clipboard.writeText(bug.fingerprint);
-      toast.success('Fingerprint copied');
-    } catch {
-      toast.error('Could not copy the fingerprint');
-    }
-  };
+  // Populated by the API as { _id, title, status }; a bare id from an older
+  // payload still gets a link.
+  const mergedInto = bug.mergedInto && (typeof bug.mergedInto === 'object' ? bug.mergedInto : { _id: bug.mergedInto });
 
   return (
     <div className="space-y-5">
@@ -388,7 +251,7 @@ function BugDetailView() {
       <header className="space-y-2">
         <div className="flex flex-wrap items-start gap-3">
           <button
-            onClick={() => navigate(-1)}
+            onClick={goBack}
             aria-label="Go back"
             className="p-2 rounded-lg hover:bg-track text-muted hover:text-fg transition-colors duration-200 flex-shrink-0"
           >
@@ -419,7 +282,7 @@ function BugDetailView() {
             )}
             {canEdit && (
               <button
-                onClick={() => (isEditing ? setIsEditing(false) : openEditor())}
+                onClick={() => setIsEditing((open) => !open)}
                 aria-expanded={isEditing}
                 className="btn-secondary flex items-center gap-2 text-sm"
               >
@@ -443,7 +306,8 @@ function BugDetailView() {
                   icon: Github,
                   onClick: () => setShowGithubModal(true),
                 },
-                {
+                // A paid model call, so the same people as analysis and patches.
+                canEdit && {
                   key: 'postmortem',
                   label: postMortemLoading ? 'Generating...' : 'Post-mortem',
                   icon: FileText,
@@ -503,128 +367,25 @@ function BugDetailView() {
         </div>
       </header>
 
-      {/* Crash summary: count, first and last crash, regression, fingerprint.
-          A neutral surface: an SDK crash is not urgent by being one. Only the
-          regression line carries colour. */}
-      {showCrashBanner && (
-        <section aria-label="Crash summary" className="glass-card px-4 py-3 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-            <span className="flex items-center gap-2 font-semibold text-fg">
-              <Zap size={16} className="text-muted" aria-hidden="true" />
-              <span><span className="font-mono">{bug.occurrences || 1}</span> {(bug.occurrences || 1) === 1 ? 'occurrence' : 'occurrences'}</span>
-            </span>
-            <span className="text-muted">
-              First crash <span className="text-fg">{formatDate(bug.firstSeenAt || bug.createdAt)}</span>
-            </span>
-            <span className="text-muted" title={`When the SDK last reported this crash: ${formatDate(bug.lastSeenAt || bug.updatedAt, 'MMM d, yyyy HH:mm')}`}>
-              Last crash <span className="text-fg">{timeAgo(bug.lastSeenAt || bug.updatedAt)}</span>
-            </span>
-            {sdk && <span className="text-muted">Reported by the SDK</span>}
-            {bug.fingerprint && (
-              <button
-                type="button"
-                onClick={copyFingerprint}
-                title={`Fingerprint ${bug.fingerprint} (click to copy)`}
-                aria-label={`Copy fingerprint ${bug.fingerprint}`}
-                className="sm:ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-2 py-0.5 text-xs text-muted hover:text-fg hover:bg-track transition-colors"
-              >
-                Fingerprint <span className="font-mono text-fg">{bug.fingerprint.slice(0, 8)}</span>
-                <Copy size={12} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          {lastRegression && (
-            <p className="flex items-start gap-2 text-sm font-semibold text-danger">
-              <RotateCcw size={15} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
-              <span>
-                Regressed {timeAgo(lastRegression.at)}: it crashed again after being{' '}
-                {lastRegression.previous
-                  ? `${lastRegression.previous.status}${lastRegression.previous.changedBy?.name ? ` by ${lastRegression.previous.changedBy.name}` : ''} on ${formatDate(lastRegression.previous.changedAt)}`
-                  : 'resolved'}
-                .
-                {regressions.length > 1 && (
-                  <span className="font-normal text-muted"> {regressions.length} regressions in total.</span>
-                )}
-              </span>
-            </p>
-          )}
+      {/* Closed by the fingerprint migration as a duplicate of another bug,
+          which holds its occurrences from then on. */}
+      {mergedInto && (
+        <section aria-label="Merged" className="glass-card px-4 py-3 flex items-start gap-2 text-sm text-muted">
+          <GitMerge size={16} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <p>
+            Merged into{' '}
+            <Link to={`/bugs/${mergedInto._id}`} className="text-accent hover:underline font-medium">
+              {mergedInto.title ? `“${mergedInto.title}”` : 'another bug'}
+            </Link>{' '}
+            as the same crash. New occurrences are counted there.
+          </p>
         </section>
       )}
 
-      {/* Edit panel */}
-      {isEditing && (
-        <div className="glass-card p-5">
-          <h3 className="text-sm font-semibold text-fg mb-1">{staff ? 'Triage' : 'Update Status'}</h3>
-          {!staff && (
-            <p className="text-xs text-muted mb-4">
-              You can close your bug if it no longer happens, or reopen it if it came back. The team handles the rest of the workflow.
-            </p>
-          )}
-          <form onSubmit={handleEditSubmit(handleEditSubmitFn)} className={`flex flex-wrap gap-3 items-end ${staff ? 'mt-3' : ''}`}>
-            <div>
-              <label className="label" htmlFor="edit-status">Status</label>
-              <select id="edit-status" {...regEdit('status')} className="input-field py-1.5 text-sm">
-                {STATUS_OPTIONS.filter((opt) => allowedStatuses.includes(opt.value)).map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-            {staff && (
-              <div>
-                <label className="label" htmlFor="edit-priority">Priority</label>
-                <select id="edit-priority" {...regEdit('priority')} className="input-field py-1.5 text-sm">
-                  {PRIORITY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {staff && (
-              <div>
-                <label className="label" htmlFor="edit-assignee">Assignee</label>
-                <select id="edit-assignee" {...regEdit('assignedTo')} className="input-field py-1.5 text-sm min-w-[160px]">
-                  <option value="">Unassigned</option>
-                  {/* Keep the current assignee selectable while the list loads. */}
-                  {bug.assignedTo && !assignees.some((a) => a._id === bug.assignedTo._id) && (
-                    <option value={bug.assignedTo._id}>{bug.assignedTo.name}</option>
-                  )}
-                  {assignees.map((a) => (
-                    <option key={a._id} value={a._id}>{a.name} ({a.role})</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className="flex-1 min-w-[180px]">
-              <label className="label" htmlFor="edit-note">Status Note (optional)</label>
-              <input id="edit-note" {...regEdit('statusNote')} maxLength={500} className="input-field py-1.5 text-sm" placeholder="Reason for change..." />
-            </div>
-            <button type="submit" className="btn-primary flex items-center gap-1.5 text-sm py-1.5">
-              <Check size={14} /> Save Changes
-            </button>
-          </form>
-        </div>
-      )}
+      {showCrashBanner && <CrashSummary bug={bug} />}
 
-      {/* Annotation modal */}
-      {showAnnotation && (
-        <Modal
-          title="Annotate Screenshot"
-          icon={Pencil}
-          onClose={() => setShowAnnotation(false)}
-          size="2xl"
-          closeDisabled={savingAnnotation}
-        >
-          {savingAnnotation ? (
-            <AnnotationSkeleton />
-          ) : (
-            <Suspense fallback={<AnnotationSkeleton />}>
-              <AnnotationCanvas
-                imageUrl={getImageUrl(bug.screenshot || bug.annotatedScreenshot)}
-                onSave={handleSaveAnnotation}
-              />
-            </Suspense>
-          )}
-        </Modal>
+      {isEditing && (
+        <TriagePanel bug={bug} staff={staff} allowedStatuses={allowedStatuses} onSave={handleTriageSave} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
@@ -653,7 +414,6 @@ function BugDetailView() {
             </div>
           )}
 
-          {/* Steps */}
           {bug.steps?.length > 0 && (
             <div className="glass-card p-6">
               <h3 className="text-sm font-semibold text-fg mb-3">Steps to Reproduce</h3>
@@ -670,7 +430,6 @@ function BugDetailView() {
             </div>
           )}
 
-          {/* Error log */}
           {bug.errorLog && (
             <div className="glass-card p-6">
               <div className="flex items-center gap-2 mb-3">
@@ -692,233 +451,30 @@ function BugDetailView() {
             />
           )}
 
-          {/* Flight Recorder Breadcrumbs */}
           {bug.breadcrumbs?.length > 0 && (
             <div className="glass-card p-6">
               <BreadcrumbTimeline breadcrumbs={bug.breadcrumbs} />
             </div>
           )}
 
-          {/* Screenshot + annotation */}
-          {hasScreenshot && (
-            <div className="glass-card p-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-fg">
-                  {bug.annotatedScreenshot ? 'Annotated Screenshot' : 'Screenshot'}
-                </h3>
-                {canEdit && (
-                  <button
-                    onClick={() => setShowAnnotation(true)}
-                    className="btn-secondary flex items-center gap-1.5 text-xs py-1.5"
-                  >
-                    <Pencil size={13} /> Annotate
-                  </button>
-                )}
-              </div>
-              <img
-                src={getImageUrl(bug.annotatedScreenshot || bug.screenshot)}
-                alt="Bug screenshot"
-                className="rounded-lg max-w-full border border-border"
-              />
-              {bug.annotatedScreenshot && bug.screenshot && (
-                <p className="text-xs text-muted mt-2">
-                  Showing annotated version.{' '}
-                  <a
-                    href={getImageUrl(bug.screenshot)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-accent hover:underline"
-                  >
-                    View original
-                  </a>
-                </p>
-              )}
-            </div>
-          )}
+          <ScreenshotCard
+            bug={bug}
+            canEdit={canEdit}
+            onChange={(fields) => setBug((prev) => (prev ? { ...prev, ...fields } : prev))}
+          />
 
-          {/* Comments */}
-          <div className="glass-card p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <MessageSquare size={15} className="text-muted" />
-              <h3 className="text-sm font-semibold text-fg">Comments ({comments.length})</h3>
-            </div>
-            <div className="space-y-4 mb-5">
-              {comments.map((comment) => (
-                <div key={comment._id} className="flex gap-3">
-                  <div className="mt-0.5">
-                    <Avatar person={comment.author} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-fg">{comment.author?.name}</span>
-                      <span className="text-xs text-muted">{timeAgo(comment.createdAt)}</span>
-                    </div>
-                    <p className="text-sm text-muted leading-relaxed whitespace-pre-wrap break-words">{comment.content}</p>
-                  </div>
-                  {/* Beside the author line, not down the comment's edge; always
-                      visible (no hover on touch); asks before deleting. The
-                      negative margins keep the 40px target from adding height. */}
-                  {(comment.author?._id === user?._id || user?.role === 'admin') && (
-                    <button
-                      type="button"
-                      onClick={() => setCommentToDelete(comment)}
-                      aria-label={`Delete comment by ${comment.author?.name || 'unknown'}`}
-                      title="Delete comment"
-                      className="self-start -mt-2 -mr-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-subtle hover:text-danger hover:bg-danger/10 transition-colors"
-                    >
-                      <Trash2 size={15} aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
-              ))}
-              {comments.length === 0 && (
-                <p className="text-sm text-muted text-center py-4">No comments yet. Be the first!</p>
-              )}
-            </div>
-            <form onSubmit={handleSubmit(handleAddComment)} className="flex gap-3">
-              <div className="mt-1">
-                <Avatar person={user} />
-              </div>
-              <div className="flex-1 flex gap-2">
-                <input
-                  {...register('content', { required: true })}
-                  maxLength={2000}
-                  aria-label="Add a comment"
-                  className="input-field flex-1 text-sm"
-                  placeholder="Add a comment..."
-                />
-                <button
-                  type="submit"
-                  disabled={commentLoading}
-                  aria-label="Post comment"
-                  className="btn-primary flex items-center gap-1.5 text-sm py-2 px-3 disabled:opacity-60"
-                >
-                  <Send size={14} className={commentLoading ? 'animate-pulse' : ''} />
-                </button>
-              </div>
-            </form>
-          </div>
+          <BugComments bugId={id} user={user} />
         </div>
 
-        {/* Sidebar column: owner first (a triage fact), then reference */}
-        <div className="space-y-4 min-w-0">
-          {/* Assigned to */}
-          <div className="glass-card p-5">
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Assigned To</h3>
-            {bug.assignedTo ? (
-              <div className="flex items-center gap-3 min-w-0">
-                <Avatar person={bug.assignedTo} size="w-10 h-10" text="text-sm" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-fg truncate">{bug.assignedTo.name}</p>
-                  <p className="text-xs text-muted truncate">{bug.assignedTo.email}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted flex items-center gap-2">
-                <UserCheck size={14} /> Unassigned
-              </p>
-            )}
-          </div>
-
-          {/* Reporter -- not for SDK crashes: the banner already says the SDK reported it */}
-          {!(sdk && !bug.reporter) && (
-            <div className="glass-card p-5">
-              <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Reporter</h3>
-              {bug.reporter ? (
-                <div className="flex items-center gap-3 min-w-0">
-                  <Avatar person={bug.reporter} size="w-10 h-10" text="text-sm" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-fg truncate">{bug.reporter.name}</p>
-                    <p className="text-xs text-muted truncate">{bug.reporter.email}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted">Unknown</p>
-              )}
-            </div>
-          )}
-
-          {/* Browser info */}
-          {(bug.browserInfo?.os || bug.browserInfo?.browser) && (
-            <div className="glass-card p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Monitor size={14} className="text-muted" />
-                <h3 className="text-xs font-semibold text-muted uppercase tracking-wide">Browser Info</h3>
-              </div>
-              <div className="space-y-1.5 text-xs text-muted">
-                {bug.browserInfo.browser && (
-                  <p>Browser: <span className="text-fg">{bug.browserInfo.browser} {bug.browserInfo.version}</span></p>
-                )}
-                {bug.browserInfo.os && <p>OS: <span className="text-fg">{bug.browserInfo.os}</span></p>}
-                {bug.browserInfo.screenSize && <p>Screen: <span className="text-fg">{bug.browserInfo.screenSize}</span></p>}
-                {bug.browserInfo.userAgent && (
-                  <p className="truncate" title={bug.browserInfo.userAgent}>
-                    UA: <span className="text-fg">{bug.browserInfo.userAgent}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Status history timeline */}
-          {bug.statusHistory?.length > 0 && (
-            <div className="glass-card p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <History size={14} className="text-muted" />
-                <h3 className="text-xs font-semibold text-muted uppercase tracking-wide">Status History</h3>
-              </div>
-              <div className="relative">
-                <div className="absolute left-2 top-0 bottom-0 w-px bg-border" />
-                <div className="space-y-4">
-                  {bug.statusHistory.map((entry, i) => {
-                    // A static lookup on the mark tokens, shared with StatusMark.
-                    const dotColor = STATUS_MARK_COLORS[entry.status] || 'bg-subtle';
-                    return (
-                      <div key={entry._id || i} className="flex gap-3 pl-6 relative">
-                        <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full border-2 border-surface flex items-center justify-center bg-surface">
-                          <div className={`w-2 h-2 rounded-full ${dotColor}`} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-fg capitalize">
-                            {entry.status === 'in-progress' ? 'In Progress' : entry.status}
-                          </p>
-                          <p className="text-xs text-muted">
-                            by {entry.changedBy?.name || (entry.changedBy ? 'a team member' : 'Telemetry pipeline')}
-                          </p>
-                          {entry.note && (
-                            <p className="text-xs text-muted italic mt-0.5 break-words">&quot;{entry.note}&quot;</p>
-                          )}
-                          <p className="text-[10px] text-subtle mt-0.5">{timeAgo(entry.changedAt)}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-        </div>
+        <BugSidebar bug={bug} />
       </div>
 
-      {/* AI Git Patch Modal */}
       {gitPatch && (
         <GitPatchModal
           patch={gitPatch}
           onClose={() => setGitPatch(null)}
           onRegenerate={canEdit ? generatePatch : undefined}
           regenerating={patchLoading}
-        />
-      )}
-
-      {commentToDelete && (
-        <ConfirmDialog
-          title="Delete this comment?"
-          message={`${commentToDelete.author?._id === user?._id ? 'Your comment' : `${commentToDelete.author?.name || 'This person'}'s comment`} will be permanently deleted. This cannot be undone.`}
-          confirmLabel="Delete comment"
-          danger
-          onConfirm={handleDeleteComment}
-          onCancel={() => setCommentToDelete(null)}
         />
       )}
 
@@ -943,7 +499,6 @@ function BugDetailView() {
         </Suspense>
       )}
 
-      {/* GitHub Export Modal */}
       {showGithubModal && (
         <GitHubExportModal
           bugId={id}
@@ -952,7 +507,6 @@ function BugDetailView() {
         />
       )}
 
-      {/* Incident Post-Mortem Modal */}
       {postMortem && (
         <PostMortemModal
           markdown={postMortem.markdown}

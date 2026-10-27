@@ -9,6 +9,8 @@ export const BUG_POPULATE = [
   { path: 'reporter', select: 'name email avatar' },
   { path: 'assignedTo', select: 'name email avatar' },
   { path: 'statusHistory.changedBy', select: 'name avatar' },
+  // A bug the fingerprint migration merged away links to the one it joined.
+  { path: 'mergedInto', select: 'title status' },
 ];
 
 // Heavy per-bug fields the list views (bug list, Kanban, dashboard) never

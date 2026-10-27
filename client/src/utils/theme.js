@@ -15,7 +15,7 @@ export const STORAGE_KEY = 'bugsense:theme';
  * The theme to apply on load: an explicit earlier choice if there is one,
  * otherwise the operating system preference.
  *
- * Mirrors the inline script in index.html, which runs the same resolution
+ * Mirrors public/theme-init.js (loaded from index.html), which runs the same resolution
  * before first paint. Keep the two in step.
  */
 export const resolveInitialTheme = () => {

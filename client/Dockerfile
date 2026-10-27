@@ -11,6 +11,10 @@ ENV VITE_API_URL=$VITE_API_URL
 # TELEMETRY_INGEST_KEY when that is set.
 ARG VITE_TELEMETRY_INGEST_KEY=
 ENV VITE_TELEMETRY_INGEST_KEY=$VITE_TELEMETRY_INGEST_KEY
+# "true" shows the seeded demo credentials on the sign-in page. Off unless the
+# build asks for it (docker-compose.yml does, for the local demo).
+ARG VITE_DEMO_MODE=false
+ENV VITE_DEMO_MODE=$VITE_DEMO_MODE
 
 COPY package*.json ./
 RUN npm ci

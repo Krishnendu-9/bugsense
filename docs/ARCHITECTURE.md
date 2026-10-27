@@ -168,12 +168,19 @@ tests run the real middleware stack against an in-memory MongoDB.
   them would mean recording arrivals, e.g. a per-incident daily bucket
   incremented alongside `occurrences`, and would only cover crashes received
   after that change.
-- **Dependency advisories (reviewed 2026-10-23).** `npm audit` reports 3 entries
-  in `server/` and 9 in `client/`. Runtime dependencies (what runs in the server
-  process or ships in the browser bundle) have no advisory above low. Each count
-  covers fewer root advisories: the other entries are packages that only depend
-  on a vulnerable one. CI runs `npm audit` on every push and weekly; see
-  `.github/workflows/ci.yml` for the thresholds.
+- **Dependency advisories (reviewed 2026-10-27).** `npm audit` reports nothing
+  in `server/` and 2 low entries in `client/`, both the same root advisory.
+  CI runs `npm audit` on every push and weekly; see `.github/workflows/ci.yml`
+  for the thresholds.
+  - *Fixed on 2026-10-27*, within existing semver ranges: server runtime
+    **multer** 2.5.0 (high, DoS through a pending asynchronous file filter after
+    the request is torn down) and **body-parser** 1.20.9 (high, DoS through
+    trailing bytes after a compressed body); client dev-only **undici** 7.30.1
+    (through jsdom), **zod** 4.6.7 (through eslint-plugin-react-hooks) and
+    **postcss-selector-parser** 6.1.5 (through Tailwind 3; the fix was backported
+    to 6.x, so no Tailwind 4 migration was needed). **braces** is still 3.0.3,
+    through nodemon and Tailwind, but `npm audit` no longer reports it; it was
+    accepted before, as dev-only and fed only our own glob patterns.
   - *Fixed on 2026-10-23*, all within existing semver ranges:
     - Server runtime: **proxy-addr** 2.0.8 (critical, IP spoofing through a
       mis-written IPv6 trust subnet), **engine.io** 6.6.11 (high, an
@@ -202,26 +209,13 @@ tests run the real middleware stack against an in-memory MongoDB.
       used by mongodb-memory-server to download the test database. The client
       copy is a runtime dependency of axios but is used only by axios's Node
       adapter, which Vite leaves out of the browser bundle.
-  - *Accepted.* Each one needs a breaking change to clear:
-    - **braces** (high, stack-exhaustion DoS). Server: through nodemon's
-      chokidar 3, all 3 server entries. Client: through Tailwind CSS 3. Dev-only.
-      Its input is glob patterns from our own nodemon and Tailwind config, never
-      request data. No fixed release exists (3.0.3 is the latest and is
-      affected). On the server, `--force` would downgrade nodemon to 1.14.10, a
-      2017 release; replacing nodemon with Node's built-in `node --watch` would
-      clear it instead. On the client, it means Tailwind 4.
-    - **postcss-selector-parser** (moderate, CPU exhaustion), also through
-      Tailwind 3. Together with braces this accounts for 7 of the client's 9
-      entries. Build-time only: it parses our own CSS. The fix is in 7.1.6, and
-      Tailwind 3 requires `^6`. Tailwind 4 moves configuration from
-      `tailwind.config.cjs` into CSS, where the design tokens are mapped, so it
-      is a migration, not a bump.
-    - **quill** (low, XSS in its HTML export), through react-quill-new: 2
-      entries. It ships and runs in the editor, but no fixed version exists; the
-      `--force` suggestion downgrades react-quill-new to 3.7.0, which only moves
-      quill to a release the advisory does not list. Editor output is sanitized
-      on the server before it is stored and again by DOMPurify before it is
-      rendered, so exported HTML never reaches the page unsanitized.
+  - *Accepted.* **quill** (low, XSS in its HTML export), through
+    react-quill-new: 2 entries. It ships and runs in the editor, but no fixed
+    version exists; the `--force` suggestion downgrades react-quill-new to
+    3.7.0, which only moves quill to a release the advisory does not list.
+    Editor output is sanitized on the server before it is stored and again by
+    DOMPurify before it is rendered, so exported HTML never reaches the page
+    unsanitized.
 - An SDK embedded from another origin without `crossorigin="anonymous"` misses
   unhandled fetch failures in Chromium-based browsers. The SDK calls the native
   `fetch` for the page, so the error is created inside the SDK's script; when

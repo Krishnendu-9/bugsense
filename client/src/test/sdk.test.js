@@ -33,6 +33,19 @@ const loadSdk = () => {
   return window.BugSense;
 };
 
+// The SDK reads its attributes from the last <script> on the page when it is
+// not running from one (as here), so a tag with data-widget opts in.
+const loadSdkWithWidget = () => {
+  const tag = document.createElement('script');
+  tag.setAttribute('data-widget', 'true');
+  document.head.appendChild(tag);
+  try {
+    return loadSdk();
+  } finally {
+    tag.remove();
+  }
+};
+
 // The payload of the most recent report the SDK posted.
 const lastReport = () => JSON.parse(fetchMock.mock.calls.at(-1)[1].body);
 
@@ -115,10 +128,61 @@ describe('BugSense SDK', () => {
   });
 
   it('offers no critical priority or blocker severity in the feedback widget', () => {
-    loadSdk();
+    loadSdkWithWidget();
     const values = [...document.querySelectorAll('#bugsense-modal-container option')].map((o) => o.value);
     expect(values).not.toContain('critical');
     expect(values).not.toContain('blocker');
+  });
+
+  it('adds no widget to the host page unless asked to', () => {
+    loadSdk();
+    expect(document.getElementById('bugsense-floating-pill')).toBeNull();
+  });
+
+  it('marks widget reports as feedback, so the server never merges them', async () => {
+    loadSdkWithWidget();
+    document.getElementById('bugsense-desc-input').value = 'The coupon field rejects valid codes';
+    document.getElementById('bugsense-submit-btn').click();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    const report = lastReport();
+    expect(report.kind).toBe('feedback');
+    expect(report.description).toBe('The coupon field rejects valid codes');
+  });
+
+  it('keeps the label of a clicked button but not other page text', async () => {
+    const sdk = loadSdk();
+    document.body.innerHTML = '<button><span>Checkout</span></button><div class="profile">jane@example.com</div>';
+    document.querySelector('button span').click();
+    document.querySelector('.profile').click();
+
+    await sdk.captureError(new Error('boom'));
+    const messages = lastReport().breadcrumbs.filter((c) => c.category === 'click').map((c) => c.message);
+    expect(messages[0]).toBe('Clicked <span> "Checkout"');
+    expect(messages[1]).toBe('Clicked <div.profile>');
+  });
+
+  it('strips query strings from console messages', async () => {
+    const sdk = loadSdk();
+    console.error('Request failed: https://api.shop.example/orders?token=secret-123');
+
+    await sdk.captureError(new Error('boom'));
+    const crumb = lastReport().breadcrumbs.find((c) => c.category === 'console');
+    expect(JSON.stringify(crumb)).not.toContain('secret-123');
+    expect(crumb.message).toContain('https://api.shop.example/orders');
+  });
+
+  it('keeps a report within the body limit, so keepalive can carry it', async () => {
+    const sdk = loadSdk();
+    sdk.addBreadcrumb('console', 'state dump', { state: 'x'.repeat(70000) });
+    sdk.captureMessage('y'.repeat(70000));
+
+    const [, init] = fetchMock.mock.calls.at(-1);
+    const report = JSON.parse(init.body);
+    expect(report.breadcrumbs.at(-1).data).toEqual({ truncated: true });
+    expect(report.description).toHaveLength(5000);
+    expect(init.body.length).toBeLessThan(60000);
+    expect(init.keepalive).toBe(true);
   });
 
   it('restores every patched global on destroy()', () => {
@@ -153,7 +217,7 @@ describe('BugSense SDK 1.4.0 payload', () => {
   it('states its version', async () => {
     const sdk = loadSdk();
     await sdk.captureError(new Error('boom'));
-    expect(lastReport().sdkVersion).toBe('1.4.0');
+    expect(lastReport().sdkVersion).toBe('1.5.0');
   });
 
   it('sends the error name and message as their own fields, and the stack as errorLog', async () => {

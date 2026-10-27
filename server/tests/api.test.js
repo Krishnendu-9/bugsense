@@ -185,7 +185,7 @@ describe('bug permissions and validation', () => {
     const res = await request
       .post(`/api/bugs/${bug._id}/screenshot`)
       .set(auth(otherReporter))
-      .attach('screenshot', Buffer.from([0x89, 0x50, 0x4e, 0x47]), { filename: 'x.png', contentType: 'image/png' });
+      .attach('screenshot', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), { filename: 'x.png', contentType: 'image/png' });
     assert.equal(res.status, 403);
   });
 
@@ -196,6 +196,19 @@ describe('bug permissions and validation', () => {
       .set(auth(reporter))
       .attach('screenshot', Buffer.from('<svg/>'), { filename: 'x.svg', contentType: 'image/svg+xml' });
     assert.equal(res.status, 400);
+  });
+
+  it('rejects a file that only claims to be an image, and does not keep it', async () => {
+    const { readdirSync } = await import('fs');
+    const bug = (await createBug(reporter)).body;
+    const filesBefore = readdirSync(process.env.UPLOADS_DIR).length;
+    const res = await request
+      .post(`/api/bugs/${bug._id}/screenshot`)
+      .set(auth(reporter))
+      .attach('screenshot', Buffer.from('<html><script>alert(1)</script></html>'), { filename: 'x.png', contentType: 'image/png' });
+    assert.equal(res.status, 400);
+    assert.equal((await Bug.findById(bug._id)).screenshot, '');
+    assert.equal(readdirSync(process.env.UPLOADS_DIR).length, filesBefore, 'the rejected file was deleted');
   });
 
   it('does not let a reporter overwrite AI insights on someone else\'s bug', async () => {
@@ -264,7 +277,6 @@ describe('bug permissions and validation', () => {
   });
 
   it('uses the server GitHub token only for allowlisted repositories', async () => {
-    const bug = (await createBug(reporter)).body;
     const realFetch = globalThis.fetch;
     const calls = [];
     globalThis.fetch = async (url, init) => {
@@ -275,7 +287,11 @@ describe('bug permissions and validation', () => {
     process.env.GITHUB_ALLOWED_REPOS = 'Octo/Allowed';
 
     try {
-      const exportTo = (body) => request.post(`/api/bugs/${bug._id}/github`).set(auth(developer)).send(body);
+      // A fresh bug per export: a bug becomes one issue, once.
+      const exportTo = async (body) => {
+        const bug = (await createBug(reporter)).body;
+        return request.post(`/api/bugs/${bug._id}/github`).set(auth(developer)).send(body);
+      };
 
       const denied = await exportTo({ repoOwner: 'octo', repoName: 'other' });
       assert.equal(denied.status, 400);
@@ -296,6 +312,50 @@ describe('bug permissions and validation', () => {
       delete process.env.GITHUB_TOKEN;
       delete process.env.GITHUB_ALLOWED_REPOS;
     }
+  });
+
+  describe('GitHub export', () => {
+    let realFetch;
+    let bodies;
+    before(() => {
+      realFetch = globalThis.fetch;
+    });
+    after(() => {
+      globalThis.fetch = realFetch;
+    });
+    const respondWith = (response) => {
+      bodies = [];
+      globalThis.fetch = async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        if (response instanceof Error) throw response;
+        return response();
+      };
+    };
+    const exportBug = (bugId) =>
+      request.post(`/api/bugs/${bugId}/github`).set(auth(developer)).send({ repoOwner: 'octo', repoName: 'repo', githubToken: 't' });
+
+    it('files one issue per bug, and keeps the log inside its code block', async () => {
+      respondWith(() => new Response(JSON.stringify({ html_url: 'https://github.com/octo/repo/issues/9', number: 9 }), { status: 201 }));
+      const log = 'Error: boom\n```\n@octocat look here\n```';
+      const bug = (await createBug(developer, { errorLog: log, description: '<p>A &amp; B</p><p>C</p>' })).body;
+
+      assert.equal((await exportBug(bug._id)).status, 200);
+      const { body } = bodies[0];
+      // A four-backtick fence: the log's own ``` cannot end it.
+      assert.ok(body.includes(`\`\`\`\`\n${log}\n\`\`\`\``));
+      assert.ok(body.includes('A & B\nC'), 'the description is plain text, line breaks kept');
+
+      const again = await exportBug(bug._id);
+      assert.equal(again.status, 409);
+      assert.equal(again.body.githubIssue.issueNumber, 9);
+      assert.equal(bodies.length, 1, 'GitHub is not called a second time');
+    });
+
+    it('reports an unreachable GitHub as a gateway error, not a server error', async () => {
+      respondWith(Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }));
+      const bug = (await createBug(developer)).body;
+      assert.equal((await exportBug(bug._id)).status, 504);
+    });
   });
 });
 
@@ -362,10 +422,18 @@ describe('editing bugs', () => {
   });
 
   it('accepts an unchanged priority and status from a reporter (full-form saves)', async () => {
-    const bug = (await createBug(reporter, { priority: 'high' })).body;
-    const res = await update(reporter, bug._id, { priority: 'high', status: 'open', title: 'Renamed' });
+    const bug = (await createBug(reporter)).body;
+    const res = await update(reporter, bug._id, { priority: 'medium', status: 'open', title: 'Renamed' });
     assert.equal(res.status, 200);
     assert.equal(res.body.statusHistory.length, 0);
+  });
+
+  it('ignores a priority a reporter sends when filing; staff may set one', async () => {
+    const byReporter = (await createBug(reporter, { priority: 'critical' })).body;
+    assert.equal(byReporter.priority, 'medium');
+
+    const byStaff = (await createBug(developer, { priority: 'critical' })).body;
+    assert.equal(byStaff.priority, 'critical');
   });
 });
 
@@ -470,7 +538,7 @@ describe('profile', () => {
     const { UPLOADS_DIR } = await import('../utils/uploads.js');
     const session = await createUser(request);
     const upload = () => request.post('/api/users/avatar').set(auth(session))
-      .attach('avatar', Buffer.from([0x89, 0x50, 0x4e, 0x47]), { filename: 'me.png', contentType: 'image/png' });
+      .attach('avatar', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), { filename: 'me.png', contentType: 'image/png' });
 
     const first = await upload();
     assert.equal(first.status, 200);
@@ -1000,14 +1068,15 @@ describe('SDK script CORS', () => {
 });
 
 describe('upload storage', () => {
-  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
   it('keeps uploads on local disk when Cloudinary is not configured', async () => {
     const bug = (await createBug(reporter)).body;
     const res = await request.post(`/api/bugs/${bug._id}/screenshot`).set(auth(reporter))
       .attach('screenshot', png, { filename: 'x.png', contentType: 'image/png' });
     assert.equal(res.status, 200);
-    assert.match(res.body.screenshot, /^\/uploads\/\d+-\d+\.png$/);
+    // Unguessable: the files are served publicly by name.
+    assert.match(res.body.screenshot, /^\/uploads\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/);
   });
 
   it('moves uploads to Cloudinary when CLOUDINARY_URL is set, and removes the replaced image', async () => {
@@ -1095,6 +1164,58 @@ describe('alerts', () => {
       delete process.env.DISCORD_WEBHOOK_URL;
     }
   });
+
+  describe('who can page the channels', () => {
+    let realFetch;
+    let calls;
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+
+    before(() => {
+      realFetch = globalThis.fetch;
+      globalThis.fetch = async (url, init) => {
+        calls.push({ url, body: JSON.parse(init.body) });
+        return new Response(null, { status: 204 });
+      };
+      process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/T1/B1/xyz';
+    });
+    after(() => {
+      globalThis.fetch = realFetch;
+      delete process.env.SLACK_WEBHOOK_URL;
+    });
+
+    it('does not page for a blocker a reporter files', async () => {
+      calls = [];
+      assert.equal((await createBug(reporter, { severity: 'blocker' })).status, 201);
+      await settle();
+      assert.equal(calls.length, 0);
+    });
+
+    it('pages when staff escalate a bug, and only on the escalation itself', async () => {
+      calls = [];
+      const bug = (await createBug(reporter, { title: 'Ping <!channel> & <@U1>' })).body;
+      const escalate = () => request.put(`/api/bugs/${bug._id}`).set(auth(developer)).send({ priority: 'critical' });
+
+      assert.equal((await escalate()).status, 200);
+      await settle();
+      assert.equal(calls.length, 1);
+      assert.match(calls[0].body.text, /\[ESCALATED\]/);
+      // Report text cannot mention the channel or a user in Slack.
+      assert.match(calls[0].body.text, /Ping &lt;!channel&gt; &amp; &lt;@U1&gt;/);
+
+      assert.equal((await escalate()).status, 200);
+      await settle();
+      assert.equal(calls.length, 1, 'saving an already-critical bug pages no one');
+    });
+
+    it('does not let a reporter escalate through the edit form', async () => {
+      calls = [];
+      const bug = (await createBug(reporter)).body;
+      const res = await request.put(`/api/bugs/${bug._id}`).set(auth(reporter)).send({ severity: 'blocker' });
+      assert.equal(res.status, 200);
+      await settle();
+      assert.equal(calls.length, 0);
+    });
+  });
 });
 
 describe('socket.io', () => {
@@ -1159,5 +1280,138 @@ describe('socket.io', () => {
       listViewer.close();
       detailViewer.close();
     }
+  });
+});
+
+describe('AI on a saved bug', () => {
+  it('analyses a saved bug from its stored log, never from text in the request', async () => {
+    const bug = (await createBug(reporter, { errorLog: "TypeError: Cannot read properties of undefined (reading 'id')" })).body;
+    const res = await request
+      .post('/api/ai/analyze')
+      .set(auth(reporter))
+      .send({ bugId: bug._id, errorLog: 'MongoServerError: connection refused' });
+    assert.equal(res.status, 200);
+    assert.match(res.body.possibleCause, /Null or undefined/);
+
+    const noLog = (await createBug(reporter)).body;
+    const empty = await request.post('/api/ai/analyze').set(auth(reporter)).send({ bugId: noLog._id, errorLog: 'Error: x' });
+    assert.equal(empty.status, 400);
+  });
+});
+
+describe('editing a bug\'s error log', () => {
+  it('re-keys a manual bug when its log changes and marks the analysis outdated', async () => {
+    const bug = (await createBug(reporter, { errorLog: 'TypeError: first\n    at a (src/a.js:1:1)' })).body;
+    await Bug.updateOne({ _id: bug._id }, { aiInsights: { possibleCause: 'c', suggestedFix: 'f', source: 'heuristic' } });
+    const before = await Bug.findById(bug._id);
+
+    const res = await request.put(`/api/bugs/${bug._id}`).set(auth(reporter)).send({ errorLog: 'RangeError: second\n    at b (src/b.js:2:2)' });
+    assert.equal(res.status, 200);
+    const after = await Bug.findById(bug._id);
+    assert.notEqual(after.fingerprint, before.fingerprint);
+    assert.equal(after.aiInsights.outdated, true);
+
+    // A fresh analysis replaces the flag.
+    await request.post('/api/ai/analyze').set(auth(reporter)).send({ bugId: bug._id });
+    assert.equal((await Bug.findById(bug._id)).aiInsights.outdated, undefined);
+  });
+});
+
+describe('SDK widget feedback', () => {
+  const report = (body) => request.post('/api/telemetry/report').send(body);
+
+  it('files every feedback report separately, and still merges crashes', async () => {
+    const feedback = { kind: 'feedback', title: 'Checkout is slow', description: 'Checkout is slow' };
+    const first = await report(feedback);
+    const second = await report(feedback);
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 201);
+    assert.notEqual(first.body.bugId, second.body.bugId);
+    const stored = await Bug.findById(first.body.bugId);
+    assert.deepEqual(stored.tags, ['feedback']);
+    assert.equal(stored.fingerprint, null);
+    assert.equal(stored.fingerprintVersion, 2, 'the migration must not pick it up');
+
+    const crash = { title: 'TypeError: feedback-test', errorLog: 'TypeError: feedback-test\n    at x (src/x.js:1:1)' };
+    await report(crash);
+    assert.equal((await report(crash)).body.status, 'deduplicated');
+  });
+});
+
+describe('status history kinds', () => {
+  const report = (body) => request.post('/api/telemetry/report').send(body);
+
+  it('marks a telemetry regression with its kind', async () => {
+    const crash = { title: 'Error: kinds', errorLog: 'Error: kinds\n    at k (src/k.js:1:1)' };
+    const { bugId } = (await report(crash)).body;
+    await Bug.updateOne({ _id: bugId }, { status: 'resolved' });
+    await report(crash);
+    assert.equal((await Bug.findById(bugId)).statusHistory.at(-1).kind, 'regression');
+  });
+});
+
+describe('merged bugs', () => {
+  it('links a merged bug to the one it joined', async () => {
+    const survivor = (await createBug(developer, { title: 'Survivor' })).body;
+    const merged = (await createBug(developer, { title: 'Merged away' })).body;
+    await Bug.updateOne({ _id: merged._id }, { mergedInto: survivor._id, status: 'closed' });
+    const res = await request.get(`/api/bugs/${merged._id}`).set(auth(reporter));
+    assert.equal(res.body.mergedInto.title, 'Survivor');
+  });
+});
+
+describe('replacing a screenshot', () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  it('retires the annotation when the screenshot it was drawn on is replaced', async () => {
+    const bug = (await createBug(reporter)).body;
+    const upload = (path, field) =>
+      request.post(`/api/bugs/${bug._id}/${path}`).set(auth(reporter)).attach(field, png, { filename: 'x.png', contentType: 'image/png' });
+
+    await upload('screenshot', 'screenshot');
+    assert.ok((await upload('annotation', 'annotation')).body.annotatedScreenshot);
+    const replaced = await upload('screenshot', 'screenshot');
+    assert.equal(replaced.status, 200);
+    assert.equal(replaced.body.annotatedScreenshot, '');
+    assert.equal((await Bug.findById(bug._id)).annotatedScreenshot, '');
+  });
+});
+
+describe('post-mortem rights', () => {
+  it('only lets people who can edit a bug generate its post-mortem', async () => {
+    const bug = (await createBug(reporter)).body;
+    const post = (session) => request.post('/api/ai/post-mortem').set(auth(session)).send({ bugId: bug._id });
+    assert.equal((await post(otherReporter)).status, 403);
+    assert.equal((await post(reporter)).status, 200);
+    assert.equal((await post(developer)).status, 200);
+  });
+});
+
+describe('sockets after a password change', () => {
+  it('closes an account\'s sockets when its password changes', async () => {
+    const session = await createUser(request, { role: 'developer' });
+    const socket = ioClient(`http://localhost:${port}`, { auth: { token: session.token }, transports: ['websocket'], reconnection: false });
+    await new Promise((resolve, reject) => {
+      socket.on('connect', resolve);
+      socket.on('connect_error', reject);
+    });
+
+    const disconnected = new Promise((resolve) => socket.on('disconnect', resolve));
+    const res = await request
+      .put('/api/users/profile')
+      .set(auth(session))
+      .send({ currentPassword: session.password, newPassword: 'a-new-password' });
+    assert.equal(res.status, 200);
+    assert.equal(await disconnected, 'io server disconnect');
+    socket.close();
+  });
+});
+
+describe('webhook alert switches', () => {
+  it('accepts only booleans for the webhook alert switches', async () => {
+    const res = await request.put('/api/users/webhooks').set(auth(reporter)).send({ alertOnCritical: 'false' });
+    assert.equal(res.status, 400);
+    const ok = await request.put('/api/users/webhooks').set(auth(reporter)).send({ alertOnCritical: false });
+    assert.equal(ok.body.webhooks.alertOnCritical, false);
   });
 });

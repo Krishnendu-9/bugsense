@@ -1,5 +1,6 @@
 import multer from 'multer';
 import mongoose from 'mongoose';
+import { exposesErrorDetails } from '../utils/environment.js';
 
 export const notFound = (req, res, next) => {
   const error = new Error(`Not found — ${req.originalUrl}`);
@@ -44,13 +45,14 @@ const classify = (err) => {
 export const errorHandler = (err, _req, res, _next) => {
   const known = classify(err);
   const status = known?.status || 500;
-  const isProduction = process.env.NODE_ENV === 'production';
+  // Opt-in, not opt-out: a host that leaves NODE_ENV unset must not hand
+  // stack traces to every client.
+  const showDetails = exposesErrorDetails();
 
   if (status >= 500) console.error(err);
 
   res.status(status).json({
-    // Internal error details are only exposed outside production.
-    message: known?.message || (isProduction ? 'Internal server error' : err.message),
-    stack: isProduction ? undefined : err.stack,
+    message: known?.message || (showDetails ? err.message : 'Internal server error'),
+    stack: showDetails ? err.stack : undefined,
   });
 };

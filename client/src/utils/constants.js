@@ -91,3 +91,8 @@ export const STATUS_CHART_TOKENS = {
 // claim about the data, this is the absence of one. Wherever it appears, a
 // caption beside it says why the number is missing.
 export const NO_VALUE = '—';
+
+// Screenshot uploads, mirroring the server's Multer rules so a bad file is
+// refused before it is sent.
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;

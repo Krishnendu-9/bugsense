@@ -14,6 +14,17 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const seed = async () => {
+  // The seeded accounts share a published password, admin included, so a
+  // production database only gets them when the operator says it is a demo
+  // (docker compose sets ALLOW_DEMO_SEED for the local stack).
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
+    console.error(
+      'Refusing to seed: NODE_ENV is production and the demo accounts use the published password "password123".\n' +
+        'Set ALLOW_DEMO_SEED=true only for a throwaway demo deployment.'
+    );
+    process.exit(1);
+  }
+
   const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/bugsense';
   await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB');
@@ -145,7 +156,7 @@ const seed = async () => {
       assignedTo: developer._id,
       // Open for two days, then picked up.
       statusHistory: [
-        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(3, 10), note: 'Picking this up today' },
+        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(3, 10), note: 'Picking this up today', kind: 'change' },
       ],
       createdAt: daysAgo(5, 11),
       updatedAt: daysAgo(3, 10),
@@ -190,8 +201,8 @@ const seed = async () => {
       reporter: reporter._id,
       // Resolved 30 hours after it was reported -- the seeded median.
       statusHistory: [
-        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(3, 9), note: 'Adding error handler for multer limits' },
-        { status: 'resolved', changedBy: developer._id, changedAt: daysAgo(3, 14), note: 'Fixed — multer error now caught and returned as 413' },
+        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(3, 9), note: 'Adding error handler for multer limits', kind: 'change' },
+        { status: 'resolved', changedBy: developer._id, changedAt: daysAgo(3, 14), note: 'Fixed — multer error now caught and returned as 413', kind: 'change' },
       ],
       createdAt: daysAgo(4, 8),
       updatedAt: daysAgo(3, 14),
@@ -315,7 +326,7 @@ const seed = async () => {
       lastSeenAt: checkoutLastSeen,
       updatedAt: daysAgo(1, 9),
       statusHistory: [
-        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(1, 9), note: 'Analytics script is blocked by some ad blockers; guarding the call' },
+        { status: 'in-progress', changedBy: developer._id, changedAt: daysAgo(1, 9), note: 'Analytics script is blocked by some ad blockers; guarding the call', kind: 'change' },
       ],
       browserInfo: safariMac,
       breadcrumbs: trail(checkoutLastSeen, [
@@ -343,8 +354,8 @@ const seed = async () => {
       createdAt: daysAgo(6, 12),
       lastSeenAt: dateLastSeen,
       statusHistory: [
-        { status: 'resolved', changedBy: developer._id, changedAt: daysAgo(5, 10), note: 'Guarded format() against entries with no timestamp' },
-        { status: 'in-progress', changedAt: daysAgo(1, 15, 10), note: REGRESSION_NOTE },
+        { status: 'resolved', changedBy: developer._id, changedAt: daysAgo(5, 10), note: 'Guarded format() against entries with no timestamp', kind: 'change' },
+        { status: 'in-progress', changedAt: daysAgo(1, 15, 10), note: REGRESSION_NOTE, kind: 'regression' },
       ],
       browserInfo: chromeWindows,
       breadcrumbs: trail(dateLastSeen, [

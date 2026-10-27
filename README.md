@@ -62,6 +62,11 @@ Then open **http://localhost:8080** and sign in with:
 | Developer | `dev@bugsense.dev` | `password123` |
 | Reporter | `reporter@bugsense.dev` | `password123` |
 
+These accounts are for the local demo only. Compose turns on demo mode
+(`ALLOW_DEMO_SEED`, `DEMO_MODE` in [`.env.example`](.env.example)); anywhere
+else with `NODE_ENV=production` the seed refuses to create them, and the
+sign-in page does not list them.
+
 The whole application is explorable with zero configuration. Without
 `ANTHROPIC_API_KEY`, root-cause analysis falls back to keyword heuristics and
 post-mortems to a data-filled template — both clearly labelled as such in the UI —
@@ -92,15 +97,16 @@ MongoDB, local or Atlas. See
 
 ## Worth reading the code for
 
-**Deduplication.** Incoming stack traces are normalised — UUIDs, memory
-addresses, timestamps and line numbers stripped — then hashed with the project
-name, so a crash loop becomes one incident with a counter rather than a thousand
-rows. Counting uses a single atomic `$inc` behind a unique partial index on
+**Deduplication.** Each incoming crash is reduced to a key: the error message
+with its data stripped (ids, numbers, quoted values), the top application stack
+frame without its line and column, and the project name. The key is hashed, so a
+crash loop becomes one incident with a counter rather than a thousand rows.
+Counting uses a single atomic `$inc` behind a unique partial index on
 `{fingerprint, source: 'sdk'}`, so simultaneous first reports cannot both create
-an incident; the API tests fire eight at once to prove it. How well it actually
-does this is measured in
-[docs/fingerprint-results.md](docs/fingerprint-results.md) — identical repeats
-group reliably, grouping across minified production builds does not. See
+an incident; the API tests fire eight at once to prove it. How well the first
+version of the key did this is measured in
+[docs/fingerprint-results.md](docs/fingerprint-results.md): identical repeats
+grouped reliably, grouping across minified production builds did not. See
 [`fingerprint.util.js`](server/utils/fingerprint.util.js).
 
 **The grouping fix (v2), not yet measured.** The v1 key read stack frames only
@@ -145,6 +151,7 @@ are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   data-api-url="https://your-bugsense-host"
   data-project="My Client App"
   data-key="your-ingest-key"
+  data-widget="true"
 ></script>
 ```
 
@@ -152,8 +159,9 @@ Keep `crossorigin="anonymous"`: without it, Chromium reports nothing for
 unhandled fetch rejections.
 
 That one tag auto-reports uncaught errors and unhandled rejections, records the
-last fifteen user actions before each crash, and injects a floating "Report Bug"
-pill. It never captures typed input and strips query strings from every URL it
+last fifteen user actions before each crash, and, with `data-widget="true"`, adds a
+floating "Report Bug" widget whose reports are filed one by one, never merged.
+It never captures typed input and strips query strings from every URL it
 reports, including those inside stack traces. It caps itself at 20 reports per
 page session and suppresses repeats of the same error within 10 seconds, so a
 crash loop in the host page cannot flood the endpoint.
@@ -179,7 +187,12 @@ runs all of it, with coverage, on every push. Set `MONGO_URI_TEST` to run the
 server tests against an existing MongoDB instead — use a dedicated database, as
 the suite drops it.
 
-`npm audit` in `client/` is not clean; why each remaining advisory is accepted is in [known limitations](docs/ARCHITECTURE.md#known-limitations).
+`e2e/` holds a Playwright smoke test that CI runs against the real
+`docker compose` stack after seeding it: sign-in, the overview and bug list in a
+browser, and the dashboard's Content Security Policy.
+
+`npm audit` is clean in `server/`; `client/` has one low advisory with no
+upstream fix, explained in [known limitations](docs/ARCHITECTURE.md#known-limitations).
 
 ---
 

@@ -11,7 +11,7 @@ import {
   updateUserRole,
 } from '../controllers/user.controller.js';
 import { protect, authorize, adminOnly } from '../middleware/auth.middleware.js';
-import upload from '../middleware/upload.middleware.js';
+import upload, { verifyImageContent } from '../middleware/upload.middleware.js';
 
 const router = Router();
 
@@ -33,13 +33,13 @@ router.put(
     body('newPassword')
       .optional()
       .isString()
-      .isLength({ min: 6 })
-      .withMessage('New password must be at least 6 characters'),
+      .isLength({ min: 8, max: 72 })
+      .withMessage('New password must be 8 to 72 characters'),
   ],
   updateUserProfile
 );
 
-router.post('/avatar', protect, upload.single('avatar'), uploadAvatar);
+router.post('/avatar', protect, upload.single('avatar'), verifyImageContent, uploadAvatar);
 
 router.put('/webhooks', protect, updateWebhooks);
 router.post('/webhooks/test', protect, testWebhook);

@@ -95,7 +95,7 @@ export default function AIAnalyzer() {
             <div className="flex items-center justify-between mb-1">
               <label className="label flex items-center gap-1.5" htmlFor="ai-error-log">
                 <AlertTriangle size={13} />
-                Error Log / Stack Trace <span className="text-priority-high">*</span>
+                Error Log / Stack Trace <span className="text-danger">*</span>
               </label>
               <span className="text-xs text-muted">{errorLog.length} chars</span>
             </div>
@@ -107,7 +107,7 @@ export default function AIAnalyzer() {
               placeholder="Paste your error message, stack trace, console output, or any debug text here..."
             />
             {errors.errorLog && (
-              <p className="text-priority-high text-xs mt-1">{errors.errorLog.message}</p>
+              <p className="text-danger text-xs mt-1">{errors.errorLog.message}</p>
             )}
           </div>
 

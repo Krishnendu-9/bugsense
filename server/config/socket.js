@@ -32,6 +32,9 @@ export const initSocket = (httpServer) => {
   });
 
   io.on('connection', (socket) => {
+    // Every connection of one account, so they can be closed together.
+    socket.join(userRoom(socket.data.user._id));
+
     socket.on('join:bug', (bugId) => {
       if (mongoose.isValidObjectId(bugId)) socket.join(`bug:${bugId}`);
     });
@@ -44,9 +47,17 @@ export const initSocket = (httpServer) => {
   return io;
 };
 
-export const getIO = () => {
-  if (!io) throw new Error('Socket.io not initialised — call initSocket first');
-  return io;
+const userRoom = (userId) => `user:${userId}`;
+
+/**
+ * Closes every open connection of one account. A socket is authenticated once,
+ * at connect, so after a password change (which revokes the old tokens) or a
+ * role change, its connections must reconnect and authenticate again. A
+ * no-op before initSocket has run.
+ */
+export const disconnectUser = (userId) => {
+  if (!io) return;
+  io.in(userRoom(String(userId))).disconnectSockets(true);
 };
 
 // Emits to everyone, or to one room. A no-op before initSocket has run, which

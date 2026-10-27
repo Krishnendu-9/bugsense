@@ -1,4 +1,4 @@
-import { Lightbulb, Wrench, Cpu, Clock, Info } from 'lucide-react';
+import { Lightbulb, Wrench, Cpu, Clock, Info, AlertTriangle } from 'lucide-react';
 import { formatDate } from '../../utils/helpers.js';
 
 // The heuristic rules and the model both mark code with Markdown backticks.
@@ -91,6 +91,16 @@ export default function ErrorInsights({ insights, analyzedAt, isLoading }) {
           </div>
         )}
       </div>
+
+      {insights.outdated && (
+        <div role="status" className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-track border border-border text-xs text-muted">
+          <AlertTriangle size={14} className="flex-shrink-0 mt-0.5 text-status-progress" aria-hidden="true" />
+          <span>
+            The error log was edited after this analysis ran, so it may describe the old log. Run AI Analyze again
+            for a current result.
+          </span>
+        </div>
+      )}
 
       {isHeuristic && (
         <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-track border border-border text-xs text-muted">

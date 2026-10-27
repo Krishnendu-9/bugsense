@@ -1,0 +1,16 @@
+{
+  "name": "bugsense-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end smoke test of the full BugSense stack (docker compose), run by CI",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}

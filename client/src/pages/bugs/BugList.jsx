@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, ChevronLeft, ChevronRight, Download, FileCode, FileSpreadsheet } from 'lucide-react';
+import { Bug, ChevronDown, ChevronLeft, ChevronRight, Download, FileCode, FileSpreadsheet, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBugs from '../../hooks/useBugs.js';
 import useDebouncedValue from '../../hooks/useDebouncedValue.js';
@@ -15,10 +15,13 @@ const DEFAULT_FILTERS = { status: '', priority: '', project: '', source: '', sea
 // How often, at most, a view that cannot apply live events itself re-fetches.
 const REFRESH_MS = 1500;
 
-// Filters live in the URL too, so Overview links (?status=open) and the top
-// bar's search (?search=...) land on a filtered list.
+// Filters and the page live in the URL, both ways: Overview links
+// (?status=open) and the top bar's search (?search=...) land on a filtered
+// list, and a filtered list can be reloaded, bookmarked or shared as it is.
 const filtersFromParams = (params) =>
   Object.fromEntries(Object.keys(DEFAULT_FILTERS).map((key) => [key, params.get(key) || '']));
+
+const pageFromParams = (params) => Math.max(1, Number.parseInt(params.get('page'), 10) || 1);
 
 const sameFilters = (a, b) => Object.keys(DEFAULT_FILTERS).every((k) => a[k] === b[k]);
 
@@ -38,11 +41,11 @@ function TableSkeleton() {
 }
 
 export default function BugList() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { bugs, setBugs, loading, pagination, setPagination, fetchBugs, fetchAllBugs, fetchStats } = useBugs();
   const [projectNames, setProjectNames] = useState([]);
   const [filters, setFilters] = useState(() => filtersFromParams(searchParams));
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => pageFromParams(searchParams));
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
   const exportMenuRef = useRef(null);
@@ -67,15 +70,29 @@ export default function BugList() {
 
   // Sync state when URL params change (e.g. clicking Overview links or the
   // top bar's search). Adjusting state during render, rather than in an
-  // effect, avoids a wasted render with the stale filters.
+  // effect, avoids a wasted render with the stale filters. The list's own
+  // writes (below) come through here too and change nothing: the URL then
+  // holds exactly the filters and page already in state.
   const paramsKey = searchParams.toString();
   const [syncedParamsKey, setSyncedParamsKey] = useState(paramsKey);
   if (paramsKey !== syncedParamsKey) {
     setSyncedParamsKey(paramsKey);
     const next = filtersFromParams(searchParams);
     setFilters((prev) => (sameFilters(prev, next) ? prev : next));
-    setPage(1);
+    setPage(pageFromParams(searchParams));
   }
+
+  // And back: once typing has settled, the URL follows the filters and page.
+  // Waiting for the debounce matters twice over: no history entry per
+  // keystroke, and a URL change from outside (filters updated, debounced copy
+  // not yet) is never overwritten with the filters it replaced. `replace`
+  // keeps Back for leaving the list, not for stepping through filter edits.
+  useEffect(() => {
+    if (!sameFilters(filters, debouncedFilters)) return;
+    const next = new URLSearchParams(activeOnly(debouncedFilters));
+    if (page > 1) next.set('page', String(page));
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [filters, debouncedFilters, page, searchParams, setSearchParams]);
 
   useEffect(() => {
     fetchBugs({ ...activeOnly(debouncedFilters), page });
@@ -134,7 +151,7 @@ export default function BugList() {
       return;
     }
     if (bugs.some((b) => b._id === newBug._id)) return;
-    toast.success(`New bug reported: "${newBug.title.slice(0, 40)}"`, { icon: '🐛' });
+    toast.success(`New bug reported: "${newBug.title.slice(0, 40)}"`, { icon: <Bug size={16} className="text-accent" aria-hidden="true" /> });
     setBugs((prev) => [newBug, ...prev.filter((b) => b._id !== newBug._id)].slice(0, limit));
     setPagination((p) => ({ ...p, total: p.total + 1, pages: Math.max(1, Math.ceil((p.total + 1) / limit)) }));
   }, [exactLocally, bugs, limit, setBugs, setPagination, scheduleRefresh]));
@@ -161,7 +178,7 @@ export default function BugList() {
     // twice (it does under StrictMode), which would double the toast and the
     // decrement.
     if (bugs.some((b) => b._id === _id)) {
-      toast('A bug was deleted', { icon: '🗑️' });
+      toast('A bug was deleted', { icon: <Trash2 size={16} className="text-muted" aria-hidden="true" /> });
       setBugs((prev) => prev.filter((b) => b._id !== _id));
       setPagination((p) => ({ ...p, total: Math.max(0, p.total - 1) }));
     }

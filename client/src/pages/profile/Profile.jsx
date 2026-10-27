@@ -294,7 +294,7 @@ export default function Profile() {
                   placeholder="Your full name"
                 />
                 {profileErrors.name && (
-                  <p className="text-xs text-priority-high mt-1">{profileErrors.name.message}</p>
+                  <p className="text-xs text-danger mt-1">{profileErrors.name.message}</p>
                 )}
               </div>
 
@@ -371,7 +371,7 @@ export default function Profile() {
                   </button>
                 </div>
                 {passwordErrors.currentPassword && (
-                  <p className="text-xs text-priority-high mt-1">
+                  <p className="text-xs text-danger mt-1">
                     {passwordErrors.currentPassword.message}
                   </p>
                 )}
@@ -386,12 +386,12 @@ export default function Profile() {
                       {...regPassword('newPassword', {
                         required: 'New password is required',
                         minLength: {
-                          value: 6,
-                          message: 'Must be at least 6 characters',
+                          value: 8,
+                          message: 'Must be at least 8 characters',
                         },
                       })}
                       className="input-field text-sm pr-10"
-                      placeholder="Minimum 6 characters"
+                      placeholder="Minimum 8 characters"
                     />
                     <button
                       type="button"
@@ -402,7 +402,7 @@ export default function Profile() {
                     </button>
                   </div>
                   {passwordErrors.newPassword && (
-                    <p className="text-xs text-priority-high mt-1">
+                    <p className="text-xs text-danger mt-1">
                       {passwordErrors.newPassword.message}
                     </p>
                   )}
@@ -430,7 +430,7 @@ export default function Profile() {
                     </button>
                   </div>
                   {passwordErrors.confirmPassword && (
-                    <p className="text-xs text-priority-high mt-1">
+                    <p className="text-xs text-danger mt-1">
                       {passwordErrors.confirmPassword.message}
                     </p>
                   )}

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import api from '../../api/axios.js';
 import useAuth from '../../hooks/useAuth.js';
 import { RoleBadge } from '../../components/common/Badge.jsx';
+import ConfirmDialog from '../../components/common/ConfirmDialog.jsx';
 import { ROLE_OPTIONS } from '../../utils/constants.js';
 import { formatDate, getImageUrl, getInitials } from '../../utils/helpers.js';
 
@@ -41,8 +42,20 @@ export default function Team() {
     return () => { cancelled = true; };
   }, []);
 
-  const changeRole = async (member, role) => {
+  // Granting or removing admin (delete rights over every bug, control of
+  // every role) waits for a confirmation; other changes apply at once.
+  const [pendingAdminChange, setPendingAdminChange] = useState(null);
+
+  const requestRoleChange = (member, role) => {
     if (role === member.role) return;
+    if (role === 'admin' || member.role === 'admin') {
+      setPendingAdminChange({ member, role });
+      return;
+    }
+    changeRole(member, role);
+  };
+
+  const changeRole = async (member, role) => {
     setSavingId(member._id);
     try {
       const { data } = await api.put(`/users/${member._id}/role`, { role });
@@ -107,7 +120,7 @@ export default function Team() {
                 ) : (
                   <select
                     value={member.role}
-                    onChange={(e) => changeRole(member, e.target.value)}
+                    onChange={(e) => requestRoleChange(member, e.target.value)}
                     disabled={savingId === member._id}
                     aria-label={`Role for ${member.name}`}
                     className="input-field py-1.5 text-sm w-36 disabled:opacity-60"
@@ -121,6 +134,25 @@ export default function Team() {
             );
           })}
         </div>
+      )}
+
+      {pendingAdminChange && (
+        <ConfirmDialog
+          title={pendingAdminChange.role === 'admin' ? `Make ${pendingAdminChange.member.name} an admin?` : `Remove ${pendingAdminChange.member.name}'s admin role?`}
+          message={
+            pendingAdminChange.role === 'admin'
+              ? 'Admins can delete any bug and change anyone’s role, including yours. The change applies on their next request.'
+              : `They become ${pendingAdminChange.role === 'developer' ? 'a developer' : 'a reporter'} and lose delete rights and the Team page on their next request.`
+          }
+          confirmLabel={pendingAdminChange.role === 'admin' ? 'Make admin' : 'Remove admin'}
+          danger={pendingAdminChange.role !== 'admin'}
+          // The dialog stays open, disabled, until the change is saved.
+          onConfirm={async () => {
+            await changeRole(pendingAdminChange.member, pendingAdminChange.role);
+            setPendingAdminChange(null);
+          }}
+          onCancel={() => setPendingAdminChange(null)}
+        />
       )}
     </div>
   );

@@ -38,6 +38,7 @@ export default function EditBugModal({ bug, onSave, onClose }) {
         onSubmit={handleSubmit}
         onCancel={onClose}
         isLoading={saving}
+        descriptionRequired={bug.source !== 'sdk'}
       />
     </Modal>
   );

@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isAllowedWebhookUrl } from '../utils/webhookUrl.js';
 import { generateFingerprint, topFrameOf } from '../utils/fingerprint.util.js';
-import { sanitizeRichText } from '../utils/sanitize.js';
+import { htmlToText, sanitizeRichText } from '../utils/sanitize.js';
 import { checkJwtSecret } from '../services/token.service.js';
 import { cloudinaryPublicId } from '../services/storage.service.js';
 import { getClientOrigins, getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { parseTrustProxy } from '../utils/trustProxy.js';
-import { analysisMarkdown, generatePostMortem, setAIClientForTests } from '../services/ai.service.js';
+import { analysisMarkdown, analyzeError, generatePostMortem, getHeuristicAnalysis, setAIClientForTests } from '../services/ai.service.js';
+import { buildDiscordPayload, buildSlackPayload, escapeSlack } from '../services/webhook.service.js';
 import { errorHandler } from '../middleware/error.middleware.js';
 import {
   countResolvedSince,
@@ -383,10 +384,12 @@ describe('generatePostMortem', () => {
       requests = [];
       // The stub goes in before the key is set, so a real client is never built.
       setAIClientForTests({
-        messages: {
-          create: async (params) => {
-            requests.push(params);
-            return { content: [{ type: 'text', text: '# Incident Post-Mortem' }] };
+        beta: {
+          messages: {
+            create: async (params) => {
+              requests.push(params);
+              return { stop_reason: 'end_turn', content: [{ type: 'text', text: '# Incident Post-Mortem' }] };
+            },
           },
         },
       });
@@ -454,7 +457,7 @@ describe('generatePostMortem', () => {
     });
 
     it('falls back to the attributed template when the call fails', async () => {
-      setAIClientForTests({ messages: { create: async () => { throw new Error('offline'); } } });
+      setAIClientForTests({ beta: { messages: { create: async () => { throw new Error('offline'); } } } });
       const original = console.warn;
       console.warn = () => {};
       try {
@@ -523,5 +526,148 @@ describe('generatePostMortem', () => {
       assert.equal(rca, '_To be completed by the incident owner._');
       assert.equal(resolution, '_To be completed by the incident owner._');
     });
+  });
+});
+
+describe('htmlToText', () => {
+  it('keeps paragraphs and list items apart and decodes entities', () => {
+    assert.equal(
+      htmlToText('<p>Tom &amp; Jerry</p><ol><li data-list="bullet">a &lt; b</li><li>c</li></ol>'),
+      'Tom & Jerry\na < b\nc'
+    );
+  });
+
+  it('decodes once, so encoded entities stay encoded', () => {
+    assert.equal(htmlToText('<p>&amp;lt;b&amp;gt;</p>'), '&lt;b&gt;');
+  });
+
+  it('returns an empty string for anything that is not a string', () => {
+    assert.equal(htmlToText(undefined), '');
+    assert.equal(htmlToText({}), '');
+  });
+});
+
+describe('alert payloads', () => {
+  const bug = { _id: 'b1', title: 'Ping <!channel> & <@U1>', description: '<p>Tom &amp; Jerry</p>', priority: 'critical', severity: 'minor' };
+
+  it('escapes Slack control characters in report text', () => {
+    assert.equal(escapeSlack('<!here> & <https://x|y>'), '&lt;!here&gt; &amp; &lt;https://x|y&gt;');
+    const { text } = buildSlackPayload(bug, 'created', 'https://app/bugs/b1');
+    assert.match(text, /Ping &lt;!channel&gt; &amp; &lt;@U1&gt;/);
+    // The link BugSense builds itself stays a link.
+    assert.match(text, /<https:\/\/app\/bugs\/b1\|View Bug in BugSense>$/);
+  });
+
+  it('never lets a Discord alert mention anyone, and shows the description as text', () => {
+    const payload = buildDiscordPayload(bug, 'escalated', 'https://app/bugs/b1');
+    assert.deepEqual(payload.allowed_mentions, { parse: [] });
+    assert.equal(payload.embeds[0].description, 'Tom & Jerry');
+    assert.match(payload.embeds[0].title, /^⚠️ \[ESCALATED\]/);
+  });
+});
+
+describe('getHeuristicAnalysis', () => {
+  const causeOf = (log) => getHeuristicAnalysis(log).possibleCause;
+
+  it('reads a JSON parse error as one, not as an auth failure', () => {
+    // "token" is in the message; the old rules matched it as a JWT problem.
+    assert.match(causeOf("SyntaxError: Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON"), /JSON parse failure/);
+    assert.match(causeOf('SyntaxError: Unexpected token < in JSON at position 0'), /JSON parse failure/);
+  });
+
+  it('matches each failure shape to its own rule', () => {
+    assert.match(causeOf("TypeError: Cannot read properties of undefined (reading 'id')"), /Null or undefined/);
+    assert.match(causeOf('TypeError: cart.items.map is not a function'), /called as a function/);
+    assert.match(causeOf('JsonWebTokenError: invalid signature'), /Authentication token/);
+    assert.match(causeOf('MongoServerError: connection refused'), /Database connection/);
+    assert.match(causeOf('TypeError: Failed to fetch'), /never got a response/);
+  });
+
+  it('does not treat a log as a null dereference just because it says undefined', () => {
+    assert.match(causeOf('ReferenceError: process is undefined in this bundle'), /Runtime exception/);
+  });
+
+  it('always labels itself heuristic', () => {
+    assert.equal(getHeuristicAnalysis('anything').source, 'heuristic');
+  });
+});
+
+describe('analyzeError against a stub model', () => {
+  const savedKey = process.env.ANTHROPIC_API_KEY;
+  let requests;
+  let reply;
+
+  beforeEach(() => {
+    requests = [];
+    setAIClientForTests({ beta: { messages: { create: async (params) => { requests.push(params); return reply; } } } });
+    process.env.ANTHROPIC_API_KEY = 'test-key-not-used';
+  });
+  afterEach(() => {
+    setAIClientForTests(undefined);
+    if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedKey;
+  });
+
+  const quietly = async (fn) => {
+    const original = console.warn;
+    console.warn = () => {};
+    try {
+      return await fn();
+    } finally {
+      console.warn = original;
+    }
+  };
+
+  it('asks the current model, with room for thinking and the refusal fallback on', async () => {
+    reply = {
+      stop_reason: 'end_turn',
+      content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: '{"possibleCause":"c","suggestedFix":"f"}' }],
+    };
+    const result = await analyzeError('TypeError: boom');
+    assert.deepEqual(result, { possibleCause: 'c', suggestedFix: 'f', source: 'claude' });
+
+    const [params] = requests;
+    assert.equal(params.model, 'claude-sonnet-5-5');
+    assert.ok(params.max_tokens >= 16000, 'thinking counts toward max_tokens');
+    assert.equal(params.fallbacks, 'default');
+    assert.deepEqual(params.betas, ['server-side-fallback-2026-07-01']);
+    assert.equal(params.output_config.effort, 'low');
+  });
+
+  it('falls back to the labelled heuristic when the reply is cut off or declined', async () => {
+    for (const stopReason of ['max_tokens', 'refusal']) {
+      reply = { stop_reason: stopReason, content: [{ type: 'text', text: '{"possibleCause":"half' }] };
+      const result = await quietly(() => analyzeError('TypeError: Cannot read properties of null'));
+      assert.equal(result.source, 'heuristic', stopReason);
+    }
+  });
+});
+
+describe('codeBlock', async () => {
+  const { codeBlock } = await import('../controllers/bug.controller.js');
+
+  it('uses a fence longer than any backtick run in the text', () => {
+    assert.equal(codeBlock('plain'), '```\nplain\n```');
+    assert.equal(codeBlock('a ``` b'), '````\na ``` b\n````');
+    assert.equal(codeBlock('`````'), '``````\n`````\n``````');
+  });
+});
+
+describe('environment checks', async () => {
+  const { environmentWarnings, exposesErrorDetails } = await import('../utils/environment.js');
+
+  it('shows error details only when the environment says development or test', () => {
+    assert.equal(exposesErrorDetails({ NODE_ENV: 'development' }), true);
+    assert.equal(exposesErrorDetails({ NODE_ENV: 'test' }), true);
+    // A host that leaves NODE_ENV unset gets no stack traces.
+    assert.equal(exposesErrorDetails({}), false);
+    assert.equal(exposesErrorDetails({ NODE_ENV: 'production' }), false);
+  });
+
+  it('warns about a missing NODE_ENV and an open ingest endpoint in production', () => {
+    assert.match(environmentWarnings({}).join(' '), /NODE_ENV is not set/);
+    assert.match(environmentWarnings({ NODE_ENV: 'production' }).join(' '), /Telemetry ingest is open/);
+    assert.deepEqual(environmentWarnings({ NODE_ENV: 'production', TELEMETRY_ALLOWED_ORIGINS: 'https://shop.example' }), []);
+    assert.deepEqual(environmentWarnings({ NODE_ENV: 'development' }), []);
   });
 });

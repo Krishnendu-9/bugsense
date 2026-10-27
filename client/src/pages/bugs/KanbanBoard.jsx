@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Info } from 'lucide-react';
 import toast from 'react-hot-toast';
-import useBugs from '../../hooks/useBugs.js';
 import { useSocketEvent } from '../../hooks/useSocket.js';
 import useAuth from '../../hooks/useAuth.js';
 import { OccurrenceBadge, PriorityText, StatusMark } from '../../components/common/Badge.jsx';
@@ -11,8 +10,10 @@ import OverflowMenu from '../../components/common/OverflowMenu.jsx';
 import { compactAgo, formatDate, isStaff, statusOptionsFor } from '../../utils/helpers.js';
 import api from '../../api/axios.js';
 
-// The board shows at most one API page; beyond that it links to the list view.
-const BOARD_LIMIT = 100;
+// Each column is its own request for at most one API page of that status, so
+// a pile of recently closed bugs can never push older open ones off the
+// board. A column with more links to the list view, filtered to it.
+const COLUMN_LIMIT = 100;
 
 // Column headers use StatusMark, so a column and a table row name a status
 // the same way; the label here is only for toasts and button labels.
@@ -76,14 +77,30 @@ function CardContext({ bug }) {
 
 export default function KanbanBoard() {
   const { user } = useAuth();
-  const { bugs: allBugs, setBugs, fetchBugs, loading, pagination } = useBugs();
-  const [initialized, setInitialized] = useState(false);
+  const [allBugs, setBugs] = useState([]);
+  // How many bugs each status has in all, from its request: more than the
+  // column shows means the column was cut at COLUMN_LIMIT.
+  const [totals, setTotals] = useState({});
+  const [ready, setReady] = useState(false);
   const [draggingBugId, setDraggingBugId] = useState(null);
   const [dragOverColId, setDragOverColId] = useState(null);
 
   useEffect(() => {
-    fetchBugs({ limit: BOARD_LIMIT }).finally(() => setInitialized(true));
-  }, [fetchBugs]);
+    let cancelled = false;
+    Promise.all(COLUMNS.map((col) => api.get(`/bugs?status=${col.id}&limit=${COLUMN_LIMIT}`)))
+      .then((responses) => {
+        if (cancelled) return;
+        setBugs(responses.flatMap((res) => res.data.bugs));
+        setTotals(Object.fromEntries(COLUMNS.map((col, i) => [col.id, responses[i].data.total])));
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(err.response?.data?.message || 'Failed to load the board');
+      })
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // Staff move any bug anywhere; a reporter may only close their own bug or
   // reopen it. The API enforces the same rule.
@@ -174,8 +191,8 @@ export default function KanbanBoard() {
   if (isStaff(user)) hint = 'Use a card’s Move menu, or drag it, to change its status.';
   else if (user) hint = 'You can move your own bugs to Closed, or back to Open.';
 
-  const ready = initialized || !loading;
-  const shown = (allBugs || []).length;
+  const shown = allBugs.length;
+  const truncated = COLUMNS.filter((col) => (totals[col.id] || 0) > COLUMN_LIMIT);
 
   return (
     <div className="space-y-4">
@@ -189,11 +206,16 @@ export default function KanbanBoard() {
         <ViewSwitch current="board" />
       </div>
 
-      {pagination.total > BOARD_LIMIT && (
-        <div className="glass-card p-3 flex items-center gap-2 text-xs text-muted">
+      {ready && truncated.length > 0 && (
+        <div className="glass-card p-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
           <Info size={14} className="text-accent flex-shrink-0" aria-hidden="true" />
-          Showing the {BOARD_LIMIT} most recent of {pagination.total} bugs.{' '}
-          <Link to="/bugs" className="text-accent hover:underline">Use the list view</Link> to see the rest.
+          {truncated.map((col, i) => (
+            <span key={col.id}>
+              {i > 0 && '· '}
+              {col.label} shows the {COLUMN_LIMIT} most recent of {totals[col.id]}.{' '}
+              <Link to={`/bugs?status=${col.id}`} className="text-accent hover:underline">See them all</Link>
+            </span>
+          ))}
         </div>
       )}
 

@@ -29,9 +29,13 @@ export const authLimiter = rateLimit({
   },
 });
 
+// Every AI route runs after protect(), so the limit is per account: each call
+// is a paid model request, and a per-IP key would let one person with several
+// addresses spend more while a whole office behind one NAT shared one budget.
 export const aiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 50, // max 50 requests per windowMs
+  limit: 50, // max 50 requests per windowMs, per user
+  keyGenerator: (req) => `user:${req.user._id}`,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: {

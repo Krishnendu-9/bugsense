@@ -10,6 +10,11 @@ on:
   schedule:
     - cron: '0 6 * * 1'
 
+# Every job only reads the repository. Without this the token gets the
+# repository's default permissions, which may include write access.
+permissions:
+  contents: read
+
 jobs:
   # Dependency advisories. Two thresholds, because the two halves of the tree
   # carry different risk:
@@ -30,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [server, client]
+        package: [server, client, e2e]
 
     steps:
       - name: Checkout repository
@@ -127,16 +132,55 @@ jobs:
         working-directory: client
         run: npm run build
 
-  docker:
-    name: Docker images build
+  # The whole stack as `docker compose up` runs it for a reviewer: build both
+  # images, start them, seed the demo data, then check it end to end in a real
+  # browser (e2e/). The unit suites above never exercise nginx, the CSP, the
+  # proxying or the containers' health checks; this does.
+  stack:
+    name: Docker Compose stack + end-to-end
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Build server image
-        run: docker build -t bugsense-server:ci ./server
+      - name: Build and start the stack
+        # --wait returns once every service's health check passes.
+        run: docker compose up --build --detach --wait --wait-timeout 180
 
-      - name: Build client image
-        run: docker build -t bugsense-client:ci ./client
+      - name: Seed the demo data
+        run: docker compose exec -T server npm run seed
+
+      - name: Smoke-test the API through nginx
+        run: |
+          curl --fail --silent http://localhost:8080/api/health
+          curl --fail --silent --output /dev/null http://localhost:8080/sdk/bugsense.js
+          curl --fail --silent -H 'Content-Type: application/json' \
+            -d '{"email":"admin@bugsense.dev","password":"password123"}' \
+            http://localhost:8080/api/auth/login | grep -q '"token"'
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: 'npm'
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install the end-to-end tests
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        working-directory: e2e
+        run: npm test
+
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes

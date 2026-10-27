@@ -179,6 +179,8 @@ describe('fingerprint migration: collision', () => {
     assert.equal(survivor.lastSeenAt.getTime(), day(15).getTime());
     assert.equal(survivor.status, 'in-progress');
     assert.match(survivor.statusHistory.at(-1).note, new RegExp(`${c._id}.*${w._id}`));
+    // Told apart from a telemetry regression, which also has no changedBy.
+    assert.equal(survivor.statusHistory.at(-1).kind, 'migration');
     assert.equal(survivor.updatedAt.getTime(), UPDATED.getTime());
 
     for (const [orig, count] of [[c, 3], [w, 2]]) {

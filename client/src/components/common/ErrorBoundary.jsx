@@ -49,7 +49,7 @@ export default class ErrorBoundary extends React.Component {
       <>
         {error && (
           <div className="text-left bg-track border border-hairline rounded-lg p-3.5 text-xs font-mono text-muted overflow-x-auto max-h-32">
-            <span className="text-priority-high font-semibold">{error.toString()}</span>
+            <span className="text-danger font-semibold">{error.toString()}</span>
           </div>
         )}
         {reported && (
@@ -65,7 +65,7 @@ export default class ErrorBoundary extends React.Component {
     if (this.props.variant === 'page') {
       return (
         <div role="alert" className="glass-card max-w-lg mx-auto mt-10 p-8 text-center space-y-5 border border-priority-high/30">
-          <div className="w-14 h-14 rounded-2xl bg-priority-high/10 border border-priority-high/30 flex items-center justify-center mx-auto text-priority-high">
+          <div className="w-14 h-14 rounded-2xl bg-danger/10 border border-danger/30 flex items-center justify-center mx-auto text-danger">
             <AlertOctagon size={28} />
           </div>
           <div>
@@ -92,7 +92,7 @@ export default class ErrorBoundary extends React.Component {
           <div className="absolute -top-16 -left-16 w-36 h-36 bg-priority-high/15 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-16 -right-16 w-36 h-36 bg-accent/15 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="w-16 h-16 rounded-2xl bg-priority-high/10 border border-priority-high/30 flex items-center justify-center mx-auto text-priority-high">
+          <div className="w-16 h-16 rounded-2xl bg-danger/10 border border-danger/30 flex items-center justify-center mx-auto text-danger">
             <AlertOctagon size={32} />
           </div>
 

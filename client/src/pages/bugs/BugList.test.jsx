@@ -94,6 +94,14 @@ describe('Bugs list', () => {
     serveBugs();
   });
 
+  it('opens on the page and filters a shared link names', async () => {
+    renderWithProviders(<BugList />, { route: '/bugs?status=open&page=2' });
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(0));
+    const query = lastListQuery();
+    expect(query.get('page')).toBe('2');
+    expect(query.get('status')).toBe('open');
+  });
+
   it('shows bugs as a table with the agreed columns', async () => {
     renderWithProviders(<BugList />, { route: '/bugs' });
     const table = await screen.findByRole('table');

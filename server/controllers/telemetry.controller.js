@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import Bug from '../models/Bug.model.js';
+import Bug, { MAX_STATUS_HISTORY } from '../models/Bug.model.js';
 import { generateFingerprintV2 } from '../utils/fingerprint.util.js';
 import { clampString, toSafeText } from '../utils/sanitize.js';
 import { tryConsumeTelemetryAIBudget } from '../utils/aiBudget.js';
@@ -165,9 +165,14 @@ const recordRepeat = async (fingerprint, breadcrumbs) => {
       $set: { status: 'in-progress' },
       $push: {
         statusHistory: {
-          status: 'in-progress',
-          changedAt: now,
-          note: 'Regression auto-detected: error re-occurred in production telemetry.',
+          $each: [{
+            status: 'in-progress',
+            changedAt: now,
+            note: 'Regression auto-detected: error re-occurred in production telemetry.',
+            kind: 'regression',
+          }],
+          // Keep the newest entries only (MAX_STATUS_HISTORY, in the model).
+          $slice: -MAX_STATUS_HISTORY,
         },
       },
     },
@@ -199,6 +204,37 @@ const respondWithRepeat = async (res, { bug, isRegression }) => {
   });
 };
 
+// One stored bug per widget report. fingerprintVersion is set so the
+// fingerprint migration, which re-keys and merges SDK bugs below version 2,
+// leaves feedback alone; the null fingerprint keeps it out of the unique index.
+const createFeedback = async (res, report) => {
+  const { sdkVersion: _sdkVersion, error: _error, source: _source, ...stored } = report;
+  const now = new Date();
+  const bug = await Bug.create({
+    ...stored,
+    description: report.description || '',
+    tags: ['feedback'],
+    source: 'sdk',
+    fingerprint: null,
+    fingerprintVersion: 2,
+    occurrences: 1,
+    firstSeenAt: now,
+    lastSeenAt: now,
+    status: 'open',
+  });
+
+  await emitBugCreated(bug);
+  logActivity({
+    action: 'SDK_FEEDBACK',
+    entityType: 'telemetry',
+    entityId: bug._id,
+    performedByName: 'BugSense SDK',
+    details: `Feedback from the SDK widget: "${bug.title}"`,
+  });
+
+  return res.status(201).json({ success: true, status: 'created', bugId: bug._id, occurrences: 1 });
+};
+
 /**
  * Controller: Public telemetry ingestion endpoint for the client SDK (`bugsense.js`)
  */
@@ -209,6 +245,13 @@ export const reportTelemetry = async (req, res, next) => {
 
   try {
     const report = normalizeReport(req.body);
+
+    // Feedback typed into the SDK widget (SDK 1.5.0 marks it) is a person's
+    // report, not a crash: two people writing the same words are two reports,
+    // and a "fixed" one coming back is not a regression. So it is never keyed
+    // or merged. Older SDKs send no kind, and their widget reports still dedup.
+    if (req.body.kind === 'feedback') return createFeedback(res, report);
+
     // The v2 key (docs/fingerprint-eval-v2.md, section 2). It reads project,
     // title, errorLog, breadcrumbs and, from SDK 1.4.0, error, request and
     // source; older SDKs' reports go through its fallbacks.

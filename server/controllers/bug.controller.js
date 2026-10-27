@@ -1,10 +1,10 @@
 import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
-import Bug from '../models/Bug.model.js';
+import Bug, { MAX_STATUS_HISTORY } from '../models/Bug.model.js';
 import Comment from '../models/Comment.model.js';
 import User from '../models/User.model.js';
 import { generateFingerprintV2, manualKeyInputs } from '../utils/fingerprint.util.js';
-import { sanitizeRichText } from '../utils/sanitize.js';
+import { htmlToText, sanitizeRichText } from '../utils/sanitize.js';
 import { canModifyBug, canSetStatus, isStaff } from '../utils/permissions.js';
 import { removeUpload } from '../utils/uploads.js';
 import { removeStoredFile, storeUpload } from '../services/storage.service.js';
@@ -29,6 +29,10 @@ const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 const SOURCES = ['manual', 'sdk', 'api'];
 const MAX_PAGE_SIZE = 100;
 const LIST_QUERY_TIME_LIMIT_MS = 5000;
+
+// The time-to-resolve median reads every resolved bug's history. Past this
+// many it uses the most recently updated ones and says so (`limited`).
+const RESOLUTION_SAMPLE_LIMIT = 5000;
 
 // Leaving heavy fields out keeps list responses small as bugs accumulate
 // telemetry; the same list is applied to broadcast socket events. The error
@@ -206,9 +210,12 @@ export const createBug = async (req, res, next) => {
     const { payload, error } = pickWritableFields(req.body);
     if (error) return badRequest(res, error);
 
-    // Reporters file bugs; triage (status, assignment) belongs to the team.
-    if (!isStaff(req.user)) {
+    // Reporters file bugs; triage (status, priority, assignment) belongs to
+    // the team. A reporter's report starts at the default priority.
+    const filedByStaff = isStaff(req.user);
+    if (!filedByStaff) {
       delete payload.status;
+      delete payload.priority;
       delete payload.assignedTo;
     }
     if (!(await assertAssignable(payload.assignedTo))) {
@@ -242,7 +249,10 @@ export const createBug = async (req, res, next) => {
     });
 
     await emitBugCreated(bug);
-    dispatchWebhookAlert(bug, 'created');
+    // Alerts page people, so only a level the team chose may trigger one. A
+    // reporter cannot set priority, and a Blocker severity they pick is their
+    // assessment, not triage: it pages once staff escalate it (updateBug).
+    if (filedByStaff) dispatchWebhookAlert(bug, 'created');
     logActivity({
       action: 'BUG_CREATED',
       entityType: 'bug',
@@ -267,12 +277,9 @@ export const createBug = async (req, res, next) => {
 
 export const getBugById = async (req, res, next) => {
   try {
-    const bug = await Bug.findById(req.params.id)
-      .populate(BUG_POPULATE)
-      .populate({
-        path: 'comments',
-        populate: { path: 'author', select: 'name email avatar' },
-      });
+    // Comments are not populated: the page loads them from /comments/bug/:id
+    // and keeps them live over the socket. The id list stays, for the count.
+    const bug = await Bug.findById(req.params.id).populate(BUG_POPULATE);
 
     if (!bug) return res.status(404).json({ message: 'Bug not found' });
     return res.json(bug);
@@ -318,12 +325,40 @@ export const updateBug = async (req, res, next) => {
         changedBy: req.user._id,
         changedAt: new Date(),
         note: typeof req.body.statusNote === 'string' ? req.body.statusNote.slice(0, 500) : '',
+        kind: 'change',
       });
+      // Bounded: see MAX_STATUS_HISTORY in the model.
+      if (bug.statusHistory.length > MAX_STATUS_HISTORY) {
+        bug.statusHistory.splice(0, bug.statusHistory.length - MAX_STATUS_HISTORY);
+      }
     }
 
+    // Staff raising a bug to critical priority or blocker severity is the
+    // moment it becomes page-worthy, so that is when the alert goes out.
+    const escalated = isStaff(req.user) && (
+      (payload.priority === 'critical' && bug.priority !== 'critical') ||
+      (payload.severity === 'blocker' && bug.severity !== 'blocker')
+    );
+
+    // The manual key is made from the title, log and project, so editing any
+    // of them re-keys the bug, or the duplicate hint would match its old text.
+    // An SDK bug keeps its key: it is what incoming crashes are counted by.
+    const changed = (field) => field in payload && payload[field] !== bug[field];
+    const rekey = bug.source !== 'sdk' && ['title', 'errorLog', 'project'].some(changed);
+    // An analysis describes the log it was run on.
+    const analysisOutdated = changed('errorLog') && Boolean(bug.aiInsights?.possibleCause);
+
     bug.set(payload);
+    if (rekey) {
+      bug.fingerprint = generateFingerprintV2(
+        manualKeyInputs({ project: bug.project, title: bug.title, errorLog: bug.errorLog })
+      );
+      bug.fingerprintVersion = 2;
+    }
+    if (analysisOutdated) bug.aiInsights.outdated = true;
     await bug.save();
     await emitBugUpdated(bug);
+    if (escalated) dispatchWebhookAlert(bug, 'escalated');
 
     logActivity({
       action: 'BUG_UPDATED',
@@ -367,7 +402,9 @@ export const deleteBug = async (req, res, next) => {
 
 // Shared by the screenshot and annotation uploads: both replace one image field
 // on a bug the caller is allowed to modify, and remove the file it replaces.
+// A new screenshot also retires the annotation, which was drawn on the old one.
 const replaceBugImage = (field) => async (req, res, next) => {
+  let stored = null;
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
@@ -378,14 +415,24 @@ const replaceBugImage = (field) => async (req, res, next) => {
       return res.status(403).json({ message: 'Not authorized to update this bug' });
     }
 
-    const previous = bug[field];
-    bug[field] = await storeUpload(req.file);
+    const replaced = [bug[field]];
+    if (field === 'screenshot' && bug.annotatedScreenshot) {
+      replaced.push(bug.annotatedScreenshot);
+      bug.annotatedScreenshot = '';
+    }
+
+    stored = await storeUpload(req.file);
+    bug[field] = stored;
     await bug.save();
-    await removeStoredFile(previous);
+    stored = null; // saved: the file now belongs to the bug
+    await Promise.all(replaced.map(removeStoredFile));
     await emitBugUpdated(bug);
 
-    return res.json({ [field]: bug[field] });
+    return res.json({ [field]: bug[field], annotatedScreenshot: bug.annotatedScreenshot });
   } catch (err) {
+    // A file that was stored but never saved on the bug would be orphaned.
+    if (stored) await removeStoredFile(stored);
+    else if (req.file) await removeUpload(`/uploads/${req.file.filename}`);
     return next(err);
   }
 };
@@ -459,8 +506,11 @@ export const getTrendStats = async (_req, res, next) => {
         .select(HISTORY_FIELDS)
         .lean()
         .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
+      // Newest first, so a capped sample keeps the bugs resolved this week.
       Bug.find({ 'statusHistory.status': 'resolved' })
         .select(HISTORY_FIELDS)
+        .sort({ updatedAt: -1 })
+        .limit(RESOLUTION_SAMPLE_LIMIT)
         .lean()
         .maxTimeMS(LIST_QUERY_TIME_LIMIT_MS),
     ]);
@@ -470,7 +520,7 @@ export const getTrendStats = async (_req, res, next) => {
         timezone: 'UTC',
         days: openCountsByDay(windowBugs, now, TREND_DAYS),
       },
-      timeToResolve: resolutionStats(resolvedBugs),
+      timeToResolve: { ...resolutionStats(resolvedBugs), limited: resolvedBugs.length === RESOLUTION_SAMPLE_LIMIT },
       // Same seven UTC days as openByDay, starting at `since`.
       resolvedInWindow: {
         since: since.toISOString(),
@@ -500,6 +550,31 @@ export const getGitHubConfig = (_req, res) => {
   res.json({ repos: process.env.GITHUB_TOKEN ? serverTokenRepos() : [] });
 };
 
+// A Markdown code block that the text inside cannot end: the fence is one
+// backtick longer than the longest run of backticks in the text. A log that
+// contains ``` would otherwise close a plain fence and turn the rest of it
+// into live Markdown, where an @name notifies that GitHub user.
+export const codeBlock = (text) => {
+  const longestRun = Math.max(0, ...(String(text).match(/`+/g) || []).map((run) => run.length));
+  const fence = '`'.repeat(Math.max(3, longestRun + 1));
+  return `${fence}\n${text}\n${fence}`;
+};
+
+export const buildIssueBody = (bug, clientUrl) => `## Bug Report: ${bug.title}
+
+${htmlToText(bug.description)}
+
+${bug.steps?.length ? `### Steps to Reproduce\n${bug.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n` : ''}
+${bug.errorLog ? `### Error Log\n${codeBlock(bug.errorLog)}\n` : ''}
+${analysisMarkdown(bug.aiInsights)}
+
+---
+- **Priority:** ${bug.priority}
+- **Severity:** ${bug.severity}
+- **Occurrences:** ${bug.occurrences || 1}
+- **Tracked in BugSense:** [View in BugSense](${clientUrl}/bugs/${bug._id})
+`;
+
 export const exportToGitHub = async (req, res, next) => {
   const { repoOwner, repoName, githubToken } = req.body;
 
@@ -526,40 +601,40 @@ export const exportToGitHub = async (req, res, next) => {
     const bug = await Bug.findById(req.params.id);
     if (!bug) return res.status(404).json({ message: 'Bug not found' });
 
-    const clientUrl = getPrimaryClientUrl();
-    const issueBody = `## Bug Report: ${bug.title}
+    // One issue per bug: a second export would file a duplicate.
+    if (bug.githubIssue?.url) {
+      return res.status(409).json({
+        message: `This bug is already GitHub issue #${bug.githubIssue.issueNumber}`,
+        githubIssue: bug.githubIssue,
+      });
+    }
 
-${bug.description?.replace(/<[^>]*>?/gm, '') || ''}
-
-${bug.steps?.length ? `### Steps to Reproduce\n${bug.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n` : ''}
-${bug.errorLog ? `### Error Log\n\`\`\`\n${bug.errorLog}\n\`\`\`\n` : ''}
-${analysisMarkdown(bug.aiInsights)}
-
----
-- **Priority:** ${bug.priority}
-- **Severity:** ${bug.severity}
-- **Occurrences:** ${bug.occurrences || 1}
-- **Tracked in BugSense:** [View in BugSense](${clientUrl}/bugs/${bug._id})
-`;
-
-    const ghRes = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(repoOwner)}/${encodeURIComponent(repoName)}/issues`,
-      {
-        method: 'POST',
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'BugSense',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          title: `[BugSense] ${bug.title}`,
-          body: issueBody,
-          labels: ['bug', bug.priority].filter(Boolean),
-        }),
-        signal: AbortSignal.timeout(10000),
-      }
-    );
+    let ghRes;
+    try {
+      ghRes = await fetch(
+        `https://api.github.com/repos/${encodeURIComponent(repoOwner)}/${encodeURIComponent(repoName)}/issues`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'BugSense',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            title: `[BugSense] ${bug.title}`,
+            body: buildIssueBody(bug, getPrimaryClientUrl()),
+            labels: ['bug', bug.priority].filter(Boolean),
+          }),
+          signal: AbortSignal.timeout(10000),
+        }
+      );
+    } catch (err) {
+      // GitHub did not answer: a gateway problem, not a BugSense error.
+      if (err?.name === 'TimeoutError') return res.status(504).json({ message: 'GitHub did not respond in time. Try again.' });
+      if (err?.name === 'TypeError') return res.status(502).json({ message: `Could not reach GitHub: ${err.message}` });
+      throw err;
+    }
 
     if (!ghRes.ok) {
       const errData = await ghRes.json().catch(() => ({}));

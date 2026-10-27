@@ -1,6 +1,7 @@
 import User from '../models/User.model.js';
 import { isAllowedWebhookUrl } from '../utils/webhookUrl.js';
 import { getPrimaryClientUrl } from '../utils/clientOrigins.js';
+import { htmlToText } from '../utils/sanitize.js';
 
 const PRIORITY_COLORS = {
   critical: 0x7c3aed, // Purple
@@ -9,15 +10,30 @@ const PRIORITY_COLORS = {
   low: 0x22c55e, // Green
 };
 
-const buildDiscordPayload = (bug, eventType, bugUrl) => {
-  const titlePrefix = eventType === 'regression' ? '🚨 [REGRESSION]' : '🐛 [NEW BUG]';
+const TITLE_PREFIXES = {
+  created: '🐛 [NEW BUG]',
+  regression: '🚨 [REGRESSION]',
+  escalated: '⚠️ [ESCALATED]',
+};
+
+// Slack reads <...> as links and mentions (<!channel>, <@U123>) and & as the
+// start of an entity, so report text must have all three escaped. Titles can
+// come from the public SDK endpoint.
+export const escapeSlack = (text) =>
+  String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+export const buildDiscordPayload = (bug, eventType, bugUrl) => {
+  const titlePrefix = TITLE_PREFIXES[eventType] || TITLE_PREFIXES.created;
   return {
     username: 'BugSense',
+    // Embeds do not ping today; this keeps report text from ever mentioning
+    // @everyone or a role should a field move into `content`.
+    allowed_mentions: { parse: [] },
     embeds: [
       {
         title: `${titlePrefix} ${bug.title}`.slice(0, 256),
         url: bugUrl,
-        description: bug.description?.replace(/<[^>]*>?/gm, '').slice(0, 250) || 'No description provided.',
+        description: htmlToText(bug.description).slice(0, 250) || 'No description provided.',
         color: PRIORITY_COLORS[bug.priority] || 0x6366f1,
         fields: [
           { name: 'Priority', value: bug.priority?.toUpperCase() || 'MEDIUM', inline: true },
@@ -34,10 +50,11 @@ const buildDiscordPayload = (bug, eventType, bugUrl) => {
   };
 };
 
-const buildSlackPayload = (bug, eventType, bugUrl) => {
-  const titlePrefix = eventType === 'regression' ? '🚨 [REGRESSION]' : '🐛 [NEW BUG]';
+export const buildSlackPayload = (bug, eventType, bugUrl) => {
+  const titlePrefix = TITLE_PREFIXES[eventType] || TITLE_PREFIXES.created;
+  const field = (value) => `\`${escapeSlack(value)}\``;
   return {
-    text: `${titlePrefix} *${bug.title}*\nPriority: \`${bug.priority}\` | Severity: \`${bug.severity}\` | Occurrences: \`${bug.occurrences || 1}\`\n<${bugUrl}|View Bug in BugSense>`,
+    text: `${titlePrefix} *${escapeSlack(bug.title)}*\nPriority: ${field(bug.priority)} | Severity: ${field(bug.severity)} | Occurrences: ${field(bug.occurrences || 1)}\n<${bugUrl}|View Bug in BugSense>`,
   };
 };
 
@@ -58,20 +75,24 @@ const post = async (type, url, payload) => {
 };
 
 // What pages anyone at all: a new incident with critical priority or blocker
-// severity, or a resolved incident that re-occurs. Everything else is left to
-// the dashboard, or a busy project would flood every channel.
+// severity, one staff escalate to either level, or a resolved incident that
+// re-occurs. Everything else is left to the dashboard, or a busy project would
+// flood every channel.
 export const isAlertWorthy = (bug, eventType) => {
   if (eventType === 'regression') return true;
-  if (eventType === 'created') return bug.priority === 'critical' || bug.severity === 'blocker';
+  if (eventType === 'created' || eventType === 'escalated') {
+    return bug.priority === 'critical' || bug.severity === 'blocker';
+  }
   return false;
 };
 
 // Per-user preferences from the Profile page, applied on top of isAlertWorthy.
+// An escalation is a critical alert, so it follows alertOnCritical.
 const userWantsAlert = (webhooks, eventType) =>
   eventType === 'regression' ? webhooks.alertOnRegression !== false : webhooks.alertOnCritical !== false;
 
 /**
- * Sends incident alerts for new and regressed bugs. Plain repeat occurrences do
+ * Sends incident alerts for new, escalated and regressed bugs. Plain repeat occurrences do
  * not alert — a crash loop would otherwise flood every channel.
  */
 export const dispatchWebhookAlert = async (bug, eventType = 'created') => {

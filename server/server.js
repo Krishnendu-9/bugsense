@@ -6,6 +6,7 @@ import connectDB from './config/db.js';
 import { initSocket } from './config/socket.js';
 import { UPLOADS_DIR } from './utils/uploads.js';
 import { checkJwtSecret } from './services/token.service.js';
+import { environmentWarnings } from './utils/environment.js';
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ if (jwtCheck.warnings.length) {
   console.warn('Running anyway because ALLOW_INSECURE_JWT_SECRET=true. Local demo use only.');
   console.warn('='.repeat(72));
 }
+for (const warning of environmentWarnings()) console.warn(`WARNING: ${warning}`);
 
 // Routes read env vars (CORS origins, limits) when they are first imported, so
 // the app is loaded only after dotenv has populated process.env.
