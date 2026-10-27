@@ -74,7 +74,7 @@ export default function Register() {
                   autoComplete="name"
                 />
               </div>
-              {errors.name && <p className="text-priority-high text-xs mt-1">{errors.name.message}</p>}
+              {errors.name && <p className="text-danger text-xs mt-1">{errors.name.message}</p>}
             </div>
 
             <div>
@@ -93,7 +93,7 @@ export default function Register() {
                   autoComplete="email"
                 />
               </div>
-              {errors.email && <p className="text-priority-high text-xs mt-1">{errors.email.message}</p>}
+              {errors.email && <p className="text-danger text-xs mt-1">{errors.email.message}</p>}
             </div>
 
             <div>
@@ -104,7 +104,8 @@ export default function Register() {
                   id="register-password"
                   {...register('password', {
                     required: 'Password is required',
-                    minLength: { value: 6, message: 'Password must be at least 6 characters' },
+                    minLength: { value: 8, message: 'Password must be at least 8 characters' },
+                    maxLength: { value: 72, message: 'Password cannot exceed 72 characters' },
                   })}
                   type={showPassword ? 'text' : 'password'}
                   className="input-field pl-9 pr-10"
@@ -120,7 +121,7 @@ export default function Register() {
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              {errors.password && <p className="text-priority-high text-xs mt-1">{errors.password.message}</p>}
+              {errors.password && <p className="text-danger text-xs mt-1">{errors.password.message}</p>}
             </div>
 
             <div>
