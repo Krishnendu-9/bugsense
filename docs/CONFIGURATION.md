@@ -16,7 +16,7 @@ of Docker, and how to deploy it. For the Docker quick start, see the
 | `MONGO_URI` | no | MongoDB connection string (defaults to `mongodb://localhost:27017/bugsense`) |
 | `JWT_SECRET` | in production | Secret key for JWT signing. In production the server refuses to start if it is missing, a published example value, or shorter than 32 characters. Generate one with `openssl rand -hex 32` |
 | `ALLOW_INSECURE_JWT_SECRET` | no | `true` lets production start with a weak `JWT_SECRET` (with a warning banner). Only the Docker local demo sets this |
-| `NODE_ENV` | no | Set to `production` to enforce the JWT check, production rate limits and the developer sign-up default |
+| `NODE_ENV` | **yes** | `production` on any deployed host: enforces the JWT check, production rate limits and the developer sign-up default, and hides error details. `development` locally. Left unset, the server starts with development defaults and logs a warning; stack traces are only ever sent when it is `development` or `test` |
 | `CLIENT_URL` | no | Dashboard origin(s), comma-separated (e.g. production plus a Vercel preview). All pass CORS and the socket handshake; the first is used for links in alerts and GitHub issues |
 | `TRUST_PROXY` | **verify before deploying** | Express `trust proxy`: number of proxy hops (default `1`), `false`, or proxy addresses. Must match what is really in front of the server: too high, or `1` while Node is reachable directly, lets clients spoof their IP past every rate limit. See [Before the first deploy](#before-the-first-deploy-verify-trust_proxy) |
 | `ANTHROPIC_API_KEY` | no | Anthropic API key. Without it, AI features fall back to clearly labelled heuristics and templates |
@@ -27,11 +27,13 @@ of Docker, and how to deploy it. For the Docker quick start, see the
 | `UPLOADS_DIR` | no | Local upload directory (default: `server/uploads`) |
 | `GITHUB_TOKEN` | no | Server token for GitHub Issue export. Users can always supply their own token per request instead |
 | `GITHUB_ALLOWED_REPOS` | with `GITHUB_TOKEN` | Comma-separated `owner/repo` list the server token may file issues in; offered as one-click choices in the export dialog |
-| `DISCORD_WEBHOOK_URL` | no | Workspace Discord channel for alerts (critical/blocker incidents and regressions) |
+| `DISCORD_WEBHOOK_URL` | no | Workspace Discord channel for alerts: critical/blocker incidents filed or escalated by staff, and regressions |
 | `SLACK_WEBHOOK_URL` | no | Workspace Slack channel for the same alerts |
 | `TELEMETRY_INGEST_KEY` | no | Key the SDK must send (`data-key`). It ships in page HTML, so it is not a secret; unset = open ingestion, fine for local demos |
-| `TELEMETRY_ALLOWED_ORIGINS` | no | Comma-separated origins allowed to post telemetry (default: any). This is what actually limits who can report; include the dashboard's own origin, since it reports its own crashes |
+| `TELEMETRY_ALLOWED_ORIGINS` | no | Comma-separated origins allowed to post telemetry (default: any). This is what actually limits who can report; include the dashboard's own origin, since it reports its own crashes. In production the server warns at startup when neither this nor `TELEMETRY_INGEST_KEY` is set |
 | `TELEMETRY_AI_HOURLY_BUDGET` | no | Max background AI analyses started by public telemetry per hour (default: 20) |
+| `AUDIT_RETENTION_DAYS` | no | Days an audit entry is kept before MongoDB deletes it (default 365; `0` keeps them forever). Applied by a TTL index that MongoDB builds once: to change the value on an existing database, drop the `audit_retention` index on `auditlogs` and restart the server |
+| `ALLOW_DEMO_SEED` | no | `true` lets `npm run seed` run with `NODE_ENV=production`. The seed creates accounts with the published password `password123`, admin included, so it refuses in production otherwise. Only the Docker local demo sets this |
 
 ### client/.env
 
@@ -40,6 +42,7 @@ of Docker, and how to deploy it. For the Docker quick start, see the
 | `VITE_API_URL` | Backend API base URL — absolute (`https://api.example.com/api`) or relative (`/api`). Sockets and uploads use the same origin |
 | `VITE_TELEMETRY_INGEST_KEY` | Same value as the server's `TELEMETRY_INGEST_KEY`, if set, so the SDK Playground and the dashboard's own crash reports are accepted |
 | `VITE_SELF_REPORT` | `false` stops the dashboard reporting its own crashes (on by default in production builds); `true` enables it in development |
+| `VITE_DEMO_MODE` | `true` lists the seeded demo accounts on the sign-in page. Docker Compose sets it (root `.env`: `DEMO_MODE`); leave it unset for any real deployment |
 
 ---
 
@@ -240,11 +243,28 @@ After any change, run steps 2 and 3 again.
 | `TRUST_PROXY` | the measured hop count; **verify it first** ([above](#before-the-first-deploy-verify-trust_proxy)) |
 | `ALLOW_DEVELOPER_SIGNUP` | `true` only if visitors should be able to try staff features |
 
-Optional: `ANTHROPIC_API_KEY`, `TELEMETRY_ALLOWED_ORIGINS`, `GITHUB_TOKEN` with
-`GITHUB_ALLOWED_REPOS`, and alert webhooks. Seed the demo accounts once with
-`npm run seed` from the service's shell.
+Recommended: `TELEMETRY_ALLOWED_ORIGINS` (the server warns when ingest is open).
+Optional: `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` with
+`GITHUB_ALLOWED_REPOS`, and alert webhooks.
+
+The seed refuses to run here: its accounts share the published password
+`password123`, admin included. For a throwaway public demo only, set
+`ALLOW_DEMO_SEED=true`, run `npm run seed` once from the service's shell, and
+build the client with `VITE_DEMO_MODE=true` so the sign-in page lists the
+accounts. For a real deployment, register your own account, make it the first
+admin in the database (`db.users.updateOne({ email: "you@example.com" }, { $set: { role: "admin" } })`
+in `mongosh`), and promote everyone else from the Team page.
 
 **Client** — import `client/` into Vercel (framework: Vite) and set
 `VITE_API_URL=https://<your-api-host>/api` (plus `VITE_TELEMETRY_INGEST_KEY` if you
 set an ingest key). `client/vercel.json` already rewrites deep links such as
 `/bugs/:id` to the SPA and caches hashed assets.
+
+**Security headers.** `client/vercel.json` also sends a Content Security
+Policy (scripts from the dashboard's own origin only, nothing inline),
+`X-Frame-Options: DENY`, `nosniff` and a referrer policy; `client/nginx.conf`
+sends the same for the Docker stack. Vercel's policy allows connections and
+images over any `https:`/`wss:` origin, because the API's origin is only known
+at deploy time. To tighten it, replace those with your API origin. The SDK
+sandbox loads `bugsense.js` from the API, so on Vercel it needs the API origin
+added to `script-src`, e.g. `script-src 'self' https://<your-api-host>`.
