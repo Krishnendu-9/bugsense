@@ -213,3 +213,48 @@ describe('BugDetail layout', () => {
     expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus();
   });
 });
+
+describe('BugDetail follow-ups', () => {
+  const serve = (bug) => {
+    api.get.mockReset().mockImplementation(async (url) => {
+      if (url === '/bugs/b1') return { data: bug };
+      return { data: [] };
+    });
+  };
+
+  it('says when the migration merged a bug, and links to the one it joined', async () => {
+    serve({ ...baseBug(), status: 'closed', mergedInto: { _id: 'b2', title: 'The surviving bug', status: 'open' } });
+    await renderDetail();
+    const note = screen.getByRole('region', { name: 'Merged' });
+    expect(within(note).getByRole('link', { name: '“The surviving bug”' })).toHaveAttribute('href', '/bugs/b2');
+  });
+
+  it('lets the reporter add a screenshot after filing, and hides it from others', async () => {
+    serve(baseBug());
+    await renderDetail(USERS.reporter);
+    expect(screen.getByRole('button', { name: /Add a screenshot/ })).toBeInTheDocument();
+  });
+
+  it('shows nothing for a missing screenshot to someone who cannot edit the bug', async () => {
+    serve({ ...baseBug(), reporter: { _id: 'someone-else', name: 'Other' } });
+    await renderDetail(USERS.reporter);
+    expect(screen.queryByRole('button', { name: /Add a screenshot/ })).not.toBeInTheDocument();
+  });
+
+  it('offers the paid post-mortem only to people who can edit the bug', async () => {
+    serve({ ...baseBug(), reporter: { _id: 'someone-else', name: 'Other' } });
+    await renderDetail(USERS.reporter);
+    // Post-mortem was the last action left for them, so there is no menu at all.
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+  });
+
+  it('warns that an analysis predates an edit to the error log', async () => {
+    serve({
+      ...baseBug(),
+      errorLog: 'TypeError: x',
+      aiInsights: { possibleCause: 'Cause', suggestedFix: 'Fix', source: 'heuristic', outdated: true },
+    });
+    await renderDetail();
+    expect(screen.getByText(/error log was edited after this analysis ran/)).toBeInTheDocument();
+  });
+});
