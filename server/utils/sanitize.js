@@ -38,6 +38,22 @@ export const toSafeText = (text) => {
   return sanitizeHtml(text, { allowedTags: [], allowedAttributes: {} });
 };
 
+const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': ' ' };
+
+// Stored rich text as plain text for places that are not HTML (alerts, GitHub
+// issues): block ends become line breaks, so paragraphs and list items stay
+// apart, and the entities sanitize-html wrote are decoded back to characters.
+export const htmlToText = (html) => {
+  if (typeof html !== 'string' || !html) return '';
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|li|h[1-6]|pre|blockquote)>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (entity) => ENTITIES[entity])
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 export const clampString = (value, max) => {
   if (value === undefined || value === null) return '';
   const str = typeof value === 'string' ? value : String(value);
