@@ -41,6 +41,12 @@ export default function GitHubExportModal({ bugId, onClose, onExported }) {
       toast.success('Successfully converted to GitHub Issue!');
       onExported(res.data.githubIssue);
     } catch (err) {
+      // Exported from another tab or by a teammate meanwhile: show that issue.
+      if (err.response?.status === 409 && err.response.data?.githubIssue) {
+        toast(err.response.data.message);
+        onExported(err.response.data.githubIssue);
+        return;
+      }
       toast.error(err.response?.data?.message || 'Failed to export to GitHub');
     }
   };
@@ -83,7 +89,7 @@ export default function GitHubExportModal({ bugId, onClose, onExported }) {
             placeholder="e.g. facebook or your-username"
             className="input-field text-sm"
           />
-          {errors.repoOwner && <p className="text-priority-high text-xs mt-1">{errors.repoOwner.message}</p>}
+          {errors.repoOwner && <p className="text-danger text-xs mt-1">{errors.repoOwner.message}</p>}
         </div>
         <div>
           <label className="label text-xs" htmlFor="gh-repo">Repository Name</label>
@@ -96,7 +102,7 @@ export default function GitHubExportModal({ bugId, onClose, onExported }) {
             placeholder="e.g. react or my-app"
             className="input-field text-sm"
           />
-          {errors.repoName && <p className="text-priority-high text-xs mt-1">{errors.repoName.message}</p>}
+          {errors.repoName && <p className="text-danger text-xs mt-1">{errors.repoName.message}</p>}
         </div>
         <div>
           <label className="label text-xs" htmlFor="gh-token">

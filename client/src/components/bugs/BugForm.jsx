@@ -6,12 +6,10 @@ import { Upload, X, Monitor, Tag, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import StepsReproducer from './StepsReproducer.jsx';
 import useAuth from '../../hooks/useAuth.js';
-import { PRIORITY_OPTIONS, STATUS_OPTIONS, SEVERITY_OPTIONS } from '../../utils/constants.js';
+import {
+  ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES, PRIORITY_OPTIONS, STATUS_OPTIONS, SEVERITY_OPTIONS,
+} from '../../utils/constants.js';
 import { getBrowserInfo, isStaff, stripHtml } from '../../utils/helpers.js';
-
-// Mirrors the server's upload rules so users get immediate feedback.
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const QUILL_MODULES = {
   toolbar: [
@@ -31,7 +29,13 @@ const EDITABLE_FIELDS = ['title', 'description', 'severity', 'project', 'errorLo
  * mode="create": the full report form. mode="edit": the bug's content only,
  * pre-filled from `defaultValues`, with `onCancel` closing it.
  */
-export default function BugForm({ onSubmit, defaultValues = {}, isLoading = false, mode = 'create', onCancel }) {
+/**
+ * `descriptionRequired` is false for SDK crashes, which may have none: the
+ * server accepts an empty one for them, so the edit form must too.
+ */
+export default function BugForm({
+  onSubmit, defaultValues = {}, isLoading = false, mode = 'create', onCancel, descriptionRequired = true,
+}) {
   const { user } = useAuth();
   const isEdit = mode === 'edit';
   // Status is set at creation by staff only; after that it is triage.
@@ -117,7 +121,10 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
 
     const payload = { ...data, steps: cleanSteps, tags, browserInfo };
     // Triage fields are the team's call; the API ignores them from reporters.
-    if (!staff) delete payload.status;
+    if (!staff) {
+      delete payload.status;
+      delete payload.priority;
+    }
     onSubmit({ ...payload, screenshotFile });
   };
 
@@ -125,7 +132,7 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
       <div>
         <label className="label" htmlFor="bug-title">
-          Title <span className="text-priority-high">*</span>
+          Title <span className="text-danger">*</span>
         </label>
         <input
           id="bug-title"
@@ -137,18 +144,18 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
           className="input-field"
           placeholder="Brief description of the bug..."
         />
-        {errors.title && <p className="text-priority-high text-xs mt-1">{errors.title.message}</p>}
+        {errors.title && <p className="text-danger text-xs mt-1">{errors.title.message}</p>}
       </div>
 
       <div>
         <label className="label">
-          Description <span className="text-priority-high">*</span>
+          Description {descriptionRequired && <span className="text-danger">*</span>}
         </label>
         <Controller
           name="description"
           control={control}
           rules={{
-            validate: (v) => stripHtml(v).trim().length > 0 || 'Description is required',
+            validate: (v) => !descriptionRequired || stripHtml(v).trim().length > 0 || 'Description is required',
           }}
           render={({ field }) => (
             <ReactQuill
@@ -160,11 +167,13 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
             />
           )}
         />
-        {errors.description && <p className="text-priority-high text-xs mt-1">{errors.description.message}</p>}
+        {errors.description && <p className="text-danger text-xs mt-1">{errors.description.message}</p>}
       </div>
 
-      <div className={`grid grid-cols-1 gap-4 ${isEdit ? 'sm:grid-cols-1' : staff ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-        {!isEdit && (
+      {/* Priority and status are triage, so only staff set them when filing;
+          a reporter's bug starts at Medium and the team sets it from there. */}
+      <div className={`grid grid-cols-1 gap-4 ${staff ? 'sm:grid-cols-3' : 'sm:grid-cols-1'}`}>
+        {staff && (
           <div>
             <label className="label" htmlFor="bug-priority">Priority</label>
             <select id="bug-priority" {...register('priority')} className="input-field">
@@ -264,7 +273,7 @@ export default function BugForm({ onSubmit, defaultValues = {}, isLoading = fals
               {tags.map((tag) => (
                 <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-accent/10 text-accent border border-accent/20">
                   #{tag}
-                  <button type="button" onClick={() => removeTag(tag)} aria-label={`Remove tag ${tag}`} className="hover:text-priority-high transition-colors">
+                  <button type="button" onClick={() => removeTag(tag)} aria-label={`Remove tag ${tag}`} className="hover:text-danger transition-colors">
                     <X size={10} />
                   </button>
                 </span>
