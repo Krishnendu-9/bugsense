@@ -39,7 +39,8 @@ export default function App() {
           <Route path="/ai" element={<AIAnalyzer />} />
           <Route path="/metrics" element={<RoleRoute roles={STAFF}><SystemMetrics /></RoleRoute>} />
           <Route path="/audit" element={<RoleRoute roles={STAFF}><AuditTrail /></RoleRoute>} />
-          <Route path="/sdk-demo" element={<SDKPlayground />} />
+          {/* Staff only: every button in the sandbox files a real SDK bug. */}
+          <Route path="/sdk-demo" element={<RoleRoute roles={STAFF}><SDKPlayground /></RoleRoute>} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/team" element={<RoleRoute roles={['admin']}><Team /></RoleRoute>} />
         </Route>

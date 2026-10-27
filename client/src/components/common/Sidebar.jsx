@@ -31,7 +31,8 @@ const navSections = [
       { to: '/metrics', icon: Activity, label: 'Metrics', roles: STAFF },
       { to: '/audit', icon: Shield, label: 'Audit log', roles: STAFF },
       { to: '/ai', icon: Cpu, label: 'AI analyzer' },
-      { to: '/sdk-demo', icon: Terminal, label: 'SDK sandbox' },
+      // The sandbox creates real bugs, so it is staff-only like the pages above.
+      { to: '/sdk-demo', icon: Terminal, label: 'SDK sandbox', roles: STAFF },
     ],
   },
   {

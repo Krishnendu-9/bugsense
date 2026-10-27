@@ -18,6 +18,8 @@ describe('Sidebar', () => {
     expect(within(nav).getByRole('link', { name: 'Bugs' })).toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: 'Audit log' })).not.toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: 'Metrics' })).not.toBeInTheDocument();
+    // Its buttons file real SDK bugs.
+    expect(within(nav).queryByRole('link', { name: 'SDK sandbox' })).not.toBeInTheDocument();
   });
 
   it('shows staff-only pages to developers', () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, AlertOctagon, Terminal, ShoppingBag, ArrowRight, Zap, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Play, AlertOctagon, Terminal, ShoppingBag, ArrowRight, Zap, CheckCircle2, ShieldCheck, Bomb, Globe, Hourglass } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSocketEvent } from '../../hooks/useSocket.js';
 import { timeAgo, getApiOrigin } from '../../utils/helpers.js';
@@ -21,6 +21,8 @@ export default function SDKPlayground() {
     script.crossOrigin = 'anonymous';
     script.setAttribute('data-api-url', getApiOrigin());
     script.setAttribute('data-project', 'Storefront Demo');
+    // The feedback widget is opt-in; the sandbox shows it.
+    script.setAttribute('data-widget', 'true');
     // Must match the server's TELEMETRY_INGEST_KEY when one is set. Like any
     // SDK key it is visible in the page; TELEMETRY_ALLOWED_ORIGINS is what
     // actually restricts who can report.
@@ -51,7 +53,7 @@ export default function SDKPlayground() {
 
   // Simulation Handlers
   const handleSimulateNullPointer = () => {
-    toast('Triggering simulated null reference dereference...', { icon: '💥' });
+    toast('Triggering simulated null reference dereference...', { icon: <Bomb size={16} className="text-muted" aria-hidden="true" /> });
     setTimeout(() => {
       // Intentional undefined dereference
       const checkoutState = null;
@@ -60,7 +62,7 @@ export default function SDKPlayground() {
   };
 
   const handleSimulateApiError = async () => {
-    toast('Calling a missing API endpoint (HTTP 404)...', { icon: '🌐' });
+    toast('Calling a missing API endpoint (HTTP 404)...', { icon: <Globe size={16} className="text-muted" aria-hidden="true" /> });
     try {
       await fetch('/api/non-existent-order-endpoint', {
         method: 'POST',
@@ -73,7 +75,7 @@ export default function SDKPlayground() {
   };
 
   const handleSimulatePromiseRejection = () => {
-    toast('Simulating unhandled async promise rejection...', { icon: '⏳' });
+    toast('Simulating unhandled async promise rejection...', { icon: <Hourglass size={16} className="text-muted" aria-hidden="true" /> });
     setTimeout(() => {
       Promise.reject(new Error('Stripe Payment Gateway: Card declined due to insufficient credit'));
     }, 100);
