@@ -52,6 +52,9 @@ services:
       - REPORT_AI_HOURLY_BUDGET=${REPORT_AI_HOURLY_BUDGET:-100}
       # Local demo: visitors may sign up as developers (production default: no).
       - ALLOW_DEVELOPER_SIGNUP=${ALLOW_DEVELOPER_SIGNUP:-true}
+      # Lets `npm run seed` create the demo accounts (published password) even
+      # though NODE_ENV is production. Set false for anything that is not a demo.
+      - ALLOW_DEMO_SEED=${ALLOW_DEMO_SEED:-true}
       - CLOUDINARY_URL=${CLOUDINARY_URL:-}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_ALLOWED_REPOS=${GITHUB_ALLOWED_REPOS:-}
@@ -75,6 +78,8 @@ services:
         - VITE_API_URL=/api
         # Same value as the server's key, so the SDK Playground keeps working.
         - VITE_TELEMETRY_INGEST_KEY=${TELEMETRY_INGEST_KEY:-}
+        # Shows the seeded demo accounts on the sign-in page.
+        - VITE_DEMO_MODE=${DEMO_MODE:-true}
     container_name: bugsense-client
     restart: unless-stopped
     # 8080, not 5173: this is nginx serving a production build, and 5173 is

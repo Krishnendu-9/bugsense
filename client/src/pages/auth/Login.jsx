@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck, Mail, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAuth from '../../hooks/useAuth.js';
+import { isDemoMode } from '../../utils/helpers.js';
 
 export default function Login() {
   const { login } = useAuth();
@@ -62,7 +63,7 @@ export default function Login() {
                   autoComplete="email"
                 />
               </div>
-              {errors.email && <p className="text-priority-high text-xs mt-1">{errors.email.message}</p>}
+              {errors.email && <p className="text-danger text-xs mt-1">{errors.email.message}</p>}
             </div>
 
             <div>
@@ -86,7 +87,7 @@ export default function Login() {
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              {errors.password && <p className="text-priority-high text-xs mt-1">{errors.password.message}</p>}
+              {errors.password && <p className="text-danger text-xs mt-1">{errors.password.message}</p>}
             </div>
 
             <button type="submit" disabled={isLoading} className="btn-primary w-full py-2.5">
@@ -109,11 +110,15 @@ export default function Login() {
           </p>
         </div>
 
-        <div className="mt-6 p-4 glass-card text-xs text-muted text-center space-y-1">
-          <p className="font-medium text-fg">Demo accounts:</p>
-          <p>admin@bugsense.dev / password123</p>
-          <p>dev@bugsense.dev / password123</p>
-        </div>
+        {/* Only in demo builds (docker compose sets VITE_DEMO_MODE): on a real
+            deployment these would hand anyone the seeded admin account. */}
+        {isDemoMode() && (
+          <div className="mt-6 p-4 glass-card text-xs text-muted text-center space-y-1">
+            <p className="font-medium text-fg">Demo accounts:</p>
+            <p>admin@bugsense.dev / password123</p>
+            <p>dev@bugsense.dev / password123</p>
+          </div>
+        )}
       </div>
     </div>
   );
