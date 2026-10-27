@@ -1,14 +1,19 @@
 /**
- * BugSense Client SDK (v1.4.0): crash reporting, breadcrumbs and a feedback widget
+ * BugSense Client SDK (v1.5.0): crash reporting, breadcrumbs and a feedback widget
  * Embed in any website:
  * <script src="https://your-bugsense-host/sdk/bugsense.js"
  *         crossorigin="anonymous"
  *         data-api-url="https://your-bugsense-host"
  *         data-project="My Client App"
- *         data-key="optional-ingest-key"></script>
+ *         data-key="optional-ingest-key"
+ *         data-widget="true"></script>
  *
- * Privacy: the SDK never records form field values, and strips query strings
- * and fragments from every URL it reports, since those commonly carry tokens.
+ * data-widget="true" adds the floating "Report Bug" button. Since 1.5.0 it is
+ * off unless asked for, so embedding the SDK never changes the host's page.
+ *
+ * Privacy: the SDK never records form field values, keeps the text of clicked
+ * buttons and links only, and strips query strings and fragments from every
+ * URL it reports (console messages included), since those commonly carry tokens.
  */
 (function (window, document) {
   'use strict';
@@ -43,15 +48,24 @@
   const apiUrl = (currentScript?.getAttribute('data-api-url') || 'http://localhost:5000').replace(/\/+$/, '');
   const project = currentScript?.getAttribute('data-project') || 'Production Web App';
   const ingestKey = currentScript?.getAttribute('data-key') || '';
-  const enableWidget = currentScript?.getAttribute('data-widget') !== 'false';
+  // Opt-in: the widget is visible UI on someone else's site.
+  const enableWidget = currentScript?.getAttribute('data-widget') === 'true';
 
-  const SDK_VERSION = '1.4.0';
+  const SDK_VERSION = '1.5.0';
   const MAX_BREADCRUMBS = 15;
   const MAX_TITLE_LENGTH = 200;
+  // Below the server's 20,000 so the rest of a report fits in the body limit.
+  const MAX_ERROR_LOG_LENGTH = 16000;
+  // Browsers cap a keepalive request body at 64 KiB and reject a larger one
+  // outright, so a bigger report is sent as a normal request instead.
+  const KEEPALIVE_BODY_LIMIT = 60000;
   // The server caps these too (docs/fingerprint-eval-v2.md, Amendment 1, P15).
   const MAX_ERROR_NAME_LENGTH = 100;
   const MAX_ERROR_MESSAGE_LENGTH = 1000;
   const MAX_COMPONENT_STACK_LENGTH = 5000;
+  // The server keeps no more than these, so sending more only risks the body limit.
+  const MAX_DESCRIPTION_LENGTH = 5000;
+  const MAX_BREADCRUMB_DATA_LENGTH = 2000;
   const MAX_REPORTS_PER_SESSION = 20;
   const REPEAT_SUPPRESSION_MS = 10000;
 
@@ -137,6 +151,11 @@
     return String(baseURL).replace(/\/?\/$/, '') + '/' + String(url).replace(/^\/+/, '');
   }
 
+  // A control whose label says what was clicked ("Checkout", "Save"). Only
+  // these contribute text: anything else, a table row, a profile card, a
+  // paragraph, is page content that may show a person's name, email or order.
+  const LABELLED_CONTROL = 'button, a, summary, [role="button"], [role="menuitem"], [role="tab"]';
+
   // Elements whose visible text or value may be something the user typed.
   function isSensitiveElement(el) {
     const tag = el.tagName ? el.tagName.toLowerCase() : '';
@@ -154,12 +173,21 @@
   // ---------------------------------------------------------------------------
 
   const breadcrumbs = [];
+
+  // Breadcrumb data is free-form (BugSense.addBreadcrumb takes anything). The
+  // server drops data over 2,000 characters, so it is dropped here as well,
+  // before it can push a report past the request body limit.
+  function boundedData(data) {
+    if (!data) return {};
+    return safeStringify(data).length > MAX_BREADCRUMB_DATA_LENGTH ? { truncated: true } : data;
+  }
+
   function addBreadcrumb(category, message, data) {
     breadcrumbs.push({
       timestamp: new Date().toISOString(),
       category,
       message: clamp(message, 300),
-      data: data || {},
+      data: boundedData(data),
     });
     if (breadcrumbs.length > MAX_BREADCRUMBS) {
       breadcrumbs.shift();
@@ -179,7 +207,8 @@
     });
   }
 
-  // 1. DOM clicks — element identity only, never typed content
+  // 1. DOM clicks — element identity, plus the label of a button or link;
+  // never typed content or other page text
   listen(
     document,
     'click',
@@ -192,7 +221,10 @@
         const cls = typeof target.className === 'string' && target.className.trim()
           ? '.' + target.className.trim().split(/\s+/).slice(0, 2).join('.')
           : '';
-        const text = isSensitiveElement(target) ? '' : (target.innerText || '').trim().slice(0, 30);
+        const control = target.closest ? target.closest(LABELLED_CONTROL) : null;
+        const text = control && !isSensitiveElement(control) && !isSensitiveElement(target)
+          ? (control.innerText || control.textContent || '').trim().slice(0, 30)
+          : '';
         const snippet = text ? ' "' + text + '"' : '';
 
         addBreadcrumb('click', 'Clicked <' + tag + id + cls + '>' + snippet, {
@@ -342,7 +374,8 @@
   const originalConsoleError = console.error;
   console.error = function () {
     try {
-      const msg = Array.from(arguments).map(describeArg).join(' ');
+      // Logged values often hold request URLs, and their query strings tokens.
+      const msg = scrubUrls(Array.from(arguments).map(describeArg).join(' '));
       addBreadcrumb('console', 'Console Error: ' + msg.slice(0, 120), { raw: msg.slice(0, 1000) });
     } catch (err) {
       // Never let recording interfere with the host's own logging.
@@ -392,8 +425,8 @@
     const fullPayload = Object.assign({}, payload, {
       sdkVersion: SDK_VERSION,
       title: clamp(scrubUrls(payload.title), MAX_TITLE_LENGTH),
-      errorLog: payload.errorLog ? scrubUrls(payload.errorLog) : payload.errorLog,
-      description: payload.description ? scrubUrls(payload.description) : payload.description,
+      errorLog: payload.errorLog ? clamp(scrubUrls(payload.errorLog), MAX_ERROR_LOG_LENGTH) : payload.errorLog,
+      description: payload.description ? clamp(scrubUrls(payload.description), MAX_DESCRIPTION_LENGTH) : payload.description,
       error: error
         ? {
             name: error.name === null ? null : clamp(error.name, MAX_ERROR_NAME_LENGTH),
@@ -420,11 +453,13 @@
     // Use the unpatched fetch: routing through our own wrapper would record an
     // xhr breadcrumb for every report the SDK itself sends.
     const send = (originalFetch || window.fetch).bind(window);
+    const body = safeStringify(fullPayload);
     return send(apiUrl + '/api/telemetry/report', {
       method: 'POST',
       headers,
-      body: safeStringify(fullPayload),
-      keepalive: true,
+      body,
+      // keepalive lets a report outlive the page, but only under 64 KiB.
+      keepalive: body.length < KEEPALIVE_BODY_LIMIT,
     })
       .then(function (res) {
         return res.ok;
@@ -593,6 +628,7 @@
 
     function closeModal() {
       modal.style.display = 'none';
+      btn.focus();
     }
 
     btn.onclick = function () {
@@ -601,6 +637,10 @@
     };
     modal.querySelector('#bugsense-close-btn').onclick = closeModal;
     modal.querySelector('#bugsense-cancel-btn').onclick = closeModal;
+    // Escape closes the dialog, as it does any other.
+    modal.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeModal();
+    });
 
     submitBtn.onclick = function () {
       const desc = descInput.value.trim();
@@ -614,6 +654,8 @@
       submitBtn.disabled = true;
 
       sendTelemetry({
+        // A person's words, not a crash: the server files every one separately.
+        kind: 'feedback',
         title: desc.slice(0, 100),
         description: desc,
         severity: modal.querySelector('#bugsense-severity-input').value,
