@@ -12,6 +12,8 @@ const ACTION_ICONS = {
   BUG_CREATED: { icon: Bug, color: 'text-accent bg-accent/15 border-accent/30' },
   BUG_UPDATED: { icon: CheckCircle2, color: 'text-accent bg-accent/15 border-accent/30' },
   SDK_TELEMETRY: { icon: Terminal, color: 'text-muted bg-track border-border' },
+  // Typed into the SDK widget by a person, so it reads as a comment, not a crash.
+  SDK_FEEDBACK: { icon: MessageSquare, color: 'text-muted bg-track border-border' },
   REGRESSION_DETECTED: { icon: AlertTriangle, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
   GITHUB_EXPORTED: { icon: Github, color: 'text-status-resolved bg-status-resolved/15 border-status-resolved/30' },
   BUG_DELETED: { icon: Trash2, color: 'text-priority-high bg-priority-high/15 border-priority-high/30' },
