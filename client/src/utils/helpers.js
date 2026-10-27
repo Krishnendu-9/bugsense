@@ -188,6 +188,10 @@ export const downloadFile = (content, filename, type) => {
 
 export const isStaff = (user) => user?.role === 'admin' || user?.role === 'developer';
 
+// A demo build (docker compose sets VITE_DEMO_MODE=true) may show the seeded
+// accounts' credentials. Any other build must not.
+export const isDemoMode = () => import.meta.env.VITE_DEMO_MODE === 'true';
+
 export const isBugReporter = (user, bug) => {
   const reporterId = bug?.reporter?._id ?? bug?.reporter;
   return Boolean(user?._id) && Boolean(reporterId) && String(reporterId) === String(user._id);
@@ -207,25 +211,43 @@ export const statusOptionsFor = (user, bug) => {
   return ALL_STATUSES.filter((status) => allowed.has(status));
 };
 
+// The fingerprint migration's history entries, before entries carried a kind.
+const LEGACY_MIGRATION_NOTE = /fingerprint v2 migration/i;
+
 /*
  * The regressions in a bug's status history: each time it came back after
- * being resolved or closed. Same rule the server applies (recordRepeat in
- * telemetry.controller.js): only the telemetry pipeline writes a status change
- * with no changedBy, and it only does so to move a resolved or closed bug back
- * to in-progress. Returns [{ at, note, previous }] oldest first, where
- * `previous` is the history entry that had resolved or closed it (or null when
- * the history does not record one).
+ * being resolved or closed. The telemetry pipeline marks those entries with
+ * kind 'regression' (recordRepeat in telemetry.controller.js).
+ *
+ * Entries written before `kind` existed are recognised the old way: no
+ * changedBy, moved to in-progress straight after a resolved or closed entry,
+ * and not one of the fingerprint migration's entries, which also have no
+ * changedBy. Returns [{ at, note, previous }] oldest first, where `previous` is
+ * the entry that had resolved or closed it (or null when the history does not
+ * record one).
  */
 export const findRegressions = (statusHistory = []) => {
   const regressions = [];
   (statusHistory || []).forEach((entry, i) => {
     const previous = statusHistory[i - 1] || null;
-    const reopenedFromDone = !previous || previous.status === 'resolved' || previous.status === 'closed';
-    if (!entry.changedBy && entry.status === 'in-progress' && reopenedFromDone) {
+    const legacyRegression = !entry.kind
+      && !entry.changedBy
+      && entry.status === 'in-progress'
+      && (!previous || previous.status === 'resolved' || previous.status === 'closed')
+      && !LEGACY_MIGRATION_NOTE.test(entry.note || '');
+    if (entry.kind === 'regression' || legacyRegression) {
       regressions.push({ at: entry.changedAt, note: entry.note || '', previous });
     }
   });
   return regressions;
+};
+
+/** Who made a status history entry, for display. */
+export const historyActor = (entry) => {
+  if (entry?.changedBy?.name) return entry.changedBy.name;
+  if (entry?.changedBy) return 'a team member';
+  if (entry?.kind === 'migration' || LEGACY_MIGRATION_NOTE.test(entry?.note || '')) return 'Fingerprint migration';
+  return 'Telemetry pipeline';
 };
 
 // Converts a canvas data URL into a File so it can be uploaded as multipart.

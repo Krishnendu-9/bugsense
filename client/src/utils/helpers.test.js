@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { findRegressions, formatDuration, formatStatDuration, getApiOrigin, shortFrame, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
+import { findRegressions, formatDuration, formatStatDuration, getApiOrigin, historyActor, shortFrame, getImageUrl, sanitizeHtml, statusOptionsFor, stripHtml, toCsvCell } from './helpers.js';
 
 describe('sanitizeHtml', () => {
   it('removes scripts, event handlers and javascript: links', () => {
@@ -205,5 +205,30 @@ describe('findRegressions', () => {
     expect(findRegressions(twice).map((r) => r.at)).toEqual([reopenedBySdk.changedAt, '2026-10-19T08:00:00Z']);
     expect(findRegressions(undefined)).toEqual([]);
     expect(findRegressions(null)).toEqual([]);
+  });
+});
+
+describe('findRegressions with entry kinds', () => {
+  const resolved = { status: 'resolved', changedBy: { _id: 'd', name: 'Dev' }, changedAt: '2026-10-01T10:00:00Z', kind: 'change' };
+
+  it('counts an entry the telemetry pipeline marked as a regression', () => {
+    const regression = { status: 'in-progress', changedAt: '2026-10-02T10:00:00Z', kind: 'regression' };
+    expect(findRegressions([resolved, regression])).toHaveLength(1);
+  });
+
+  it('never counts the fingerprint migration, marked or from before kinds existed', () => {
+    const marked = { status: 'in-progress', changedAt: 'x', kind: 'migration', note: 'Set to in-progress by the fingerprint v2 migration' };
+    const legacy = { status: 'in-progress', changedAt: 'x', note: 'Set to in-progress by the fingerprint v2 migration: merged with a, b' };
+    expect(findRegressions([resolved, marked])).toEqual([]);
+    expect(findRegressions([resolved, legacy])).toEqual([]);
+  });
+});
+
+describe('historyActor', () => {
+  it('names who made a status change', () => {
+    expect(historyActor({ changedBy: { name: 'Ada' } })).toBe('Ada');
+    expect(historyActor({ changedBy: 'u1' })).toBe('a team member');
+    expect(historyActor({ kind: 'migration' })).toBe('Fingerprint migration');
+    expect(historyActor({ kind: 'regression' })).toBe('Telemetry pipeline');
   });
 });
