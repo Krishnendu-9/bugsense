@@ -1,6 +1,11 @@
 services:
   mongodb:
-    image: mongo:8-noble
+    # 7.0, not 8.x: MongoDB 8.0 and later refuse to start on Linux kernel 6.19
+    # and newer (https://jira.mongodb.org/browse/SERVER-121912), which current
+    # CI runners and up-to-date Linux hosts run. 7.0 is unaffected and supported
+    # by Mongoose 8. A data volume created by 8.x cannot be opened by 7.0; reset
+    # it with `docker compose down -v` (the demo data is re-seeded).
+    image: mongo:7.0
     container_name: bugsense-mongodb
     restart: unless-stopped
     # Not published on a host port: the server reaches it over bugsense-network
