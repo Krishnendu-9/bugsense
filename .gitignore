@@ -17,6 +17,9 @@ coverage/
 .claude/settings.local.json
 TESTING-SHEET.md
 USER-GUIDE.md
+# Claude Code reference files (folder structure, design system, session
+# history), kept on this machine only
+docs/claude/
 dev_docs/
 # Personal compose tweaks (e.g. publishing MongoDB for Compass; see README)
 docker-compose.override.yml
