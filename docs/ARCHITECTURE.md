@@ -23,7 +23,7 @@ flowchart TB
         AUTH["JWT auth<br/>reporter · developer · admin"]
         BUGS["Bug routes<br/>CRUD · search · filters"]
         TEL["Telemetry ingest<br/>public · rate limited<br/>optional ingest key"]
-        FP{{"Fingerprint<br/>SHA-256 of normalised<br/>stack trace + project"}}
+        FP{{"Fingerprint (v2)<br/>normalised message + top app frame<br/>or failed request, + project"}}
         INC["increment occurrences<br/>reopen if resolved<br/>= regression"]
         AI["AI service<br/>Claude, labelled fallbacks<br/>hourly budget for SDK"]
     end
@@ -60,21 +60,30 @@ flowchart TB
     WS -.->|"live updates"| UI
 ```
 
-**The part worth reading the code for** is the fingerprint step. Incoming stack
-traces are normalised — UUIDs, memory addresses, timestamps and line numbers
-stripped — then hashed with the project name. Identical SDK crashes collapse into
-one incident with an occurrence counter instead of a thousand duplicate rows, and
-a crash that reappears after being marked resolved is automatically flagged as a
-regression. See [`fingerprint.util.js`](../server/utils/fingerprint.util.js) and
+**The part worth reading the code for** is the fingerprint step. Each incoming
+crash is reduced to a key: the error message with its data stripped and each
+browser engine's wording of it mapped to one form, the top application stack
+frame without its line and column (for a failed HTTP request, the endpoint
+instead), and the project name. The key is hashed, so identical SDK crashes
+collapse into one incident with an occurrence counter instead of a thousand
+duplicate rows, and a crash that reappears after being marked resolved is
+automatically flagged as a regression. This is the second version of the key
+(v2), live since PR #7. See
+[`fingerprint.util.js`](../server/utils/fingerprint.util.js) and
 [`telemetry.controller.js`](../server/controllers/telemetry.controller.js).
 
-How well it does that is measured rather than asserted:
+Only the first version (v1) has been measured.
 [`docs/fingerprint-results.md`](fingerprint-results.md) reports a
-pre-registered evaluation against a 748-report corpus of real stack traces,
-built blind from three browser engines. Identical repeats group reliably — the
-crash-loop case this exists for — while grouping the same bug across minified
-production builds does not, because the chunk hashes and mangled function names
-in every frame change with each release even though line numbers are stripped.
+pre-registered evaluation of v1 against a 748-report corpus of real stack traces,
+built blind from three browser engines: identical repeats grouped reliably — the
+crash-loop case this exists for — while grouping the same bug across browsers and
+across minified production builds did not. v1 read stack frames only in
+Chromium's format, so Firefox and Safari reports were keyed with no error message.
+v2 parses all three engines' stacks and reproduces its pre-registered predictions
+on the v1 corpus, but that is the corpus it was designed against: no measurement
+on held-out data has been made.
+[`docs/fingerprint-results-v2.md`](fingerprint-results-v2.md) separates what was
+verified from what was not.
 
 ---
 
@@ -120,8 +129,13 @@ the analysis runs in the background (with its own hourly budget) and arrives on
 the bug page over the socket. A generated patch is saved and reopened for free,
 and only regenerated on request.
 
-**AI output always says where it came from.** Every result carries `source`
-(`claude`, `heuristic`, `template` or `unavailable`) and the UI labels it. Without
+**AI output always says where it came from.** Every result the API returns
+carries `source` (`claude`, `heuristic`, `template` or `unavailable`) and the UI
+labels it. A saved patch is the one stored result without it: the server saves a
+patch on the bug only when `source` is `claude`
+([`ai.controller.js`](../server/controllers/ai.controller.js)), so `gitPatch`
+stores no `source`, and the client labels any saved patch as Claude's on that
+basis. Without
 an API key, patch generation returns nothing rather than an invented diff: a
 plausible-looking fake patch is worse than none.
 
@@ -279,18 +293,31 @@ tests run the real middleware stack against an in-memory MongoDB.
   and WebKit, so it is the build, not the engine. Occurrence counts for these
   errors are doubled in development and unaffected in production builds. See
   [docs/fingerprint-results-v2.md](fingerprint-results-v2.md#62-react-18-development-builds-report-one-error-twice).
-- Two different errors that share their top stack frames — for example two
-  different failing API calls, where the top frames are all inside axios — can be
-  grouped into one bug. In this evaluation 9 unrelated pairs of errors were
-  merged, plus 9 of 15 pairs that were designed to look alike.
-- The same error is often not grouped across browsers: the three engines word the
-  same `TypeError` differently, and only 27% of same-bug pairs that differ only by
-  browser were grouped.
-- In a production (minified) build, a release that shifts line numbers and chunk
-  hashes re-opens bugs that are still happening: only 20% of same-bug pairs
-  survived a release, against 91% in an unminified build.
-- An error whose message embeds a value — a product id, a parsed string — can
-  produce a separate bug per value: 12 of 20 such pairs were not grouped.
+- Grouping, as measured for v1. The five points below are v1's results. v2
+  changes the key behind each of them, but none of those changes has been
+  measured on held-out data, so they are not shown here as fixed.
+- v1 grouped two different errors that shared their top stack frames — for
+  example two different failing API calls, where the top frames are all inside
+  axios — into one bug: 9 unrelated pairs of errors were merged, plus 9 of 15
+  pairs that were designed to look alike. v2 skips library frames and keys failed
+  HTTP requests on their endpoint, but ignores the page route by design, so its
+  pre-registration expects at least three look-alike pairs to stay merged
+  ([fingerprint-eval-v2.md §4.1](fingerprint-eval-v2.md#41-hard-negative-merges-at-least-three-pairs-cannot-be-separated)).
+- v1 often did not group the same error across browsers: the three engines word
+  the same `TypeError` differently, and only 27% of same-bug pairs that differ
+  only by browser were grouped. v2 parses all three engines' stacks and maps
+  their wordings to one form; a test pins one error from three engines getting
+  one key.
+- In a production (minified) build, a release that shifted line numbers and
+  chunk hashes re-opened bugs that were still happening under v1: only 20% of
+  same-bug pairs survived a release, against 91% in an unminified build. v2
+  strips chunk hashes, but a minifier that renames the top function still splits
+  the bug; its pre-registration expects this gate to fail
+  ([§4.2](fingerprint-eval-v2.md#42-version-only-recall-in-production-builds)).
+- Under v1, an error whose message embeds a value — a product id, a parsed
+  string — could produce a separate bug per value: 12 of 20 such pairs were not
+  grouped. v2 replaces digits, URLs and double-quoted values in messages, but
+  keeps single-quoted ones.
 - In Chrome, unhandled `fetch()` network failures are not reported at all, so they
   never reach grouping.
   - *Note, 2026-10-21:* PR #6 (merged 2026-10-21) added
@@ -302,6 +329,8 @@ tests run the real middleware stack against an in-memory MongoDB.
     covered (see the `response.json()` limitation above). The bullet's original
     text is kept because it records what the v1 measurement found at the time.
 
-The last five come from a pre-registered measurement: see
-[docs/fingerprint-results.md](fingerprint-results.md). The corpus and
+The v1 numbers come from a pre-registered measurement: see
+[docs/fingerprint-results.md](fingerprint-results.md). What was and was not
+verified for v2 is in [docs/fingerprint-results-v2.md](fingerprint-results-v2.md).
+The corpus and
 harness are at [bugsense-eval](https://github.com/Krishnendu-9/bugsense-eval).

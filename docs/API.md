@@ -48,7 +48,7 @@ Uploads must be PNG, JPEG, GIF or WebP up to 5 MB, and their content must match:
 | POST | `/generate-patch` | `{ errorLog?, bugDescription?, steps? }` or `{ bugId }` | `{ diff, explanation, source, generatedAt }` | Bearer |
 | POST | `/post-mortem` | `{ bugId }` | `{ markdown, source, generatedAt }` | Bug reporter / Staff |
 
-`source` says what produced the result: `claude`, or without an API key (or when the model call fails, is declined or is cut off) `heuristic` (analysis), `template` (post-mortem) or `unavailable` (patch — the `diff` is empty). With `bugId`, the bug's own stored log, description and steps are used, any of those fields in the body are ignored, and the result is saved on the bug; that requires permission to edit it. The AI routes are rate limited per account (50 calls per 15 minutes).
+`source` says what produced the result: `claude`, or without an API key (or when the model call fails, is declined or is cut off) `heuristic` (analysis), `template` (post-mortem) or `unavailable` (patch — the `diff` is empty). With `bugId`, the bug's own stored log, description and steps are used, any of those fields in the body are ignored, and the call requires permission to edit the bug. What is then saved on the bug differs: an analysis is always saved (as `aiInsights`, whatever its `source`), a patch only when its `source` is `claude` (as `gitPatch`), and a post-mortem never. The AI routes are rate limited per account (50 calls per 15 minutes).
 
 ## Users `/api/users`
 
