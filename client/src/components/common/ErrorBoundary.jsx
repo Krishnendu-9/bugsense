@@ -64,7 +64,7 @@ export default class ErrorBoundary extends React.Component {
 
     if (this.props.variant === 'page') {
       return (
-        <div role="alert" className="glass-card max-w-lg mx-auto mt-10 p-8 text-center space-y-5 border border-priority-high/30">
+        <div role="alert" className="glass-card max-w-lg mx-auto mt-10 p-8 text-center space-y-5 border border-danger/30">
           <div className="w-14 h-14 rounded-2xl bg-danger/10 border border-danger/30 flex items-center justify-center mx-auto text-danger">
             <AlertOctagon size={28} />
           </div>
@@ -87,9 +87,9 @@ export default class ErrorBoundary extends React.Component {
 
     return (
       <div className="min-h-screen bg-canvas text-fg flex items-center justify-center p-6">
-        <div role="alert" className="glass-card max-w-lg w-full p-8 text-center space-y-6 relative overflow-hidden border border-priority-high/30 shadow-2xl">
+        <div role="alert" className="glass-card max-w-lg w-full p-8 text-center space-y-6 relative overflow-hidden border border-danger/30 shadow-2xl">
           {/* Background ambient red glow */}
-          <div className="absolute -top-16 -left-16 w-36 h-36 bg-priority-high/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -top-16 -left-16 w-36 h-36 bg-danger/15 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-16 -right-16 w-36 h-36 bg-accent/15 rounded-full blur-3xl pointer-events-none" />
 
           <div className="w-16 h-16 rounded-2xl bg-danger/10 border border-danger/30 flex items-center justify-center mx-auto text-danger">
