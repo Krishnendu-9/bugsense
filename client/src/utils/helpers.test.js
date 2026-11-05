@@ -10,6 +10,22 @@ describe('sanitizeHtml', () => {
     expect(clean).not.toMatch(/onerror|<script|javascript:/i);
   });
 
+  // The HTML quill 2.0.3 exported for the two published CVE-2025-15056 payloads
+  // (video and formula embeds). The server sanitizes them first; this covers
+  // descriptions stored before it did.
+  it('drops the event handlers in quill 2.0.3 advisory exports, even unsanitized', () => {
+    for (const html of [
+      '<a href="https://example.com" onmouseover="alert(1)">https://example.com" onmouseover="alert(1)</a><p></p>',
+      '<p><span></span><img src=x onerror=alert(1)></span></p>',
+    ]) {
+      const doc = new DOMParser().parseFromString(sanitizeHtml(html), 'text/html');
+      const handlers = [...doc.body.querySelectorAll('*')].flatMap((el) =>
+        [...el.attributes].filter((a) => /^on/i.test(a.name)).map((a) => `${el.tagName}[${a.name}]`)
+      );
+      expect(handlers, html).toEqual([]);
+    }
+  });
+
   it('keeps ordinary rich-text formatting', () => {
     const html = '<p><strong>bold</strong> <em>i</em></p><ol><li>one</li></ol><pre>code</pre>';
     expect(sanitizeHtml(html)).toBe(html);

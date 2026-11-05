@@ -187,9 +187,9 @@ tests run the real middleware stack against an in-memory MongoDB.
   after that change.
 - **Dependency advisories (reviewed 2026-11-05).** `npm audit --omit=dev` is
   clean in `server/`. The full audit reports 2 moderate dev-only entries there,
-  both the same **minimatch** advisory through nodemon (fixed in 11.0.1, but
-  nodemon 3.1.14, the latest, requires `^10.2.1`), and 2 low entries in
-  `client/`, both the same root advisory. CI runs `npm audit` on every push and
+  both the same **minimatch** advisory through nodemon, and 2 low entries in
+  `client/`, both the same root advisory; both are accepted below. CI runs
+  `npm audit` on every push and
   weekly; see `.github/workflows/ci.yml` for the thresholds.
   - *Fixed on 2026-11-05*, by `npm audit fix` within existing semver ranges,
     after the weekly run of 2 November failed on an unchanged lockfile:
@@ -233,8 +233,8 @@ tests run the real middleware stack against an in-memory MongoDB.
       the parser does not validate lists, so a mis-written range would have
       been exploitable before 2.0.8. The sanitize-html bypasses, and the
       source-map-js path, need a `noscript`, `svg`, `meta` or `style` that our
-      allowlist strips; a unit test (`neutralises the 2026 advisory payloads`)
-      pins that. express-rate-limit checks `net.isIPv6()` before it parses an
+      allowlist strips; a unit test (`neutralises the sanitize-html,
+      source-map-js and quill advisory payloads`) pins that. express-rate-limit checks `net.isIPv6()` before it parses an
       address, which rejects the oversized and multi-`%` inputs.
     - Dev-only: **vite** 8.3.5 (dev-server file exposure and `launch-editor`
       command injection on Windows), **vitest** and **@vitest/coverage-v8**
@@ -260,14 +260,29 @@ tests run the real middleware stack against an in-memory MongoDB.
       were exported from the installed Quill under jsdom, then passed through
       `sanitizeRichText` and the client's DOMPurify config. Neither result has
       an event handler, an `img` or an `iframe`. DOMPurify alone also drops the
-      handlers, which covers rows stored before server sanitizing. The
-      `neutralises the 2026 advisory payloads` unit test does not contain these
-      payloads; it covers the sanitize-html advisories only.
+      handlers, which covers rows stored before server sanitizing. Both
+      exported strings are pinned: the server's advisory-payloads unit test
+      runs them through `sanitizeRichText`, and a client test runs them through
+      DOMPurify alone; each fails if an event handler survives.
     - No fixed version exists: quill 2.0.3 is the latest, and react-quill-new
       3.8.3, the latest, requires `~2.0.3`. The `--force` suggestion downgrades
       react-quill-new to 3.7.0, which resolves quill 2.0.2, whose formula and
       video `html()` are identical. It leaves the listed range without fixing
       anything.
+  - *Accepted on 2026-11-05.* **minimatch** 10.2.6 (moderate, DoS through
+    globparts amplification, GHSA-g3hv-75wg-m249), dev-only, through nodemon:
+    2 entries.
+    - No upgrade path: the fix is in minimatch 11.0.1, but nodemon 3.1.14, the
+      latest, requires `^10.2.1`. The only way to clear it is a downgrade:
+      nodemon 3.1.11 (November 2025) depends on minimatch 3.x, outside the
+      affected range. Pinning a dev tool to an older release to clear a
+      dev-only advisory is not worth it.
+    - Not reachable in anything BugSense ships: nodemon only runs `npm run dev`
+      on a developer's machine, the server image installs with
+      `npm ci --omit=dev`, and the patterns minimatch matches are nodemon's
+      own watch defaults (there is no nodemon config), not user input.
+    - It fails neither CI gate: the runtime audit omits dev dependencies, and
+      the full audit fails only on critical.
 - An SDK embedded from another origin without `crossorigin="anonymous"` misses
   unhandled fetch failures in Chromium-based browsers. The SDK calls the native
   `fetch` for the page, so the error is created inside the SDK's script; when
