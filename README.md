@@ -191,8 +191,9 @@ the suite drops it.
 `docker compose` stack after seeding it: sign-in, the overview and bug list in a
 browser, and the dashboard's Content Security Policy.
 
-`npm audit` is clean in `server/`; `client/` has one low advisory with no
-upstream fix, explained in [known limitations](docs/ARCHITECTURE.md#known-limitations).
+`npm audit` finds nothing in either package's runtime dependencies beyond one
+low advisory in `client/` with no upstream fix; it and a dev-only `server/`
+advisory are explained in [known limitations](docs/ARCHITECTURE.md#known-limitations).
 
 ---
 

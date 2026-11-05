@@ -168,10 +168,29 @@ tests run the real middleware stack against an in-memory MongoDB.
   them would mean recording arrivals, e.g. a per-incident daily bucket
   incremented alongside `occurrences`, and would only cover crashes received
   after that change.
-- **Dependency advisories (reviewed 2026-10-27).** `npm audit` reports nothing
-  in `server/` and 2 low entries in `client/`, both the same root advisory.
-  CI runs `npm audit` on every push and weekly; see `.github/workflows/ci.yml`
-  for the thresholds.
+- **Dependency advisories (reviewed 2026-11-05).** `npm audit --omit=dev` is
+  clean in `server/`. The full audit reports 2 moderate dev-only entries there,
+  both the same **minimatch** advisory through nodemon (fixed in 11.0.1, but
+  nodemon 3.1.14, the latest, requires `^10.2.1`), and 2 low entries in
+  `client/`, both the same root advisory. CI runs `npm audit` on every push and
+  weekly; see `.github/workflows/ci.yml` for the thresholds.
+  - *Fixed on 2026-11-05*, by `npm audit fix` within existing semver ranges,
+    after the weekly run of 2 November failed on an unchanged lockfile:
+    - Server runtime: **qs** 6.16.2 (moderate, an uncaught TypeError (DoS) in
+      `qs.stringify` with `arrayFormat: 'comma'`), through **express** 4.22.3,
+      which now declares `~6.16.0` itself. The `overrides` entry for qs moves
+      from `^6.16.0` to `~6.16.1`: the floor is the fixed release, and the caret
+      would have pulled in 6.17, which changes how `qs.parse` treats prototype
+      keys and array limits, and Express runs that parser on every query
+      string. Not reachable before the fix: express and body-parser only call
+      `qs.parse`; `qs.stringify` is used by superagent, through Supertest.
+    - Both packages: **follow-redirects** 1.16.2 (high, cross-realm
+      `sensitiveHeaders` arrays discarded and custom credentials kept across
+      redirects). Not reachable, for the reasons given for 1.16.1 below: axios's
+      `browser` field replaces its Node adapter, the only importer, with an
+      empty module.
+    - Dev-only: **minimatch** moved from 10.2.5 to 10.2.6 as a side effect;
+      that is still inside the advisory range.
   - *Fixed on 2026-10-27*, within existing semver ranges: server runtime
     **multer** 2.5.0 (high, DoS through a pending asynchronous file filter after
     the request is torn down) and **body-parser** 1.20.9 (high, DoS through
@@ -209,13 +228,29 @@ tests run the real middleware stack against an in-memory MongoDB.
       used by mongodb-memory-server to download the test database. The client
       copy is a runtime dependency of axios but is used only by axios's Node
       adapter, which Vite leaves out of the browser bundle.
-  - *Accepted.* **quill** (low, XSS in its HTML export), through
-    react-quill-new: 2 entries. It ships and runs in the editor, but no fixed
-    version exists; the `--force` suggestion downgrades react-quill-new to
-    3.7.0, which only moves quill to a release the advisory does not list.
-    Editor output is sanitized on the server before it is stored and again by
-    DOMPurify before it is rendered, so exported HTML never reaches the page
-    unsanitized.
+  - *Accepted, re-checked on 2026-11-05.* **quill** 2.0.3 (low, XSS in its HTML
+    export, CVE-2025-15056), through react-quill-new: 2 entries.
+    - The flaw: the formula and video embeds' `html()` put their values into
+      the `getSemanticHTML()` output without escaping. BugSense uses that path:
+      react-quill-new builds the editor's `onChange` value with
+      `getSemanticHTML()`, and that string is what the bug form submits.
+    - Formula embeds cannot be created, because BugSense does not load KaTeX.
+      Video embeds can. The toolbar has no button for them, but the editor has
+      no `formats` allowlist, so a pasted `<iframe class="ql-video">` becomes
+      one, and its exported HTML carries the injected attribute.
+    - Not exploitable: both published payloads (`</span><img src=x
+      onerror=alert(1)>` and `https://example.com" onmouseover="alert(1)`)
+      were exported from the installed Quill under jsdom, then passed through
+      `sanitizeRichText` and the client's DOMPurify config. Neither result has
+      an event handler, an `img` or an `iframe`. DOMPurify alone also drops the
+      handlers, which covers rows stored before server sanitizing. The
+      `neutralises the 2026 advisory payloads` unit test does not contain these
+      payloads; it covers the sanitize-html advisories only.
+    - No fixed version exists: quill 2.0.3 is the latest, and react-quill-new
+      3.8.3, the latest, requires `~2.0.3`. The `--force` suggestion downgrades
+      react-quill-new to 3.7.0, which resolves quill 2.0.2, whose formula and
+      video `html()` are identical. It leaves the listed range without fixing
+      anything.
 - An SDK embedded from another origin without `crossorigin="anonymous"` misses
   unhandled fetch failures in Chromium-based browsers. The SDK calls the native
   `fetch` for the page, so the error is created inside the SDK's script; when
