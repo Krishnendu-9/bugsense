@@ -1,5 +1,6 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import supertest from 'supertest';
 import { io as ioClient } from 'socket.io-client';
@@ -66,6 +67,30 @@ describe('auth', () => {
 
     const fresh = await request.get('/api/auth/me').set({ Authorization: `Bearer ${res.body.token}` });
     assert.equal(fresh.status, 200);
+  });
+
+  it('rejects a malformed or forged token on an HTTP route', async () => {
+    const claims = { id: admin.user._id, v: 0 };
+    const encode = (part) => Buffer.from(JSON.stringify(part)).toString('base64url');
+    const [header, , signature] = reporter.token.split('.');
+
+    const forged = {
+      'not a JWT': 'not-a-jwt',
+      'three garbage segments': 'aaa.bbb.ccc',
+      'signed with another secret': jwt.sign(claims, 'attacker-secret'),
+      'signed with the published dev fallback': jwt.sign(claims, 'bugsense_jwt_secret_dev_key_2026'),
+      'unsigned (alg: none)': `${encode({ alg: 'none', typ: 'JWT' })}.${encode(claims)}.`,
+      // A real reporter signature over a payload rewritten to name the admin.
+      'tampered payload': `${header}.${encode({ ...claims, iat: Math.floor(Date.now() / 1000) })}.${signature}`,
+    };
+
+    for (const [label, token] of Object.entries(forged)) {
+      const res = await request.get('/api/auth/me').set({ Authorization: `Bearer ${token}` });
+      assert.equal(res.status, 401, label);
+      assert.match(res.body.message, /invalid token/, label);
+      // A mutating route refuses it too, before reaching its handler.
+      assert.equal((await request.delete('/api/bugs/64b000000000000000000001').set({ Authorization: `Bearer ${token}` })).status, 401, label);
+    }
   });
 });
 
