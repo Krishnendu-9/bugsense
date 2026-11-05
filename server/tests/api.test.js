@@ -7,6 +7,7 @@ import { io as ioClient } from 'socket.io-client';
 import { startTestServer, stopTestServer, createUser, Bug } from './helpers.js';
 import { getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { generateFingerprintV2 } from '../utils/fingerprint.util.js';
+import { setAIClientForTests } from '../services/ai.service.js';
 
 let server;
 let port;
@@ -1321,6 +1322,92 @@ describe('AI on a saved bug', () => {
     const noLog = (await createBug(reporter)).body;
     const empty = await request.post('/api/ai/analyze').set(auth(reporter)).send({ bugId: noLog._id, errorLog: 'Error: x' });
     assert.equal(empty.status, 400);
+  });
+
+  describe('patches, against a stub model', () => {
+    const savedKey = process.env.ANTHROPIC_API_KEY;
+    const savedWarn = console.warn;
+    let requests;
+    let reply;
+
+    before(() => {
+      setAIClientForTests({ beta: { messages: { create: async (params) => { requests.push(params); return reply; } } } });
+      // A failed model call logs a warning; it is expected here.
+      console.warn = () => {};
+    });
+    after(() => {
+      setAIClientForTests(undefined);
+      console.warn = savedWarn;
+      if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = savedKey;
+    });
+
+    const modelWrites = (diff) => ({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify({ diff, explanation: 'Guard the access.' }) }],
+    });
+    const patch = (body) => request.post('/api/ai/generate-patch').set(auth(reporter)).send(body);
+
+    it('generates a saved bug\'s patch from its stored data, never from text in the request', async () => {
+      process.env.ANTHROPIC_API_KEY = 'test-key-not-used';
+      requests = [];
+      reply = modelWrites('--- a/cart.js\n+++ b/cart.js\n@@ -1 +1 @@\n-total.toFixed(2)\n+(total ?? 0).toFixed(2)');
+      const bug = (await createBug(reporter, {
+        errorLog: "TypeError: stored-log-marker (reading 'toFixed')",
+        description: '<p>stored-description-marker</p>',
+        steps: ['stored-step-marker'],
+      })).body;
+
+      const res = await patch({
+        bugId: bug._id,
+        errorLog: 'request-log-marker',
+        bugDescription: 'request-description-marker',
+        steps: ['request-step-marker'],
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.source, 'claude');
+
+      // Filing the bug also queued a background analysis through the same
+      // stub, so the patch request is picked out by its instructions.
+      const patchRequests = requests.filter((params) => /unified Git diff/.test(params.system));
+      assert.equal(patchRequests.length, 1);
+      const sent = patchRequests[0].messages[0].content;
+      for (const marker of ['stored-log-marker', 'stored-description-marker', 'stored-step-marker']) {
+        assert.match(sent, new RegExp(marker), `the model saw ${marker}`);
+      }
+      assert.doesNotMatch(sent, /request-(log|description|step)-marker/, 'no request text reached the model');
+      assert.equal((await Bug.findById(bug._id)).gitPatch.diff, res.body.diff);
+    });
+
+    it('saves only a patch the model wrote, and never replaces one with nothing', async () => {
+      process.env.ANTHROPIC_API_KEY = 'test-key-not-used';
+      requests = [];
+      const bug = (await createBug(reporter, { errorLog: 'TypeError: x is undefined\n    at run (src/app.js:10:5)' })).body;
+
+      reply = modelWrites('--- a/app.js\n+++ b/app.js\n@@ -10 +10 @@\n-x.run()\n+x?.run()');
+      const saved = await patch({ bugId: bug._id });
+      assert.equal(saved.body.source, 'claude');
+      const kept = saved.body.diff;
+
+      // The model declines: the result is 'unavailable' and must not be saved.
+      reply = { stop_reason: 'refusal', content: [] };
+      const declined = await patch({ bugId: bug._id });
+      assert.equal(declined.status, 200);
+      assert.equal(declined.body.source, 'unavailable');
+      assert.equal(declined.body.diff, '');
+      assert.equal((await Bug.findById(bug._id)).gitPatch.diff, kept, 'a declined call leaves the saved patch alone');
+
+      // No API key at all: also 'unavailable', also not saved.
+      delete process.env.ANTHROPIC_API_KEY;
+      const offline = await patch({ bugId: bug._id });
+      assert.equal(offline.body.source, 'unavailable');
+      assert.equal((await Bug.findById(bug._id)).gitPatch.diff, kept, 'an offline call leaves the saved patch alone');
+
+      // And a bug that never had a patch gets none saved.
+      const fresh = (await createBug(reporter, { errorLog: 'Error: never patched' })).body;
+      await patch({ bugId: fresh._id });
+      assert.equal((await Bug.findById(fresh._id)).gitPatch?.diff || '', '');
+    });
   });
 });
 
