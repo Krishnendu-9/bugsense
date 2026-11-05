@@ -1,6 +1,7 @@
 // NODE_ENV decides the security defaults: in production the JWT secret is
 // checked, developer sign-up is off and errors carry no stack traces. A host
-// that leaves it unset gets the development defaults, so it is named here.
+// that leaves it unset gets the production JWT check (token.service.js) but the
+// development sign-up and rate-limit defaults, so it is named here.
 
 /** The development-only conveniences (stack traces, error details) are shown. */
 export const exposesErrorDetails = (env = process.env) => env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
@@ -13,8 +14,8 @@ export const environmentWarnings = (env = process.env) => {
   const warnings = [];
   if (!env.NODE_ENV) {
     warnings.push(
-      'NODE_ENV is not set, so the server runs with development defaults: a built-in JWT secret, ' +
-        'developer self-sign-up and relaxed rate limits. Set NODE_ENV=production on any deployed host, ' +
+      'NODE_ENV is not set. JWT_SECRET is checked as in production, but developer self-sign-up and ' +
+        'relaxed rate limits follow the development defaults. Set NODE_ENV=production on any deployed host, ' +
         'or NODE_ENV=development locally to silence this.'
     );
   }

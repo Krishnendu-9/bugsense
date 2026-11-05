@@ -139,8 +139,11 @@ Being staff is a deliberate grant: developer self-sign-up is off in production
 unless `ALLOW_DEVELOPER_SIGNUP=true`, and the server's GitHub token only files
 issues in repositories listed in `GITHUB_ALLOWED_REPOS`.
 
-**Unsafe configuration fails loudly.** In production the server refuses to start
-with a missing, published or short `JWT_SECRET`. The Docker quick start runs with
+**Unsafe configuration fails loudly.** Unless `NODE_ENV` is explicitly
+`development` or `test`, the server refuses to start with a missing, published or
+short `JWT_SECRET`. An unset `NODE_ENV` counts as production here, so a host that
+forgets it cannot fall back to the built-in development secret, which is public
+in this repository. The Docker quick start runs with
 a public demo secret only because it sets `ALLOW_INSECURE_JWT_SECRET=true`, and
 the server prints a warning banner when it does.
 

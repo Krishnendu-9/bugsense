@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { isAllowedWebhookUrl } from '../utils/webhookUrl.js';
 import { generateFingerprint, topFrameOf } from '../utils/fingerprint.util.js';
 import { htmlToText, sanitizeRichText } from '../utils/sanitize.js';
-import { checkJwtSecret } from '../services/token.service.js';
+import { checkJwtSecret, getJwtSecret } from '../services/token.service.js';
 import { cloudinaryPublicId } from '../services/storage.service.js';
 import { getClientOrigins, getPrimaryClientUrl } from '../utils/clientOrigins.js';
 import { parseTrustProxy } from '../utils/trustProxy.js';
@@ -89,6 +89,28 @@ describe('checkJwtSecret', () => {
 
   it('ignores development and test environments', () => {
     assert.equal(checkJwtSecret({ NODE_ENV: 'development' }).fatal, false);
+    assert.equal(checkJwtSecret({ NODE_ENV: 'test' }).fatal, false);
+  });
+
+  it('treats an unset or unrecognised NODE_ENV as production', () => {
+    for (const env of [{}, { NODE_ENV: '' }, { NODE_ENV: 'staging' }, { NODE_ENV: 'Development' }]) {
+      const label = JSON.stringify(env);
+      assert.equal(checkJwtSecret(env).fatal, true, `${label}: no secret`);
+      assert.equal(checkJwtSecret({ ...env, JWT_SECRET: 'short' }).fatal, true, `${label}: weak secret`);
+      assert.equal(checkJwtSecret({ ...env, JWT_SECRET: strong }).fatal, false, `${label}: strong secret`);
+    }
+    assert.match(checkJwtSecret({}).warnings.join(' '), /NODE_ENV is not set/);
+    // The explicit opt-in still covers a weak secret, never a missing one.
+    assert.equal(checkJwtSecret({ JWT_SECRET: 'short', ALLOW_INSECURE_JWT_SECRET: 'true' }).fatal, false);
+    assert.equal(checkJwtSecret({ ALLOW_INSECURE_JWT_SECRET: 'true' }).fatal, true);
+  });
+
+  it('falls back to the built-in secret only in development and test', () => {
+    assert.ok(getJwtSecret({ NODE_ENV: 'development' }));
+    assert.ok(getJwtSecret({ NODE_ENV: 'test' }));
+    assert.equal(getJwtSecret({ JWT_SECRET: strong }), strong);
+    assert.throws(() => getJwtSecret({}), /JWT_SECRET is not set/);
+    assert.throws(() => getJwtSecret({ NODE_ENV: 'production' }), /JWT_SECRET is not set/);
   });
 
   it('refuses to start production without a secret, even when insecure secrets are allowed', () => {
