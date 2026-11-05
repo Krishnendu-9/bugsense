@@ -43,7 +43,9 @@ ESLint stays at 0 warnings in both packages.
 17. Status workflow, priority and assignment are staff-only; a reporter may only
     close or reopen their own bug (canSetStatus server-side, statusOptionsFor client-side).
     This includes filing: a reporter's new bug starts at Medium priority, and only a
-    level staff set (on filing or by escalating) may page the alert channels
+    level staff set (on filing or by escalating) may page the alert channels. The one
+    exception, by design: a public SDK report matching a resolved incident reopens it
+    as a regression and pages every channel, with no staff involvement
 18. Dialogs use components/common/Modal.jsx (or ConfirmDialog) — never window.confirm
 19. Uploads go through services/storage.service.js (storeUpload / removeStoredFile),
     behind upload.single() + verifyImageContent on the route
