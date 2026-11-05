@@ -98,7 +98,8 @@ MongoDB, local or Atlas. See
 ## Worth reading the code for
 
 **Deduplication.** Each incoming crash is reduced to a key: the error message
-with its data stripped (ids, numbers, quoted values), the top application stack
+with its data stripped (the digits in ids and numbers, URLs and double-quoted
+values; single-quoted values are kept), the top application stack
 frame without its line and column, and the project name. The key is hashed, so a
 crash loop becomes one incident with a counter rather than a thousand rows.
 Counting uses a single atomic `$inc` behind a unique partial index on

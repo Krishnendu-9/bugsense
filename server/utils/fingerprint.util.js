@@ -41,7 +41,12 @@ export const generateFingerprint = (errorLog = '', title = '', scope = '') => {
   return crypto.createHash('sha256').update(rawKey).digest('hex').slice(0, 32);
 };
 
-/** The v1 key under an explicit name, for the migration and the regression check. */
+/**
+ * The v1 key under an explicit name. No production code calls it: new reports,
+ * the similar-report hint and the migration all use v2. It is kept unchanged
+ * since the v1 measurement (521f9cb) so that measurement stays reproducible,
+ * and the migration tests use it to build bugs as they were stored before v2.
+ */
 export const generateFingerprintV1 = generateFingerprint;
 
 // =============================================================================
