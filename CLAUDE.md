@@ -25,7 +25,9 @@ ESLint stays at 0 warnings in both packages.
 4. Two themes, light and dark. Light is the default palette (:root); a first
    visit follows the OS preference and the user's choice is remembered.
    Colours come from the semantic tokens, never hard-coded values, and every
-   new component must work in both themes.
+   new component must work in both themes. Deliberate exceptions: the annotation
+   ink palette (drawing content), and the black scrims behind dialogs, the mobile
+   sidebar and the avatar upload overlay, which must darken in both themes.
 5. JWT stored in localStorage
 6. Axios instance reads base URL from VITE_API_URL env variable
 7. Axios interceptor attaches Authorization: Bearer token
@@ -33,10 +35,12 @@ ESLint stays at 0 warnings in both packages.
    room for thinking in max_tokens, an explicit effort, the server-side refusal
    fallback, and a stop_reason check before any reply is used)
 9. AI response must return strict JSON: { possibleCause, suggestedFix }
-10. All forms use React Hook Form
+10. All forms use React Hook Form (exception: the Navbar search box, a single
+    field that only navigates)
 11. All notifications use React Hot Toast
 12. All icons from Lucide React only
-13. Loading states use skeleton loaders, not spinners
+13. Loading states use skeleton loaders, not spinners; a button's own pending
+    state pulses its icon instead
 14. Rich text is sanitized on the server before storage and again before render
 15. Every mutating route checks permissions (utils/permissions.js / authorize())
 16. AI output must report its source; never present a fallback as model output
@@ -48,15 +52,17 @@ ESLint stays at 0 warnings in both packages.
     as a regression and pages every channel, with no staff involvement
 18. Dialogs use components/common/Modal.jsx (or ConfirmDialog) — never window.confirm
 19. Uploads go through services/storage.service.js (storeUpload / removeStoredFile),
-    behind upload.single() + verifyImageContent on the route
+    behind upload.single() + verifyImageContent on the route. The only direct
+    removeUpload calls discard multer's temp file when a request is rejected
+    before anything is stored
 20. AI results saved on a bug are computed from that bug's stored data, never from
     request text (ai.controller.js)
 21. Form errors and destructive controls use the danger token, never priority-high
 
 ## UI essentials (full reference: docs/claude/design-system.md)
 - Colours only from tokens: bg, surface, canvas, border, hairline, track, fg,
-  muted, subtle, accent, danger, status-*, priority-*. The text class is
-  text-fg, not text-text.
+  muted, subtle, accent, danger, status-*, priority-* (exceptions in rule 4).
+  The text class is text-fg, not text-text.
 - Check every component in light AND dark.
 - One primary action ("New bug", .btn-primary); everything else is
   .btn-secondary or a quiet control.
