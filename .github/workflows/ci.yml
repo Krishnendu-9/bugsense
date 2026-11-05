@@ -30,7 +30,7 @@ jobs:
   # npm audit reads package-lock.json, so this job needs no install.
   audit:
     name: npm audit (${{ matrix.package }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
@@ -58,7 +58,7 @@ jobs:
 
   server:
     name: Server (Node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
@@ -94,7 +94,7 @@ jobs:
 
   client:
     name: Client (Node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
@@ -133,12 +133,12 @@ jobs:
         run: npm run build
 
   # The whole stack as `docker compose up` runs it for a reviewer: build both
-  # images, start them, seed the demo data, then check it end to end in a real
-  # browser (e2e/). The unit suites above never exercise nginx, the CSP, the
+  # images, start them, seed the demo data, then smoke-test it through nginx in
+  # a real browser (e2e/). The unit suites above never exercise nginx, the CSP, the
   # proxying or the containers' health checks; this does.
   stack:
-    name: Docker Compose stack + end-to-end
-    runs-on: ubuntu-latest
+    name: Docker Compose stack + smoke tests
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
@@ -167,13 +167,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: e2e/package-lock.json
 
-      - name: Install the end-to-end tests
+      - name: Install the Playwright smoke tests
         working-directory: e2e
         run: |
           npm ci
           npx playwright install --with-deps chromium
 
-      - name: End-to-end tests
+      - name: Playwright smoke tests
         working-directory: e2e
         run: npm test
 
