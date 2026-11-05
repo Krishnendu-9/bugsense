@@ -74,10 +74,15 @@ export const readToken = (name, alpha) => {
     .getPropertyValue(`--${name}`)
     .trim();
 
-  // jsdom resolves custom properties, but a token that does not exist returns
-  // an empty string, which would silently become `rgb()` and paint nothing.
+  // An empty value would silently become `rgb()` and paint nothing. It means
+  // the token is unresolved: either it does not exist, or no stylesheet defining
+  // it has loaded. The second is always the case under the test runner, which
+  // loads no CSS (vite.config.js, `css: false`), so there the warning names a
+  // real token; in the app, index.css loads first and it means a misspelling.
   if (!channels) {
-    if (import.meta.env?.DEV) console.warn(`[theme] unknown token --${name}`);
+    if (import.meta.env?.DEV) {
+      console.warn(`[theme] unresolved token --${name}: not defined, or no stylesheet defining it has loaded`);
+    }
     return 'transparent';
   }
 
