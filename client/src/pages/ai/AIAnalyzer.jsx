@@ -161,7 +161,7 @@ export default function AIAnalyzer() {
           </div>
           <h3 className="text-lg font-semibold text-fg mb-2">Ready to Debug</h3>
           <p className="text-muted text-sm max-w-sm mx-auto">
-            Paste your error log above and Claude will analyze the root cause and suggest actionable fixes in seconds.
+            Paste your error log above to get a likely root cause and actionable fixes, from Claude, or from keyword heuristics when no API key is configured.
           </p>
         </div>
       )}
