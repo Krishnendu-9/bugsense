@@ -1408,6 +1408,39 @@ describe('AI on a saved bug', () => {
       await patch({ bugId: fresh._id });
       assert.equal((await Bug.findById(fresh._id)).gitPatch?.diff || '', '');
     });
+
+    it('patches a one-off from the request text alone, saving nothing, and needs a string to work from', async () => {
+      process.env.ANTHROPIC_API_KEY = 'test-key-not-used';
+      requests = [];
+      reply = modelWrites('--- a/api.js\n+++ b/api.js\n@@ -4 +4 @@\n-res.data.items\n+res.data?.items ?? []');
+      const patchedBugs = () => Bug.countDocuments({ 'gitPatch.diff': { $nin: ['', null] } });
+      const before = await patchedBugs();
+
+      // Nothing to work from, or nothing but non-strings: refused before any model call.
+      for (const body of [{}, { errorLog: 42, bugDescription: { html: '<p>x</p>' }, steps: ['ignored'] }]) {
+        const refused = await patch(body);
+        assert.equal(refused.status, 400, `refused ${JSON.stringify(body)}`);
+        assert.match(refused.body.message, /Error log or bug description is required/);
+      }
+      assert.equal(requests.length, 0, 'a refused request never reaches the model');
+
+      const res = await patch({
+        errorLog: "TypeError: request-log-marker (reading 'items')",
+        bugDescription: '<p>request-description-marker</p>',
+        steps: ['request-step-marker', 7],
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.source, 'claude');
+      assert.match(res.body.diff, /res\.data\?\.items/);
+
+      assert.equal(requests.length, 1);
+      const sent = requests[0].messages[0].content;
+      for (const marker of ['request-log-marker', 'request-description-marker', 'request-step-marker']) {
+        assert.match(sent, new RegExp(marker), `the model saw ${marker}`);
+      }
+      assert.match(sent, /^7$/m, 'non-string steps are sent as text');
+      assert.equal(await patchedBugs(), before, 'a patch with no bugId is saved on no bug');
+    });
   });
 });
 
