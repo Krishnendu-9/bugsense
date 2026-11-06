@@ -47,7 +47,7 @@ The server log opens with a `WARNING` that `JWT_SECRET` is a published example
 value. That is expected for this local demo; set a real secret before exposing
 the stack anywhere ([details](docs/CONFIGURATION.md#docker-the-details)).
 Before a real deployment, also verify `TRUST_PROXY` against what sits in front of
-the API. A wrong value lets clients bypass every rate limit
+the API. A wrong value lets clients bypass every per-IP rate limit
 ([pre-deploy check](docs/CONFIGURATION.md#before-the-first-deploy-verify-trust_proxy)).
 
 The MongoDB container prints its own startup log too, including warnings that
@@ -67,11 +67,17 @@ These accounts are for the local demo only. Compose turns on demo mode
 else with `NODE_ENV=production` the seed refuses to create them, and the
 sign-in page does not list them.
 
-The whole application is explorable with zero configuration. Without
-`ANTHROPIC_API_KEY`, root-cause analysis falls back to keyword heuristics and
-post-mortems to a data-filled template — both clearly labelled as such in the UI —
-and patch generation reports that it is unavailable rather than inventing code.
-Add a key to see Claude drive all three.
+The whole application is explorable with zero configuration, but without
+`ANTHROPIC_API_KEY` no AI is involved. Root-cause analysis then comes from a
+keyword matcher: six regular-expression rules for common error shapes (JSON
+parse failures, JWT/401, null property reads, "is not a function", database
+connections, failed fetches) and a generic answer for anything else, labelled
+"Heuristic Analysis" in the UI. Post-mortems fall back to a template filled from
+the bug's data, and patch generation reports that it is unavailable rather than
+inventing code. To use Claude for all three, set `ANTHROPIC_API_KEY` in a root
+`.env` (copy [`.env.example`](.env.example)) and run `docker compose up` again.
+The Claude path is covered only by tests against a stubbed API client; it has
+not been verified against the live API.
 
 Prerequisites for running it without Docker: Node.js 22.13+ (22 or 24 LTS) and a
 MongoDB, local or Atlas. See
@@ -126,9 +132,10 @@ was verified from what was not.
 `/api/telemetry/report` has to accept unauthenticated traffic from other
 origins, so it gets its own CORS policy, a 64 KB body limit, per-field length
 caps, enum coercion, its own rate limit and an optional shared ingest key.
-Because each new crash triggers an AI analysis, those are capped per hour — or
-anyone could run up the API bill — and a report cannot claim `critical` priority
-or `blocker` severity, since those page every alert channel. See
+Because each new crash triggers a background analysis (a paid Claude call when a
+key is set), those are capped per hour — or anyone could run up the API bill —
+and a report cannot claim `critical` priority or `blocker` severity, since those
+page every alert channel. See
 [`telemetry.controller.js`](server/controllers/telemetry.controller.js).
 
 **AI output always declares its source.** Every result carries a `source` of

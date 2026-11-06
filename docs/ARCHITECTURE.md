@@ -119,10 +119,11 @@ immediately without keeping a server-side token list.
 **The public endpoint is treated as hostile.** `/api/telemetry/report` must accept
 unauthenticated traffic from other origins, so it has its own CORS policy, a
 64 KB body limit, per-field length caps, enum coercion, its own rate limit and an
-optional shared ingest key. Each new crash triggers an AI analysis, so those are
-capped per hour — otherwise anyone could run up the API bill. Reports cannot claim
-`critical` priority or `blocker` severity either: those page every alert channel,
-so an SDK report tops out at high/major and staff escalate it after triage.
+optional shared ingest key. Each new crash triggers a background analysis (a paid
+Claude call when a key is set), so those are capped per hour — otherwise anyone
+could run up the API bill. Reports cannot claim `critical` priority or `blocker`
+severity either: those page every alert channel, so an SDK report tops out at
+high/major and staff escalate it after triage.
 
 **Nothing waits on the model.** Filing a bug with an error log returns at once;
 the analysis runs in the background (with its own hourly budget) and arrives on
@@ -171,6 +172,11 @@ tests run the real middleware stack against an in-memory MongoDB.
   wipe on every redeploy. Set `CLOUDINARY_URL` to keep them in Cloudinary instead.
 - The AI budgets and rate limits are per process, not shared across instances
   (a Redis store would fix this).
+- The Claude path (analysis, patches, post-mortems) is tested only against a
+  stubbed API client: the prompts sent, reply parsing, refusals and the
+  fallbacks. It has not been run against the live Anthropic API by the tests or
+  by CI, which sets no key. Without a key, analysis is the keyword matcher in
+  [`ai.service.js`](../server/services/ai.service.js).
 - Search is a case-insensitive substring match, so "saf" finds "Safari" as you
   type, but it scans rather than using an index. Queries are capped at 5 seconds;
   at real scale this would move to Atlas Search (a plain MongoDB text index only

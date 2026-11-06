@@ -18,8 +18,8 @@ of Docker, and how to deploy it. For the Docker quick start, see the
 | `ALLOW_INSECURE_JWT_SECRET` | no | `true` lets production start with a weak `JWT_SECRET` (with a warning banner). Only the Docker local demo sets this |
 | `NODE_ENV` | **yes** | `production` on any deployed host: enforces the JWT check, production rate limits and the developer sign-up default, and hides error details. `development` locally. Left unset, the server refuses to start without a strong `JWT_SECRET`; with one, it starts with the development sign-up and rate-limit defaults and logs a warning. Stack traces are only ever sent when it is `development` or `test` |
 | `CLIENT_URL` | no | Dashboard origin(s), comma-separated (e.g. production plus a Vercel preview). All pass CORS and the socket handshake; the first is used for links in alerts and GitHub issues |
-| `TRUST_PROXY` | **verify before deploying** | Express `trust proxy`: number of proxy hops (default `1`), `false`, or proxy addresses. Must match what is really in front of the server: too high, or `1` while Node is reachable directly, lets clients spoof their IP past every rate limit. See [Before the first deploy](#before-the-first-deploy-verify-trust_proxy) |
-| `ANTHROPIC_API_KEY` | no | Anthropic API key. Without it, AI features fall back to clearly labelled heuristics and templates |
+| `TRUST_PROXY` | **verify before deploying** | Express `trust proxy`: number of proxy hops (default `1`), `false`, or proxy addresses. Must match what is really in front of the server: too high, or `1` while Node is reachable directly, lets clients spoof their IP past every per-IP rate limit (all but the per-account AI limit). See [Before the first deploy](#before-the-first-deploy-verify-trust_proxy) |
+| `ANTHROPIC_API_KEY` | no | Anthropic API key. When set, analysis, patches and post-mortems call Claude (`claude-sonnet-5-5`). Unset, or when a call fails: analysis comes from keyword rules, labelled "Heuristic Analysis" (not a model diagnosis); post-mortems from a template filled with the bug's data; patch generation returns no diff. With Docker, set it in the root `.env` |
 | `REPORT_AI_HOURLY_BUDGET` | no | Max background analyses of new manual reports per hour (default: 100) |
 | `ALLOW_DEVELOPER_SIGNUP` | no | `true`/`false`: may visitors sign up as developers? Unset = allowed in development, refused in production (admins promote people on the Team page) |
 | `CLOUDINARY_URL` | no | `cloudinary://<key>:<secret>@<cloud>`. When set, screenshots, annotations and avatars are stored in Cloudinary instead of local disk (needed on hosts with ephemeral disks, like Render and Railway) |
@@ -157,9 +157,10 @@ wipe and reseed deliberately.
 and again whenever anything changes in front of the API: a new host, a CDN, a
 second load balancer, a published port.
 
-Every rate limit counts requests per client IP: sign-in (50 per 15 minutes), AI
-analysis, SDK ingestion and the global API limit. Failed sign-ins are recorded in
-the audit log under the same address. Express takes that address from the
+Every rate limit but one counts requests per client IP: sign-in (50 per 15
+minutes), SDK ingestion and the global API limit. The exception is the AI routes,
+limited per signed-in account (50 calls per 15 minutes). Failed sign-ins are
+recorded in the audit log under the same address. Express takes that address from the
 `X-Forwarded-For` header, trusting as many entries, counted from the right, as
 `TRUST_PROXY` says. The header is written by proxies, but a client can send one
 too, so the setting must match what is really in front of the server.
@@ -170,12 +171,12 @@ while the Node process can also be reached directly: a VPS with port 5000 open,
 `docker run -p 5000:5000`, or a compose override that publishes the server's
 port. A client then writes any address it likes into `X-Forwarded-For` and the
 server believes it. Every request can claim a new address and get a fresh
-rate-limit bucket. Password guessing on sign-in becomes unlimited, any signed-in
-account can make unlimited on-demand AI calls (analyze, patch, post-mortem), and
-the public SDK endpoint accepts unlimited reports. The audit log records invented
-addresses. The hourly budgets for *background* AI analysis are global, not
-per-IP, so those still hold. Nothing fails and nothing is logged as an error; the
-per-IP limits simply stop applying.
+rate-limit bucket. Password guessing on sign-in becomes unlimited, the global API
+limit stops applying, and the public SDK endpoint accepts unlimited reports. The
+audit log records invented addresses. The AI limits still hold: on-demand calls
+(analyze, patch, post-mortem) are counted per account, and the hourly budgets for
+*background* analysis are global, so neither depends on the address. Nothing
+fails and nothing is logged as an error; the per-IP limits simply stop applying.
 
 The opposite mistake is not a spoofing risk but still breaks the limits: too few
 hops (`0` behind a proxy, or `1` behind a CDN *and* a platform load balancer)
