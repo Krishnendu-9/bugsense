@@ -195,9 +195,11 @@ runs all of it, with coverage, on every push. Set `MONGO_URI_TEST` to run the
 server tests against an existing MongoDB instead — use a dedicated database, as
 the suite drops it.
 
-`e2e/` holds a Playwright smoke test that CI runs against the real
+`e2e/` holds four Playwright smoke tests that CI runs against the real
 `docker compose` stack after seeding it: sign-in, the overview and bug list in a
-browser, and the dashboard's Content Security Policy.
+browser; a wrong password turned away; a crash thrown on another origin, posted
+by the real SDK through nginx and found in the Bugs list; and the dashboard's
+Content Security Policy.
 
 `npm audit` finds nothing in either package's runtime dependencies beyond one
 low advisory in `client/` with no upstream fix; it and a dev-only `server/`
