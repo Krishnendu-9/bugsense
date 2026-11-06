@@ -74,6 +74,9 @@ ESLint stays at 0 warnings in both packages.
 ## Where to look
 - docs/claude/folder-structure.md — every file and what it holds
 - docs/claude/design-system.md    — token values, deprecated aliases, status/priority display
-- docs/claude/history.md          — build phases, session logs 1–7, owner decisions
+- docs/claude/history.md          — build phases, session logs 1–8, owner decisions
 - docs/API.md, docs/ARCHITECTURE.md, docs/CONFIGURATION.md, docs/SDK.md
+- dev_docs/ (gitignored, local only) — STATE (current figures), DECISIONS,
+  SESSION-LOG, BACKLOG (deliberately undone work), INTERVIEW (prep notes),
+  EXPLAIN (plain-language overview)
 - Before any deploy: the TRUST_PROXY check in docs/CONFIGURATION.md
